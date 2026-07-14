@@ -82,7 +82,7 @@ export async function evaluateCandidate(input: EvaluationInput): Promise<Evaluat
     const draws = results.length - wins - losses;
     const stalled = results.filter(result => result.stalled).length;
     const timeouts = results.filter(result => result.timeout).length;
-    const technicalDraws = results.filter(result => result.stalled || result.timeout || !result.ended).length;
+    const technicalDraws = results.filter(result => result.stalled || (result.timeout && !result.adjudication) || !result.ended).length;
     const completedDraws = Math.max(0, draws - technicalDraws);
     const scoredGames = wins + losses + completedDraws;
     const decisiveGames = wins + losses;

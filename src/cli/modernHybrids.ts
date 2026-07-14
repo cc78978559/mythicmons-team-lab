@@ -348,7 +348,7 @@ async function runBalancedPair(
     });
     for (const [result, xIsTeamA] of [[first, true], [second, false]] as const) {
       totalTurns += result.turns;
-      const technical = result.stalled || result.timeout || !result.ended;
+      const technical = result.stalled || (result.timeout && !result.adjudication) || !result.ended;
       if (technical) technicalDraws += 1;
       if (!result.winner) draws += 1;
       else if ((result.winner === "Team A") === xIsTeamA) xWins += 1;

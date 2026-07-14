@@ -9,7 +9,7 @@ import {benchmarkTeamPath, loadBenchmarkPool} from "../eval/benchmarkPool";
 import {evaluateCandidate} from "../eval/evaluator";
 import {analyzePublicLog} from "../eval/logAnalysis";
 import {numberArg, parseArgs} from "../showdown/args";
-import {queueBattleSideUpdate, runBattle} from "../showdown/battle";
+import {adjudicateMaxTurns, queueBattleSideUpdate, runBattle} from "../showdown/battle";
 import {pairedDeltaSummary, summarizeCandidate} from "../cli/modernHybrids";
 import {chooseAction, createBattleAiContext, recordAiChoice, updateAiContextFromPublicLine} from "../showdown/choice";
 import {loadTeam} from "../showdown/team";
@@ -62,6 +62,7 @@ async function main() {
   testBenchmarkPathsCannotEscapePoolDirectory();
   testNumberArgRejectsInvalidRanges();
   testRejectedChoiceRequestRetriesAcrossSideUpdates();
+  testMaxTurnAdjudication();
   testTeamPreviewUsesDelimitedSlots();
   testAiAllowsForcedRechargeMove();
   testSearchAiUsesOpenTeamSheets();
@@ -91,7 +92,7 @@ async function main() {
   await testTeamDatabaseRoundTrip();
   await testMaxTurnsIsDraw();
   await testSearchBattleConverges();
-  await testTechnicalDrawIsExcludedFromEvaluationScore();
+  await testMaxTurnTieIsScored();
   await testBattleRequestsUseLatestPublicState();
   await testPlayerContextsDoNotLeakCurrentChoices();
   testKoAttributionHandlesSelfKoAndHazards();
@@ -1393,9 +1394,26 @@ async function testMaxTurnsIsDraw(): Promise<void> {
   });
   assert.equal(result.winner, null);
   assert.equal(result.timeout, true);
+  assert.equal(result.ended, true);
+  assert.equal(result.adjudication?.reason, "exact-tie");
 }
 
-async function testTechnicalDrawIsExcludedFromEvaluationScore(): Promise<void> {
+function testMaxTurnAdjudication(): void {
+  const request = (...conditions: string[]) => ({side: {pokemon: conditions.map((condition, index) => ({ident: `p: ${index}`, condition}))}});
+  const byCount = adjudicateMaxTurns({p1: request("100/100", "1/100"), p2: request("100/100", "0 fnt")});
+  assert.equal(byCount?.winnerSide, "p1");
+  assert.equal(byCount?.reason, "remaining-pokemon");
+
+  const byHp = adjudicateMaxTurns({p1: request("50/100", "50/100"), p2: request("80/100", "10/100")});
+  assert.equal(byHp?.winnerSide, "p1");
+  assert.equal(byHp?.reason, "remaining-hp");
+
+  const tied = adjudicateMaxTurns({p1: request("50/100"), p2: request("100/200")});
+  assert.equal(tied?.winnerSide, null);
+  assert.equal(tied?.reason, "exact-tie");
+}
+
+async function testMaxTurnTieIsScored(): Promise<void> {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mythicmons-eval-draw-"));
   const summary = await evaluateCandidate({
     candidatePath: "examples/teamA.txt",
@@ -1414,12 +1432,12 @@ async function testTechnicalDrawIsExcludedFromEvaluationScore(): Promise<void> {
     ai: "basic",
   });
   assert.equal(summary.timeoutGames, 1);
-  assert.equal(summary.technicalDraws, 1);
-  assert.equal(summary.scoredGames, 0);
-  assert.equal(summary.matchups[0].resultScore, 0);
-  assert.equal(summary.relativeScore, null);
-  assert.equal(summary.matchupConsistency, null);
-  assert.deepEqual(summary.keyMatchups, {best: [], worst: []});
+  assert.equal(summary.technicalDraws, 0);
+  assert.equal(summary.scoredGames, 1);
+  assert.equal(summary.matchups[0].resultScore, 0.5);
+  assert.equal(summary.relativeScore, 50);
+  assert.deepEqual(summary.keyMatchups.best.map(entry => entry.benchmarkId), ["probe"]);
+  assert.deepEqual(summary.keyMatchups.worst.map(entry => entry.benchmarkId), ["probe"]);
 }
 
 async function testBattleRequestsUseLatestPublicState(): Promise<void> {

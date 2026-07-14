@@ -19,7 +19,7 @@ export function writeEvaluationReport(summary: EvaluationSummary, targetPath: st
   if (summary.provenance.sandboxModHash) lines.push(`Sandbox mod hash: ${summary.provenance.sandboxModHash}`);
   lines.push(`Games: ${summary.totalGames} (${summary.gamesPerBenchmark} per benchmark)`);
   if (summary.stalledGames) lines.push(`Stalled games: ${summary.stalledGames}`);
-  if (summary.timeoutGames) lines.push(`Max-turn draws: ${summary.timeoutGames}`);
+  if (summary.timeoutGames) lines.push(`Max-turn adjudications: ${summary.timeoutGames}`);
   if (summary.technicalDraws) lines.push(`Technical draws excluded from score: ${summary.technicalDraws}`);
   lines.push(`Scored games: ${summary.scoredGames}`);
   lines.push(`Pool-relative score: ${formatScore(summary.relativeScore)}`);

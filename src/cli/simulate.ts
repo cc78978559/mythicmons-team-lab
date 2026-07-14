@@ -68,7 +68,7 @@ async function main() {
   console.log(`Team B wins: ${summary.teamBWins}`);
   console.log(`Draw/unknown: ${summary.draws}`);
   console.log(`Stalled: ${summary.stalled}`);
-  console.log(`Max-turn draws: ${summary.timeouts}`);
+  console.log(`Max-turn adjudications: ${summary.timeouts}`);
   console.log(`Average turns: ${summary.averageTurns.toFixed(2)}`);
   console.log(`Output: ${outDir}`);
 }

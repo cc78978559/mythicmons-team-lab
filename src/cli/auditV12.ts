@@ -15,7 +15,7 @@ if (args.includes("--run")) {
 const state = read<{completedSeason: number}>(path.join(out, "dynasty-state.json"));
 const summaryPath = path.join(out, "audit-summary.json"), signature = auditV12Signature(out, state.completedSeason);
 let summary: V12AuditSummary, cached = false;
-if (!args.includes("--force") && fs.existsSync(summaryPath)) { const prior = read<V12AuditSummary>(summaryPath); cached = prior.schemaVersion === 2 && prior.inputSignature === signature; summary = cached ? prior : auditV12Output(out); } else summary = auditV12Output(out);
+if (!args.includes("--force") && fs.existsSync(summaryPath)) { const prior = read<V12AuditSummary>(summaryPath); cached = prior.schemaVersion === 3 && prior.inputSignature === signature; summary = cached ? prior : auditV12Output(out); } else summary = auditV12Output(out);
 fs.writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
 fs.writeFileSync(path.join(out, "audit-report.md"), v12AuditMarkdown(summary), "utf8");
 for (let season = 1; season <= summary.completedSeasons; season += 1) writeSeasonBrief(path.join(out, `season-${String(season).padStart(2, "0")}`), out);

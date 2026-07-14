@@ -50,7 +50,7 @@ async function main() {
   console.log(`Benchmark pool: ${summary.benchmarkPool}`);
   console.log(`Total games: ${summary.totalGames}`);
   if (summary.stalledGames) console.log(`Stalled games: ${summary.stalledGames}`);
-  if (summary.timeoutGames) console.log(`Max-turn draws: ${summary.timeoutGames}`);
+  if (summary.timeoutGames) console.log(`Max-turn adjudications: ${summary.timeoutGames}`);
   if (summary.technicalDraws) console.log(`Technical draws excluded: ${summary.technicalDraws}`);
   const decisiveGames = summary.matchups.reduce((total, matchup) => total + matchup.wins + matchup.losses, 0);
   console.log(`Overall win rate: ${decisiveGames ? `${(summary.overallWinRate * 100).toFixed(1)}%` : "N/A"}`);
