@@ -94,6 +94,7 @@ const separatePayroll = /^(1|true|yes)$/i.test(process.env.V3_SEPARATE_PAYROLL |
 const sportsMarket = /^(1|true|yes)$/i.test(process.env.V3_SPORTS_MARKET || "false");
 const dualLayer = /^(1|true|yes)$/i.test(process.env.V3_DUAL_LAYER || "false");
 const programEvolution = /^(1|true|yes)$/i.test(process.env.V3_PROGRAM_EVOLUTION || "false");
+const compactOutput = /^(1|true|yes)$/i.test(process.env.V3_COMPACT_OUTPUT || "false");
 const registryDirectory = path.resolve(process.env.V3_REGISTRY_DIR || path.join("data", "draft"));
 const registryHash = process.env.V3_REGISTRY_HASH || "live";
 const registryNamespace = process.env.V3_REGISTRY_NAMESPACE || (registryHash === "live" ? "" : registryHash.slice(0, 12));
@@ -1111,7 +1112,7 @@ function writeRosters(): void {
     writeTeam(manager.roster.map(entry => entry.candidate.set), path.join(dir, "roster.export.txt"), "export");
     fs.mkdirSync(dir, {recursive: true});
     const serialize = (entry: RosterEntry) => ({assetId: entry.candidate.assetId, family: entry.candidate.family, pokemon: entry.candidate.name, method: entry.method, scarcity: entry.candidate.scarcity, economicClass: entry.candidate.economicClass, debutGeneration: entry.candidate.debutGeneration, configurationSource: entry.candidate.configurationSource, configuredSet: entry.candidate.set, configurationEvidence: entry.configurationEvidence, supplyCap: entry.candidate.supplyCap, tier: entry.candidate.tier, price: entry.price, market: entry.candidate.market, roles: [...entry.candidate.roles], decisionId: entry.decisionId, appearances: entry.appearances, kos: entry.kos, regularSeasonAppearances: entry.regularSeasonAppearances, regularSeasonKos: entry.regularSeasonKos, contract: entry.contract});
-    fs.writeFileSync(path.join(dir, "roster.json"), `${JSON.stringify({managerId: manager.id, manager: manager.name, season: seasonNumber, budget: manager.budget, traits: manager.traits, preferredRoles: manager.preferredRoles, roleTargets: manager.roleTargets, economics: manager.economics, tactics: manager.tactics, learning: manager.learning, development: manager.development, tacticalMemory: manager.tacticalMemory, members: manager.roster.map(serialize), departedMembers: manager.departed.map(serialize)}, null, 2)}\n`, "utf8");
+    fs.writeFileSync(path.join(dir, "roster.json"), `${JSON.stringify({managerId: manager.id, manager: manager.name, season: seasonNumber, budget: manager.budget, traits: manager.traits, preferredRoles: manager.preferredRoles, roleTargets: manager.roleTargets, economics: manager.economics, tactics: manager.tactics, learning: manager.learning, development: manager.development, ...(compactOutput ? {} : {tacticalMemory: manager.tacticalMemory}), members: manager.roster.map(serialize), departedMembers: manager.departed.map(serialize)}, null, 2)}\n`, "utf8");
   }
 }
 

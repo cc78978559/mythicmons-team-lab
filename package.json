@@ -24,6 +24,8 @@
     "repair:v12-contracts": "tsx src/cli/repairV12Contracts.ts",
     "registry:validate": "tsx src/cli/validateRegistry.ts --dir data/draft",
     "season:brief": "tsx src/cli/seasonBrief.ts",
+    "career:build": "tsx src/cli/careerArchive.ts",
+    "career:brief": "tsx src/cli/careerArchive.ts",
     "refresh-season-reports": "tsx src/cli/refreshSeasonReports.ts",
     "smoke:simulate": "npm run simulate -- --teamA examples/teamA.txt --teamB examples/teamB.txt --seed 123 --ai basic --out output/smoke",
     "smoke:evaluate": "npm run evaluate -- --team examples/teamA.txt --benchmarks benchmarks/gen9ou/index.json --seed 123 --games 1 --ai basic --out output/eval-smoke",
@@ -38,11 +40,12 @@
     "smoke:strategy-program": "tsx src/tests/strategyProgramSmoke.ts",
     "smoke:parallel-registry": "tsx src/tests/parallelRegistrySmoke.ts",
     "smoke:season-brief": "tsx src/tests/seasonBriefSmoke.ts",
+    "smoke:career": "tsx src/tests/careerArchiveSmoke.ts",
     "smoke:v12": "tsx src/tests/v12Smoke.ts",
     "smoke:boss": "tsx src/tests/bossLeagueSmoke.ts",
     "smoke:tactical-memory": "tsx src/tests/tacticalMemorySmoke.ts",
     "test:regressions": "tsx src/tests/regressions.ts",
-    "test": "npm run typecheck && npm run smoke:boss && npm run smoke:tactical-memory && npm run smoke:lineups && npm run smoke:strategy-program && npm run smoke:parallel-registry && npm run smoke:season-brief && npm run test:regressions && npm run smoke:simulate && npm run smoke:evaluate && npm run smoke:variants && npm run smoke:sandbox && npm run smoke:dynasty && npm run smoke:v9 && npm run smoke:v10 && npm run smoke:v10-audit && npm run smoke:v11 && npm run smoke:v12"
+    "test": "npm run typecheck && npm run smoke:boss && npm run smoke:tactical-memory && npm run smoke:lineups && npm run smoke:strategy-program && npm run smoke:parallel-registry && npm run smoke:season-brief && npm run smoke:career && npm run test:regressions && npm run smoke:simulate && npm run smoke:evaluate && npm run smoke:variants && npm run smoke:sandbox && npm run smoke:dynasty && npm run smoke:v9 && npm run smoke:v10 && npm run smoke:v10-audit && npm run smoke:v11 && npm run smoke:v12"
   },
   "keywords": [],
   "author": "",

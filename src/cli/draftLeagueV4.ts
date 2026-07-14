@@ -15,6 +15,8 @@ import {evaluateStrategyProgram, countProgramNodes, strategyProgramHash, validat
 import {createRegistrySnapshot, loadRegistrySnapshot, type RegistrySnapshot} from "../draft/registrySnapshot";
 import {acquireRunLock} from "../draft/runLock";
 import {writeSeasonBrief} from "../draft/seasonBrief";
+import {loadCareerMemoryCheckpoint} from "../draft/careerArchive";
+import {extractKeyBattleDecisions} from "../draft/battleDecisionExtractor";
 
 interface SeasonResult {
   season: number;
@@ -149,6 +151,10 @@ const resume = /^(1|true|yes)$/i.test(process.env.V4_RESUME || "false");
 const expandFromV5 = /^(1|true|yes)$/i.test(process.env.V4_EXPAND_FROM_V5 || "false");
 const adoptRegistry = /^(1|true|yes)$/i.test(process.env.V4_ADOPT_REGISTRY || "false");
 const allowCodeUpgrade = /^(1|true|yes)$/i.test(process.env.V4_ALLOW_CODE_UPGRADE || "false");
+const careerCheckpointPath = process.env.V4_CAREER_CHECKPOINT ? path.resolve(process.env.V4_CAREER_CHECKPOINT) : "";
+const evidenceRetention = process.env.V4_EVIDENCE_RETENTION || "full";
+if (evidenceRetention !== "full" && evidenceRetention !== "compact") throw new Error("V4_EVIDENCE_RETENTION must be full or compact");
+const evidenceSampleRate = numberSetting("V4_EVIDENCE_SAMPLE_RATE", .02, 0, 1);
 const registrySource = path.resolve(process.env.V4_REGISTRY_SOURCE || path.join(root, "data", "draft"));
 let registrySnapshot: RegistrySnapshot;
 let runtimeFingerprint: RuntimeFingerprint;
@@ -180,6 +186,8 @@ function main(): void {
   try {
     registrySnapshot = prepareRegistrySnapshot();
     runtimeFingerprint = computeRuntimeFingerprint();
+    if (resume && careerCheckpointPath) throw new Error("V4_CAREER_CHECKPOINT starts a new journey and cannot be combined with V4_RESUME");
+    if (!resume && careerCheckpointPath) initializeFromCareerCheckpoint();
     const completedSeason = resume ? restoreCheckpoint() : 0;
     for (let season = completedSeason + 1; season <= seasonCount; season += 1) runDynastySeason(season);
     writeDynastyOutputs();
@@ -187,6 +195,41 @@ function main(): void {
     const careerLeader = managers.slice().sort((a, b) => b.titles - a.titles || b.totalPoints - a.totalPoints)[0];
     console.log(JSON.stringify({seasons: seasonCount, managers: managerLimit, champion: latestChampion?.name, careerLeader: careerLeader?.name, decisions: ledger.all().length, registry: {revision: registrySnapshot.revision, hash: registrySnapshot.hash}, output: outDir}, null, 2));
   } finally { lock.release(); }
+}
+
+function initializeFromCareerCheckpoint(): void {
+  const checkpoint = loadCareerMemoryCheckpoint(careerCheckpointPath);
+  if (checkpoint.managers.length !== managerLimit) throw new Error(`Career checkpoint contains ${checkpoint.managers.length} managers; expected ${managerLimit}`);
+  const expectedIds = initialProfiles.map(profile => profile.id);
+  if (checkpoint.managers.some((manager, index) => manager.id !== expectedIds[index])) throw new Error("Career checkpoint manager identities do not match the new league");
+  for (const key of ["dataHash", "registryHash", "benchmarkHash", "dependencyHash", "pokemonShowdownVersion"] as const) {
+    if (checkpoint.source.fingerprint[key] !== runtimeFingerprint[key]) throw new Error(`Career checkpoint ${key} does not match the current runtime`);
+  }
+  if (checkpoint.source.fingerprint.codeHash !== runtimeFingerprint.codeHash && !allowCodeUpgrade) throw new Error("Career checkpoint codeHash differs; confirm once with V4_ALLOW_CODE_UPGRADE=true");
+  managers = checkpoint.managers.map(memory => ({
+    id: memory.id,
+    name: memory.name,
+    baseProfile: cloneManagerProfile(memory.baseProfile),
+    currentProfile: cloneManagerProfile(memory.currentProfile),
+    contracts: [],
+    cash: baseBudget,
+    titles: 0,
+    totalPoints: 0,
+    seasons: [],
+    lineage: structuredClone(memory.lineage),
+    lineageHistory: structuredClone(memory.lineageHistory),
+    pendingProfile: memory.pendingProfile ? cloneManagerProfile(memory.pendingProfile) : undefined,
+    pendingLineage: memory.pendingLineage ? structuredClone(memory.pendingLineage) : undefined,
+    deadMoneyCurrent: 0,
+    deadMoneyNext: 0,
+  }));
+  market = new Map();
+  assets = new Map();
+  ledger = new DecisionLedger();
+  evolutionArchive = [];
+  leaguePool = 0;
+  moneySupply = managerLimit * baseBudget;
+  ledger.add({stage: "calibration", actor: "system", decision: "从生涯心智检查点开启新旅程", selected: path.basename(careerCheckpointPath), context: {sourceSeed: checkpoint.source.seed, sourceSeason: checkpoint.source.completedSeason, managers: checkpoint.managers.length, reset: ["season", "titles", "points", "contracts", "cash", "assets", "market"]}, alternatives: [{option: "让经理退回完全新手状态"}], rationale: ["保留已学习的人格后验、策略程序、配置经验、对手模型与谱系", "清零竞技成绩和稀缺资源归属，经验必须在新环境重新证明价值"]});
 }
 
 function restoreCheckpoint(): number {
@@ -553,6 +596,7 @@ function runV3Season(season: number, seasonDir: string, profilePath: string, kee
       V3_SEPARATE_PAYROLL: String(separatePayroll),
       V3_DUAL_LAYER: String(dualLayer),
       V3_PROGRAM_EVOLUTION: String(programEvolution),
+      V3_COMPACT_OUTPUT: String(evidenceRetention === "compact"),
       V4_DUAL_LAYER: String(dualLayer),
       V3_UNLOCK_GENERATION: String(Math.min(9, season)),
       V4_CURRENT_SEASON: String(season),
@@ -1096,14 +1140,59 @@ function registryState(): NonNullable<DynastyState["registry"]> {
 function archiveBattleLogs(seasonDir: string): void {
   const battleRoot = path.join(seasonDir, "battles");
   if (!fs.existsSync(battleRoot)) return;
-  let files = 0, sourceBytes = 0, compressedBytes = 0;
-  for (const file of listFiles(battleRoot, candidate => candidate.endsWith("raw.log") || candidate.endsWith("public.log"))) {
-    const source = fs.readFileSync(file), compressed = zlib.gzipSync(source, {level: 6}), target = `${file}.gz`;
-    fs.writeFileSync(target, compressed);
-    fs.rmSync(file, {force: true});
-    files += 1; sourceBytes += source.length; compressedBytes += compressed.length;
+  let files = 0, battles = 0, sourceBytes = 0, compressedBytes = 0, fullEvidenceBattles = 0, compactEvidenceBattles = 0, deletedBytes = 0;
+  const endFiles = listFiles(battleRoot, candidate => candidate.endsWith("end.json"));
+  for (const endFile of endFiles) {
+    battles += 1;
+    const gameDir = path.dirname(endFile), end = readJson<{timeout?: boolean; stalled?: boolean; adjudication?: unknown; errors?: unknown[]}>(endFile);
+    const relative = path.relative(battleRoot, gameDir).replace(/\\/g, "/");
+    const exceptional = Boolean(end.timeout || end.stalled || end.adjudication || end.errors?.length || /(^|\/)(final|semi|quarter|playin)/.test(relative));
+    const sampled = deterministicEvidenceSample(relative, evidenceSampleRate);
+    const keepFull = evidenceRetention === "full" || exceptional || sampled;
+    const publicLog = path.join(gameDir, "public.log"), rawLog = path.join(gameDir, "raw.log"), decisions = path.join(gameDir, "ai-decisions.json");
+    if (fs.existsSync(publicLog)) {
+      const result = gzipAndRemove(publicLog);
+      files += 1; sourceBytes += result.sourceBytes; compressedBytes += result.compressedBytes;
+    }
+    if (keepFull) {
+      fullEvidenceBattles += 1;
+      if (fs.existsSync(rawLog)) {
+        const result = gzipAndRemove(rawLog);
+        files += 1; sourceBytes += result.sourceBytes; compressedBytes += result.compressedBytes;
+      }
+      if (evidenceRetention === "compact" && fs.existsSync(decisions)) {
+        const result = gzipAndRemove(decisions);
+        files += 1; sourceBytes += result.sourceBytes; compressedBytes += result.compressedBytes;
+      }
+    } else {
+      compactEvidenceBattles += 1;
+      if (fs.existsSync(decisions)) {
+        const stat = fs.statSync(decisions);
+        writeJson(path.join(gameDir, "ai-summary.json"), {schemaVersion: 1, sourceDecisions: readJson<unknown[]>(decisions).length, keyDecisions: extractKeyBattleDecisions(decisions, 6)});
+        fs.rmSync(decisions, {force: true});
+        deletedBytes += stat.size;
+      }
+      if (fs.existsSync(rawLog)) {
+        deletedBytes += fs.statSync(rawLog).size;
+        fs.rmSync(rawLog, {force: true});
+      }
+    }
   }
-  writeJson(path.join(seasonDir, "battle-archive.json"), {schemaVersion: 1, files, sourceBytes, compressedBytes, ratio: sourceBytes ? compressedBytes / sourceBytes : 0});
+  writeJson(path.join(seasonDir, "battle-archive.json"), {schemaVersion: 2, retention: evidenceRetention, sampleRate: evidenceSampleRate, battles, files, fullEvidenceBattles, compactEvidenceBattles, deletedBytes, sourceBytes, compressedBytes, ratio: sourceBytes ? compressedBytes / sourceBytes : 0});
+}
+
+function gzipAndRemove(file: string): {sourceBytes: number; compressedBytes: number} {
+  const source = fs.readFileSync(file), compressed = zlib.gzipSync(source, {level: 6});
+  fs.writeFileSync(`${file}.gz`, compressed);
+  fs.rmSync(file, {force: true});
+  return {sourceBytes: source.length, compressedBytes: compressed.length};
+}
+
+function deterministicEvidenceSample(value: string, rate: number): boolean {
+  if (rate <= 0) return false;
+  if (rate >= 1) return true;
+  const sample = crypto.createHash("sha256").update(value).digest().readUInt32BE(0) / 0x1_0000_0000;
+  return sample < rate;
 }
 
 function listFiles(directory: string, include: (file: string) => boolean): string[] {

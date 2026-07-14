@@ -57,7 +57,7 @@ export function writeSeasonBrief(seasonDirectory: string, leagueRoot = path.dirn
     notableTransactions: (season.transactions ?? []).slice(0, 10).map((entry: any) => ({type: String(entry.type ?? "transaction"), manager: entry.manager, signed: entry.signed, released: entry.released, round: entry.round})),
     evolutionHighlights: (evolution?.descendants ?? []).filter((entry: any) => !entry.protectedCopy).sort((a: any, b: any) => b.ecologicalFitness - a.ecologicalFitness).slice(0, 10).map((entry: any) => ({slot: entry.slotId, parent: entry.parentSlotId, fitness: round(entry.ecologicalFitness, 3), mutations: (entry.lineage?.mutations ?? []).slice(0, 6), program: entry.program?.hash?.slice(0, 12)})),
     audit: {fatal: audit?.fatalCount ?? null, warnings: audit?.warningCount ?? null, moneyConserved: economy?.conserved !== false, invalidLineups: audit?.metrics?.invalidLineups ?? null},
-    storage: {battles: Math.floor(Number(archive?.files ?? 0) / 2), compressedLogBytes: Number(archive?.compressedBytes ?? 0), compressionRatio: round(Number(archive?.ratio ?? 0), 4)},
+    storage: {battles: Number(archive?.battles ?? Math.floor(Number(archive?.files ?? 0) / 2)), compressedLogBytes: Number(archive?.compressedBytes ?? 0), compressionRatio: round(Number(archive?.ratio ?? 0), 4)},
     observations,
     detailFiles: {season: relative(root, path.join(seasonDir, "season.json")), decisions: relative(root, path.join(seasonDir, "decision-ledger.json")), review: relative(root, path.join(seasonDir, "season-review.md")), evolution: relative(root, path.join(seasonDir, "evolution.json")), audit: "audit-summary.json"},
     truncation: {applied: false, omitted: {}},

@@ -60,7 +60,7 @@ const bossPath = path.resolve(argument("boss", "data/bosses/g1-red.json"));
 const seed = argument("seed", "red-boss-challenge-v1");
 const maxTurns = Number(argument("max-turns", "180"));
 const completeTestField = /^(1|true|yes)$/i.test(argument("complete-test-field", "false"));
-const learningPath = argument("learning", "");
+const learningPath = argument("learning", path.join(leagueDir, `season-${String(season).padStart(2, "0")}`, "tactical-learning.json"));
 
 async function main(): Promise<void> {
   fs.mkdirSync(outDir, {recursive: true});
