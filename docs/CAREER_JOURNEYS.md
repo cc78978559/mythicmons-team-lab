@@ -12,7 +12,8 @@ This writes `career-portraits/`:
 
 - `index.json` and `index.md`: compact 30-manager index.
 - `managers/manager-XX.json`: evidence-backed portrait for local queries.
-- `managers/manager-XX.md`: first-person career introduction.
+- `managers/manager-XX.md`: evidence-backed first-person career interview, with a manager-specific agenda and unfinished question.
+- `narrative-quality.json`: local diversity, evidence coverage, and length audit for all interviews.
 - `career-memory.json.gz`: compressed manager minds.
 - `career-memory.json`: hash-checked checkpoint manifest.
 - `token-budget.json`: files that are safe to read by default.
@@ -26,6 +27,7 @@ npm.cmd run career:brief -- --out output/draft-league-v12-nine-season-valid-no-w
 ```
 
 Add `--full` only when the complete local portrait is required. Do not feed `dynasty-state.json`, full decision ledgers, or battle directories into a model for routine career questions.
+The default brief includes the interview but omits the full season and decision ledgers. `token-budget.json` records both default-query and full-portrait upper bounds.
 
 ## Start a new journey with inherited minds
 

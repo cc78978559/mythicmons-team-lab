@@ -15,7 +15,15 @@ try {
   const checkpoint = loadCareerMemoryCheckpoint(archive.checkpointManifest);
   assert.equal(checkpoint.managers.length, 6);
   const portrait = readCareerPortrait(archive.destination, "manager-01");
+  assert.equal(portrait.schemaVersion, 2);
   assert.equal(portrait.record.seasons, 1);
+  assert.ok(portrait.interview.agenda.length >= 4);
+  assert.ok(portrait.interview.agenda.every(section => section.evidence.length > 0));
+  const narrativeQuality = read<any>(path.join(archive.destination, "narrative-quality.json"));
+  assert.equal(narrativeQuality.passed, true);
+  assert.equal(narrativeQuality.uniqueIntroductions, 6);
+  const tokenBudget = read<any>(path.join(archive.destination, "token-budget.json"));
+  assert.ok(tokenBudget.maximumDefaultManagerTokens <= tokenBudget.maximumManagerTokens);
   assert.match(portrait.introduction, /我是经理 01/);
 
   runLeague(next, "career-next", archive.checkpointManifest);
