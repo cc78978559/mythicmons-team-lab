@@ -50,6 +50,7 @@ export interface BattleResult {
   stalled: boolean;
   stallReason: string | null;
   errors: string[];
+  choiceRetries: number;
 }
 
 export async function runBattle(input: BattleInput): Promise<BattleResult> {
@@ -66,6 +67,7 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
   let stallReason: string | null = null;
   const errors: string[] = [];
   const decisionTraces: AiDecisionTrace[] = [];
+  let choiceRetries = 0;
   const openTeamSheets = input.openTeamSheets ?? false;
   const traceAiDecisions = input.traceAiDecisions ?? false;
   const teams = {
@@ -77,6 +79,7 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
     p2: createBattleAiContext(input.format, {openTeamSheets, teams, tacticalProfile: input.aiProfiles?.p2, opponentModel: input.aiOpponentModels?.p2}),
   };
   const pendingRequests: Partial<Record<"p1" | "p2", ChoiceRequest>> = {};
+  const rejectedChoices = new Set<"p1" | "p2">();
   const idleTimeoutMs = input.idleTimeoutMs ?? 5000;
   const wallClockTimeoutMs = input.wallClockTimeoutMs ?? 30000;
   let idleTimer: NodeJS.Timeout | undefined;
@@ -105,7 +108,10 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
       const messageType = lines[0];
 
       if (messageType === "sideupdate") {
-        queueSideUpdate(lines, pendingRequests);
+        if (queueBattleSideUpdate(lines, pendingRequests, rejectedChoices) && !errors.length && !timeout && !stalled) {
+          choiceRetries += 1;
+          flushPendingRequests(stream, pendingRequests, input.ai, aiContexts, decisionTraces, traceAiDecisions);
+        }
       } else if (messageType === "update") {
         for (const line of publicUpdateLines(lines.slice(1))) {
           if (!line) continue;
@@ -169,7 +175,7 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
   fs.writeFileSync(rawLogPath, rawBlocks.join("\n\n"), "utf8");
   fs.writeFileSync(publicLogPath, publicLines.join("\n"), "utf8");
   fs.writeFileSync(decisionLogPath, `${JSON.stringify(decisionTraces, null, 2)}\n`, "utf8");
-  fs.writeFileSync(endDataPath, `${JSON.stringify({winner, turns, ended, timeout, stalled, stallReason, errors, seed, ai: input.ai, aiVersion: AI_VERSION, aiProfiles: {p1: aiContexts.p1.tacticalProfile.id, p2: aiContexts.p2.tacticalProfile.id}, aiOpponentModelConfidence: {p1: aiContexts.p1.opponentModel.confidence, p2: aiContexts.p2.opponentModel.confidence}, openTeamSheets, traceAiDecisions, aiDecisionCount: decisionTraces.length, ...endData}, null, 2)}\n`, "utf8");
+  fs.writeFileSync(endDataPath, `${JSON.stringify({winner, turns, ended, timeout, stalled, stallReason, errors, choiceRetries, seed, ai: input.ai, aiVersion: AI_VERSION, aiProfiles: {p1: aiContexts.p1.tacticalProfile.id, p2: aiContexts.p2.tacticalProfile.id}, aiOpponentModelConfidence: {p1: aiContexts.p1.opponentModel.confidence, p2: aiContexts.p2.opponentModel.confidence}, openTeamSheets, traceAiDecisions, aiDecisionCount: decisionTraces.length, ...endData}, null, 2)}\n`, "utf8");
 
   if (errors.length) {
     throw new Error(`Battle protocol error in game ${input.gameIndex + 1}:\n${errors.join("\n")}`);
@@ -192,6 +198,7 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
     stalled,
     stallReason,
     errors,
+    choiceRetries,
   };
 }
 
@@ -222,15 +229,20 @@ function isProtocolError(line: string): boolean {
     line.includes("doesn't exist");
 }
 
-function queueSideUpdate(
+export function queueBattleSideUpdate(
   lines: string[],
   pendingRequests: Partial<Record<"p1" | "p2", ChoiceRequest>>,
-): void {
+  rejectedChoices: Set<"p1" | "p2">,
+): boolean {
   const playerId = lines[1];
-  if (playerId !== "p1" && playerId !== "p2") return;
+  if (playerId !== "p1" && playerId !== "p2") return false;
+  const choiceRejected = lines.slice(2).some(line => line.startsWith("|error|") && (line.includes("Unavailable choice") || line.includes("Invalid choice")));
+  if (choiceRejected) rejectedChoices.add(playerId);
+  let hasRequest = false;
 
   for (const line of lines.slice(2)) {
     if (!line.startsWith("|request|")) continue;
+    hasRequest = true;
     const payload = line.slice("|request|".length);
     if (!payload || payload === "null") {
       delete pendingRequests[playerId];
@@ -239,6 +251,7 @@ function queueSideUpdate(
 
     pendingRequests[playerId] = JSON.parse(payload) as ChoiceRequest;
   }
+  return hasRequest && rejectedChoices.delete(playerId);
 }
 
 function flushPendingRequests(

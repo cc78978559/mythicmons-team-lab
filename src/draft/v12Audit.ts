@@ -7,8 +7,8 @@ import {loadRegistrySnapshot} from "./registrySnapshot";
 
 export interface V12AuditIssue {severity: "fatal" | "warning"; code: string; message: string; season?: number; managerId?: string}
 export interface V12AuditSummary {
-  schemaVersion: 1; inputSignature: string; completedSeasons: number; managers: number; fatalCount: number; warningCount: number; issues: V12AuditIssue[];
-  metrics: {lineups: number; invalidLineups: number; backgroundRegistrations: number; backgroundContractViolations: number; duplicateScarceAssets: number; duplicateRetainedContracts: number; contractOwnershipMismatches: number; invalidOfficialAssets: number; configurationUpdates: number; programCount: number; uniquePrograms: number; averageProgramNodes: number; moneyConserved: boolean; outputBytes: number};
+  schemaVersion: 2; inputSignature: string; completedSeasons: number; managers: number; fatalCount: number; warningCount: number; issues: V12AuditIssue[];
+  metrics: {lineups: number; invalidLineups: number; battleFiles: number; unendedBattles: number; stalledBattles: number; timeoutBattles: number; protocolErrors: number; recoveredChoiceRetries: number; backgroundRegistrations: number; backgroundContractViolations: number; duplicateScarceAssets: number; duplicateRetainedContracts: number; contractOwnershipMismatches: number; invalidOfficialAssets: number; configurationUpdates: number; programCount: number; uniquePrograms: number; averageProgramNodes: number; moneyConserved: boolean; outputBytes: number};
 }
 
 interface State {version: number; completedSeason: number; moneySupply: number; leaguePool: number; registry?: {hash: string; snapshot: string}; decisionRecords?: Array<{decision: string; context?: any}>; assets: Record<string, {ownerId: string | null}>; managers: Array<{id: string; cash: number; contracts: Array<{assetId?: string; assetClass?: string}>; currentProfile: {strategyProgram?: StrategyProgram}}>}
@@ -22,7 +22,7 @@ export function auditV12Output(rootDirectory: string): V12AuditSummary {
   else try { if (loadRegistrySnapshot(path.resolve(root, state.registry.snapshot)).hash !== state.registry.hash) throw new Error("state hash differs"); } catch (error) { issues.push(issue("fatal", "corrupt-registry-snapshot", String(error))); }
   const conserved = state.leaguePool + state.managers.reduce((sum, manager) => sum + manager.cash, 0) === state.moneySupply;
   if (!conserved) issues.push(issue("fatal", "money-conservation", "Team cash and league pool do not match money supply"));
-  let lineups = 0, invalidLineups = 0, backgroundRegistrations = 0, backgroundContractViolations = 0, duplicateScarceAssets = 0, duplicateRetainedContracts = 0, contractOwnershipMismatches = 0, invalidOfficialAssets = 0, configurationUpdates = 0;
+  let lineups = 0, invalidLineups = 0, battleFiles = 0, unendedBattles = 0, stalledBattles = 0, timeoutBattles = 0, protocolErrors = 0, recoveredChoiceRetries = 0, backgroundRegistrations = 0, backgroundContractViolations = 0, duplicateScarceAssets = 0, duplicateRetainedContracts = 0, contractOwnershipMismatches = 0, invalidOfficialAssets = 0, configurationUpdates = 0;
   configurationUpdates = state.decisionRecords?.filter(record => record.decision.includes("配置证据更新")).reduce((sum, record) => sum + Number(record.context?.updates?.length ?? 0), 0) ?? 0;
   const programHashes = new Set<string>(); let programNodes = 0;
   const retainedContracts = new Map<string, string>();
@@ -60,6 +60,19 @@ export function auditV12Output(rootDirectory: string): V12AuditSummary {
     if (!seasonResult.validity?.valid || seasonResult.validity.battleLineupSize !== 6) issues.push(issue("fatal", "invalid-season-sample", "Season is not marked as strict 6v6", season));
     if (!seasonResult.registry?.hash || !fs.existsSync(path.join(root, "config-snapshots", seasonResult.registry.hash))) issues.push(issue("fatal", "untraceable-season-registry", "Season registry hash has no immutable snapshot", season));
     else try { loadRegistrySnapshot(path.join(root, "config-snapshots", seasonResult.registry.hash)); } catch (error) { issues.push(issue("fatal", "corrupt-season-registry", String(error), season)); }
+    let seasonUnended = 0, seasonStalled = 0, seasonTimeouts = 0, seasonErrors = 0;
+    const battleRoot = path.join(dir, "battles");
+    for (const file of fs.existsSync(battleRoot) ? namedFiles(battleRoot, "end.json") : []) {
+      const battle = read<{ended?: boolean; stalled?: boolean; timeout?: boolean; errors?: unknown[]; choiceRetries?: number}>(file);
+      battleFiles += 1;
+      if (!battle.ended) { unendedBattles += 1; seasonUnended += 1; }
+      if (battle.stalled) { stalledBattles += 1; seasonStalled += 1; }
+      if (battle.timeout) { timeoutBattles += 1; seasonTimeouts += 1; }
+      const errorCount = battle.errors?.length ?? 0;
+      protocolErrors += errorCount; seasonErrors += errorCount;
+      recoveredChoiceRetries += Number(battle.choiceRetries ?? 0);
+    }
+    if (seasonUnended || seasonStalled || seasonTimeouts || seasonErrors) issues.push(issue("fatal", "technical-battle-results", `${seasonUnended} unended, ${seasonStalled} stalled, ${seasonTimeouts} timed out, ${seasonErrors} protocol errors`, season));
     if (fs.existsSync(path.join(dir, "decision-ledger.json"))) {
       const records = read<{records: Array<{stage: string; actor: string; selected: unknown; decision: string; context?: any}>}>(path.join(dir, "decision-ledger.json")).records;
       for (const record of records.filter(record => record.stage === "lineup")) {
@@ -89,7 +102,7 @@ export function auditV12Output(rootDirectory: string): V12AuditSummary {
   }
   const outputBytes = directorySize(root);
   if (configurationUpdates === 0 && state.completedSeason > 0) issues.push(issue("warning", "no-configuration-evidence", "No auditable configuration posterior updates were found"));
-  const summary: V12AuditSummary = {schemaVersion: 1, inputSignature: auditV12Signature(root, state.completedSeason), completedSeasons: state.completedSeason, managers: state.managers.length, fatalCount: issues.filter(entry => entry.severity === "fatal").length, warningCount: issues.filter(entry => entry.severity === "warning").length, issues, metrics: {lineups, invalidLineups, backgroundRegistrations, backgroundContractViolations, duplicateScarceAssets, duplicateRetainedContracts, contractOwnershipMismatches, invalidOfficialAssets, configurationUpdates, programCount: state.managers.length, uniquePrograms: programHashes.size, averageProgramNodes: state.managers.length ? programNodes / state.managers.length : 0, moneyConserved: conserved, outputBytes}};
+  const summary: V12AuditSummary = {schemaVersion: 2, inputSignature: auditV12Signature(root, state.completedSeason), completedSeasons: state.completedSeason, managers: state.managers.length, fatalCount: issues.filter(entry => entry.severity === "fatal").length, warningCount: issues.filter(entry => entry.severity === "warning").length, issues, metrics: {lineups, invalidLineups, battleFiles, unendedBattles, stalledBattles, timeoutBattles, protocolErrors, recoveredChoiceRetries, backgroundRegistrations, backgroundContractViolations, duplicateScarceAssets, duplicateRetainedContracts, contractOwnershipMismatches, invalidOfficialAssets, configurationUpdates, programCount: state.managers.length, uniquePrograms: programHashes.size, averageProgramNodes: state.managers.length ? programNodes / state.managers.length : 0, moneyConserved: conserved, outputBytes}};
   return summary;
 }
 
@@ -119,5 +132,6 @@ function collectAuditInputs(directory: string, files: string[]): void {
   }
 }
 function directorySize(directory: string): number { let total = 0; for (const entry of fs.readdirSync(directory, {withFileTypes: true})) { const target = path.join(directory, entry.name); total += entry.isDirectory() ? directorySize(target) : fs.statSync(target).size; } return total; }
+function namedFiles(directory: string, name: string): string[] { const result: string[] = []; for (const entry of fs.readdirSync(directory, {withFileTypes: true})) { const target = path.join(directory, entry.name); if (entry.isDirectory()) result.push(...namedFiles(target, name)); else if (entry.name === name) result.push(target); } return result; }
 function issue(severity: V12AuditIssue["severity"], code: string, message: string, season?: number, managerId?: string): V12AuditIssue { return {severity, code, message, season, managerId}; }
 function read<T>(file: string): T { return JSON.parse(fs.readFileSync(file, "utf8")) as T; }

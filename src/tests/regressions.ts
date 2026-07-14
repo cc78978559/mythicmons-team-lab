@@ -9,7 +9,7 @@ import {benchmarkTeamPath, loadBenchmarkPool} from "../eval/benchmarkPool";
 import {evaluateCandidate} from "../eval/evaluator";
 import {analyzePublicLog} from "../eval/logAnalysis";
 import {numberArg, parseArgs} from "../showdown/args";
-import {runBattle} from "../showdown/battle";
+import {queueBattleSideUpdate, runBattle} from "../showdown/battle";
 import {pairedDeltaSummary, summarizeCandidate} from "../cli/modernHybrids";
 import {chooseAction, createBattleAiContext, recordAiChoice, updateAiContextFromPublicLine} from "../showdown/choice";
 import {loadTeam} from "../showdown/team";
@@ -61,6 +61,7 @@ async function main() {
   testCustomEffectConflictsRequireExplicitReplacement();
   testBenchmarkPathsCannotEscapePoolDirectory();
   testNumberArgRejectsInvalidRanges();
+  testRejectedChoiceRequestRetriesAcrossSideUpdates();
   testTeamPreviewUsesDelimitedSlots();
   testAiAllowsForcedRechargeMove();
   testSearchAiUsesOpenTeamSheets();
@@ -103,6 +104,19 @@ async function main() {
   await testNormalizeThunderWaveTargets();
   await testCompositeChoiceLockRunsInBattle();
   console.log("Regression tests passed");
+}
+
+function testRejectedChoiceRequestRetriesAcrossSideUpdates(): void {
+  const pending: Record<string, any> = {};
+  const rejected = new Set<"p1" | "p2">();
+  const rejectedBlock = ["sideupdate", "p2", "|error|[Unavailable choice] Can't switch: The active Pokemon is trapped"];
+  assert.equal(queueBattleSideUpdate(rejectedBlock, pending, rejected), false);
+  assert.equal(rejected.has("p2"), true);
+  const request = {active: [{trapped: true, moves: [{move: "Thunderbolt", id: "thunderbolt", pp: 24, maxpp: 24, target: "normal", disabled: false}]}], side: {id: "p2", name: "Team B", pokemon: []}};
+  const requestBlock = ["sideupdate", "p2", `|request|${JSON.stringify(request)}`];
+  assert.equal(queueBattleSideUpdate(requestBlock, pending, rejected), true);
+  assert.deepEqual(pending.p2, request);
+  assert.equal(rejected.has("p2"), false);
 }
 
 function testSportsMarketMathIsBoundedAndAuditable(): void {
