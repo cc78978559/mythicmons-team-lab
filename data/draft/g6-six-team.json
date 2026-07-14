@@ -1,0 +1,68 @@
+{
+  "name": "G6 Five Mon Team",
+  "members": [
+    {
+      "id": "g6-sylveon",
+      "nickname": "G6 Sylveon",
+      "species": "Sylveon",
+      "types": ["Fairy", "Steel"],
+      "baseStats": {"hp": 95, "atk": 65, "def": 65, "spa": 110, "spd": 130, "spe": 90},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Timid",
+      "abilities": ["Pixilate"],
+      "items": ["Choice Specs", "Life Orb", "Leftovers", "Metronome"],
+      "moves": ["Hyper Voice", "Shadow Ball", "Psyshock", "Mystical Fire"]
+    },
+    {
+      "id": "g6-meowstic",
+      "nickname": "G6 Meowstic",
+      "species": "Meowstic",
+      "types": ["Psychic", "Steel"],
+      "baseStats": {"hp": 165, "atk": 48, "def": 83, "spa": 113, "spd": 83, "spe": 134},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Timid",
+      "abilities": ["Competitive", "Infiltrator"],
+      "items": ["Leftovers"],
+      "moves": ["Flash Cannon", "Dark Pulse", "Psyshock", "Nasty Plot"]
+    },
+    {
+      "id": "g6-furfrou",
+      "nickname": "G6 Furfrou",
+      "species": "Furfrou",
+      "types": ["Normal", "Flying"],
+      "baseStats": {"hp": 82, "atk": 110, "def": 60, "spa": 65, "spd": 135, "spe": 60},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 0},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Brave",
+      "abilities": ["Fur Coat"],
+      "items": ["Leftovers", "Heavy-Duty Boots", "Rocky Helmet"],
+      "moves": ["U-turn", "Return", "Sucker Punch", "Fake Out"]
+    },
+    {
+      "id": "g6-dragalge",
+      "nickname": "G6 Dragalge",
+      "species": "Dragalge",
+      "baseStats": {"hp": 92, "atk": 75, "def": 123, "spa": 97, "spd": 123, "spe": 44},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 0},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Quiet",
+      "abilities": ["Adaptability", "Regenerator"],
+      "items": ["White Herb", "Heavy-Duty Boots", "Choice Specs"],
+      "moves": ["Draco Meteor", "Sludge Bomb", "U-turn", "Flamethrower"]
+    },
+    {
+      "id": "g6-dedenne",
+      "nickname": "G6 Dedenne",
+      "species": "Dedenne",
+      "baseStats": {"hp": 107, "atk": 58, "def": 67, "spa": 111, "spd": 67, "spe": 131},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Serious",
+      "abilities": ["Cheek Pouch"],
+      "items": ["Heavy-Duty Boots", "Light Clay", "Lum Berry", "Sitrus Berry", "Kebia Berry", "Shuca Berry", "Petaya Berry"],
+      "moves": ["Volt Switch", "Reflect", "Nuzzle", "Light Screen"]
+    }
+  ]
+}

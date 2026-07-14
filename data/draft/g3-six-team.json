@@ -1,0 +1,58 @@
+{
+  "name": "G3 Six-Mon Team",
+  "members": [
+    {
+      "id": "g3-sableye", "nickname": "G3 Sableye", "species": "Sableye",
+      "baseStats": {"hp": 129, "atk": 75, "def": 76, "spa": 65, "spd": 65, "spe": 50},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Calm", "abilities": ["Prankster", "Magic Bounce"],
+      "items": ["Leftovers", "Heavy-Duty Boots"],
+      "moves": ["Toxic", "Disable", "Encore", "Foul Play"]
+    },
+    {
+      "id": "g3-mawile", "nickname": "G3 Mawile", "species": "Mawile",
+      "baseStats": {"hp": 110, "atk": 85, "def": 85, "spa": 55, "spd": 85, "spe": 80},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Adamant", "abilities": ["Huge Power", "Hyper Cutter", "Intimidate"],
+      "items": ["Leftovers"], "moves": ["Play Rough", "Sucker Punch", "Bullet Punch", "Swords Dance"]
+    },
+    {
+      "id": "g3-gardevoir", "nickname": "G3 Gardevoir", "species": "Gardevoir",
+      "types": ["Fairy", "Ghost"], "baseStats": {"hp": 78, "atk": 65, "def": 65, "spa": 155, "spd": 115, "spe": 110},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Modest", "abilities": ["Pixilate"],
+      "items": ["Leftovers", "Assault Vest"],
+      "moves": ["Hyper Voice", "Shadow Ball", "Hyper Beam", "Mystical Fire"]
+    },
+    {
+      "id": "g3-milotic", "nickname": "G3 Milotic", "species": "Milotic",
+      "types": ["Water", "Fairy"], "baseStats": {"hp": 104, "atk": 60, "def": 79, "spa": 130, "spd": 156, "spe": 81},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Bold", "abilities": ["Marvel Scale", "Competitive", "Adaptability"],
+      "items": ["Leftovers", "Rocky Helmet", "Flame Orb"],
+      "moves": ["Scald", "Recover", "Disarming Voice", "Haze"]
+    },
+    {
+      "id": "g3-mightyena", "nickname": "G3 Mightyena", "species": "Mightyena",
+      "types": ["Dark", "Steel"], "baseStats": {"hp": 125, "atk": 120, "def": 115, "spa": 60, "spd": 60, "spe": 100},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Adamant", "abilities": ["Intimidate", "Moxie", "Quick Feet"],
+      "items": ["Leftovers", "Assault Vest"],
+      "moves": ["Sucker Punch", "Throat Chop", "Iron Head", "Psychic Fangs"]
+    },
+    {
+      "id": "g3-delcatty", "nickname": "G3 Delcatty", "species": "Delcatty",
+      "types": ["Normal", "Flying"], "baseStats": {"hp": 154, "atk": 95, "def": 78, "spa": 55, "spd": 78, "spe": 120},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Adamant", "abilities": ["Normalize", "Cute Charm", "Wonder Skin"],
+      "items": ["Leftovers", "Rocky Helmet", "Heavy-Duty Boots"],
+      "moves": ["Wish", "U-turn", "Thunder Wave", "Fake Out"]
+    }
+  ]
+}

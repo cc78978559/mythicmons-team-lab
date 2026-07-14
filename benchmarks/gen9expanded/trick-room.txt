@@ -1,0 +1,65 @@
+Hatterene @ Leftovers
+Ability: Magic Bounce
+Tera Type: Water
+EVs: 252 HP / 252 Def / 4 SpA
+Quiet Nature
+IVs: 0 Spe
+- Psyshock
+- Draining Kiss
+- Trick Room
+- Healing Wish
+
+Cresselia @ Mental Herb
+Ability: Levitate
+Tera Type: Fairy
+EVs: 252 HP / 252 Def / 4 SpD
+Sassy Nature
+IVs: 0 Spe
+- Moonblast
+- Lunar Dance
+- Trick Room
+- Moonlight
+
+Ursaluna @ Flame Orb
+Ability: Guts
+Tera Type: Normal
+EVs: 252 HP / 252 Atk / 4 SpD
+Brave Nature
+IVs: 0 Spe
+- Facade
+- Headlong Rush
+- Close Combat
+- Swords Dance
+
+Kingambit @ Black Glasses
+Ability: Supreme Overlord
+Tera Type: Dark
+EVs: 252 HP / 252 Atk / 4 SpD
+Brave Nature
+IVs: 0 Spe
+- Kowtow Cleave
+- Sucker Punch
+- Iron Head
+- Swords Dance
+
+Torkoal @ Heat Rock
+Ability: Drought
+Tera Type: Fire
+EVs: 248 HP / 252 SpA / 8 SpD
+Quiet Nature
+IVs: 0 Spe
+- Eruption
+- Flamethrower
+- Earth Power
+- Rapid Spin
+
+Iron Hands @ Assault Vest
+Ability: Quark Drive
+Tera Type: Water
+EVs: 252 HP / 252 Atk / 4 SpD
+Brave Nature
+IVs: 0 Spe
+- Wild Charge
+- Drain Punch
+- Ice Punch
+- Fake Out

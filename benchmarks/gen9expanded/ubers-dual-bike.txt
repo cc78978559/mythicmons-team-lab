@@ -1,0 +1,53 @@
+Miraidon @ Choice Specs
+Ability: Hadron Engine
+EVs: 4 Def / 252 SpA / 252 Spe
+Timid Nature
+- Electro Drift
+- Draco Meteor
+- Volt Switch
+- Overheat
+
+Koraidon @ Choice Scarf
+Ability: Orichalcum Pulse
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Collision Course
+- Dragon Claw
+- Flare Blitz
+- U-turn
+
+Calyrex-Shadow @ Life Orb
+Ability: As One (Spectrier)
+EVs: 4 Def / 252 SpA / 252 Spe
+Timid Nature
+- Astral Barrage
+- Psychic
+- Draining Kiss
+- Nasty Plot
+
+Zacian-Crowned @ Rusted Sword
+Ability: Intrepid Sword
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Behemoth Blade
+- Close Combat
+- Wild Charge
+- Swords Dance
+
+Arceus-Ground @ Earth Plate
+Ability: Multitype
+EVs: 252 HP / 4 SpA / 252 Spe
+Timid Nature
+- Judgment
+- Ice Beam
+- Recover
+- Calm Mind
+
+Deoxys-Speed @ Focus Sash
+Ability: Pressure
+EVs: 252 HP / 4 SpA / 252 Spe
+Timid Nature
+- Stealth Rock
+- Spikes
+- Taunt
+- Psycho Boost

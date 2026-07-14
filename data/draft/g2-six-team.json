@@ -1,0 +1,65 @@
+{
+  "name": "G2 Six-Mon Team",
+  "customAbilities": [
+    {
+      "id": "mega-sol-leaf-guard",
+      "entry": "{name: 'Mega Sol + Leaf Guard', shortDesc: 'This Pokemon uses moves as if Sunny Day were active and cannot be statused.', onChargeMove(pokemon, target, move) { if (move.id === 'solarbeam' || move.id === 'solarblade') return false; }, onModifyTypePriority: -2, onModifyType(move) { if (move.id === 'weatherball') move.type = 'Fire'; }, onModifyMove(move) { if (move.id === 'weatherball') move.basePower = 100; if (move.id === 'synthesis' || move.id === 'moonlight' || move.id === 'morningsun') { move.onHit = function(pokemon) { const success = !!this.heal(this.modify(pokemon.maxhp, 0.667)); if (!success) { this.add('-fail', pokemon, 'heal'); return this.NOT_FAIL; } return success; }; } }, onBasePowerPriority: 21, onBasePower(basePower, pokemon, target, move) { if ((move.id === 'solarbeam' || move.id === 'solarblade') && ['raindance', 'primordialsea', 'sandstorm', 'hail', 'snowscape'].includes(pokemon.effectiveWeather())) return this.chainModify(2); if (move.type === 'Fire') return this.chainModify(1.5); if (move.type === 'Water') return this.chainModify(0.5); }, onSetStatus(status, target, source, effect) { if (effect && effect.status) this.add('-immune', target, '[from] ability: Mega Sol + Leaf Guard'); return false; }, onTryAddVolatile(status, target) { if (status.id === 'yawn') { this.add('-immune', target, '[from] ability: Mega Sol + Leaf Guard'); return null; } }, flags: {breakable: 1}}"
+    }
+  ],
+  "members": [
+    {
+      "id": "g2-azumarill", "nickname": "G2 Azumarill", "species": "Azumarill",
+      "baseStats": {"hp": 116, "atk": 50, "def": 144, "spa": 60, "spd": 80, "spe": 50},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Adamant", "abilities": ["Huge Power", "Thick Fat", "Sap Sipper"],
+      "items": ["Leftovers", "Heavy-Duty Boots", "Assault Vest"],
+      "moves": ["Aqua Jet", "Play Rough", "Liquidation", "Knock Off"]
+    },
+    {
+      "id": "g2-furret", "nickname": "G2 Furret", "species": "Furret",
+      "types": ["Normal", "Dark"], "baseStats": {"hp": 146, "atk": 106, "def": 74, "spa": 45, "spd": 74, "spe": 120},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Jolly", "abilities": ["Frisk"],
+      "items": ["Leftovers", "Safety Goggles", "Sitrus Berry", "Chople Berry"],
+      "moves": ["Tidy Up", "Baton Pass", "U-turn", "Encore"]
+    },
+    {
+      "id": "g2-meganium", "nickname": "G2 Meganium", "species": "Meganium",
+      "types": ["Grass", "Fire"], "baseStats": {"hp": 170, "atk": 82, "def": 100, "spa": 113, "spd": 100, "spe": 110},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Jolly", "abilities": ["mega-sol-leaf-guard"],
+      "items": ["Leftovers", "Heavy-Duty Boots"],
+      "moves": ["Solar Beam", "Leech Seed", "Weather Ball", "Dazzling Gleam"]
+    },
+    {
+      "id": "g2-delibird", "nickname": "G2 Delibird", "species": "Delibird",
+      "types": ["Flying", "Ice"], "baseStats": {"hp": 121, "atk": 85, "def": 62, "spa": 45, "spd": 62, "spe": 105},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Adamant", "abilities": ["Insomnia", "Hustle"],
+      "items": ["Leftovers", "Heavy-Duty Boots", "Rocky Helmet", "Life Orb", "Wide Lens"],
+      "moves": ["Rapid Spin", "Fake Out", "Ice Shard", "U-turn"]
+    },
+    {
+      "id": "g2-jumpluff", "nickname": "G2 Jumpluff", "species": "Jumpluff",
+      "types": ["Flying", "Steel"], "baseStats": {"hp": 126, "atk": 55, "def": 109, "spa": 55, "spd": 95, "spe": 110},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Calm", "abilities": ["Chlorophyll"],
+      "items": ["Leftovers", "Heavy-Duty Boots"],
+      "moves": ["Strength Sap", "Solar Beam", "Tailwind", "Flash Cannon"]
+    },
+    {
+      "id": "g2-umbreon", "nickname": "G2 Umbreon", "species": "Umbreon",
+      "types": ["Dark", "Ghost"], "baseStats": {"hp": 118, "atk": 65, "def": 147, "spa": 60, "spd": 130, "spe": 65},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Calm", "abilities": ["Synchronize", "Inner Focus"],
+      "items": ["Leftovers", "Heavy-Duty Boots"],
+      "moves": ["Wish", "Toxic", "Foul Play", "Detect"]
+    }
+  ]
+}

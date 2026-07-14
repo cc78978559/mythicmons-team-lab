@@ -1,0 +1,49 @@
+{
+  "id": "gen9ou-baseline-v1",
+  "format": "gen9ou",
+  "description": "Small Gen 9 OU benchmark pool for relative entertainment-team evaluation.",
+  "benchmarks": [
+    {
+      "id": "balanced-core",
+      "name": "Balanced Core",
+      "archetype": "balance",
+      "team": "balanced-core.txt",
+      "weight": 1
+    },
+    {
+      "id": "fat-balance",
+      "name": "Fat Balance",
+      "archetype": "stall",
+      "team": "fat-balance.txt",
+      "weight": 1
+    },
+    {
+      "id": "offense-pressure",
+      "name": "Offense Pressure",
+      "archetype": "offense",
+      "team": "offense-pressure.txt",
+      "weight": 1
+    },
+    {
+      "id": "rain-offense",
+      "name": "Rain Offense",
+      "archetype": "weather",
+      "team": "rain-offense.txt",
+      "weight": 1
+    },
+    {
+      "id": "trick-room",
+      "name": "Trick Room",
+      "archetype": "trick-room",
+      "team": "trick-room.txt",
+      "weight": 1
+    },
+    {
+      "id": "hazard-stack",
+      "name": "Hazard Stack",
+      "archetype": "hazards",
+      "team": "hazard-stack.txt",
+      "weight": 1
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "name": "G4 Six-Mon Team",
+  "customAbilities": [
+    {
+      "id": "technician-70",
+      "entry": "{name: 'Technician 70', shortDesc: 'Moves with 70 or less base power have 1.5x power.', onBasePowerPriority: 30, onBasePower(basePower, attacker, defender, move) { const adjustedPower = this.modify(basePower, this.event.modifier); this.debug('Base Power: ' + adjustedPower); if (adjustedPower <= 70) { this.debug('Technician 70 boost'); return this.chainModify(1.5); } }, flags: {}}"
+    }
+  ],
+  "members": [
+    {
+      "id": "g4-torterra", "nickname": "G4 Torterra", "species": "Torterra",
+      "types": ["Grass", "Rock"], "baseStats": {"hp": 115, "atk": 169, "def": 105, "spa": 75, "spd": 85, "spe": 116},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Jolly", "abilities": ["Shell Armor"], "items": ["White Herb", "Leftovers", "Loaded Dice"],
+      "moves": ["Shell Smash", "Bullet Seed", "Rock Blast", "Earthquake"]
+    },
+    {
+      "id": "g4-luxray", "nickname": "G4 Luxray", "species": "Luxray",
+      "types": ["Electric", "Fairy"], "baseStats": {"hp": 135, "atk": 150, "def": 79, "spa": 70, "spd": 79, "spe": 120},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Jolly", "abilities": ["Intimidate", "Guts"],
+      "items": ["Leftovers", "Flame Orb"],
+      "moves": ["Play Rough", "Supercell Slam", "Volt Switch", "Psychic Fangs"]
+    },
+    {
+      "id": "g4-glameow", "nickname": "G4 Glameow", "species": "Glameow",
+      "types": ["Normal", "Ghost"], "baseStats": {"hp": 91, "atk": 85, "def": 80, "spa": 42, "spd": 37, "spe": 115},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Jolly", "abilities": ["Thick Fat", "Limber", "Defiant"],
+      "items": ["Leftovers", "Eviolite", "Assault Vest", "Heavy-Duty Boots"],
+      "moves": ["Fake Out", "Quick Attack", "U-turn", "Shadow Claw"]
+    },
+    {
+      "id": "g4-bibarel", "nickname": "G4 Bibarel", "species": "Bibarel",
+      "types": ["Normal", "Ghost"], "baseStats": {"hp": 139, "atk": 85, "def": 70, "spa": 55, "spd": 70, "spe": 101},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Jolly", "abilities": ["Simple", "Unaware", "Moody"], "items": ["Leftovers"],
+      "moves": ["Fake Out", "Aqua Jet", "Baton Pass", "Waterfall"]
+    },
+    {
+      "id": "g4-pachirisu", "nickname": "G4 Pachirisu", "species": "Pachirisu",
+      "types": ["Electric", "Flying"], "baseStats": {"hp": 120, "atk": 45, "def": 90, "spa": 75, "spd": 90, "spe": 125},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Timid", "abilities": ["Volt Absorb"], "items": ["Leftovers"],
+      "moves": ["Volt Switch", "Super Fang", "Encore", "Thunderbolt"]
+    },
+    {
+      "id": "g4-kricketune", "nickname": "G4 Kricketune", "species": "Kricketune",
+      "types": ["Bug", "Steel"], "baseStats": {"hp": 109, "atk": 115, "def": 55, "spa": 55, "spd": 55, "spe": 125},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Jolly", "abilities": ["technician-70"],
+      "items": ["Leftovers"],
+      "moves": ["Skitter Smack", "Bullet Punch", "U-turn", "First Impression"]
+    }
+  ]
+}

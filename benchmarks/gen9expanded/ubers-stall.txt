@@ -1,0 +1,53 @@
+Ho-Oh @ Heavy-Duty Boots
+Ability: Regenerator
+EVs: 248 HP / 208 SpD / 52 Spe
+Careful Nature
+- Sacred Fire
+- Brave Bird
+- Recover
+- Whirlwind
+
+Ting-Lu @ Leftovers
+Ability: Vessel of Ruin
+EVs: 252 HP / 4 Def / 252 SpD
+Careful Nature
+- Earthquake
+- Ruination
+- Spikes
+- Whirlwind
+
+Eternatus @ Black Sludge
+Ability: Pressure
+EVs: 252 HP / 4 SpA / 252 Spe
+Timid Nature
+- Dynamax Cannon
+- Sludge Bomb
+- Toxic
+- Recover
+
+Arceus-Fairy @ Pixie Plate
+Ability: Multitype
+EVs: 252 HP / 200 Def / 56 Spe
+Bold Nature
+- Judgment
+- Will-O-Wisp
+- Recover
+- Defog
+
+Necrozma-Dusk-Mane @ Leftovers
+Ability: Prism Armor
+EVs: 252 HP / 252 Def / 4 SpD
+Impish Nature
+- Sunsteel Strike
+- Knock Off
+- Stealth Rock
+- Morning Sun
+
+Dondozo @ Heavy-Duty Boots
+Ability: Unaware
+EVs: 252 HP / 252 Def / 4 SpD
+Impish Nature
+- Liquidation
+- Body Press
+- Rest
+- Sleep Talk

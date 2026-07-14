@@ -1,0 +1,81 @@
+{
+  "name": "G1 Boss Red",
+  "members": [
+    {
+      "id": "boss-red-pikachu",
+      "nickname": "Red-Pikachu",
+      "species": "Pikachu-Starter",
+      "nature": "Serious",
+      "types": ["Electric", "Fairy"],
+      "baseStats": {"hp": 127, "atk": 80, "def": 64, "spa": 75, "spd": 64, "spe": 150},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "abilities": ["Lightning Rod", "No Guard", "Electric Surge", "Surge Surfer"],
+      "items": ["Light Ball", "Eviolite"],
+      "moves": ["Zap Cannon", "Volt Tackle", "Focus Blast", "Play Rough"]
+    },
+    {
+      "id": "boss-red-charizard",
+      "nickname": "Red-Charizard",
+      "species": "Charizard",
+      "nature": "Hasty",
+      "types": ["Fire", "Dragon"],
+      "baseStats": {"hp": 78, "atk": 114, "def": 78, "spa": 139, "spd": 85, "spe": 120},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "abilities": ["Drought", "Tough Claws", "Solar Power"],
+      "items": ["Leftovers", "Loaded Dice"],
+      "moves": ["Solar Beam", "Overheat", "Scale Shot", "Flare Blitz"]
+    },
+    {
+      "id": "boss-red-venusaur",
+      "nickname": "Red-Venusaur",
+      "species": "Venusaur",
+      "nature": "Modest",
+      "baseStats": {"hp": 103, "atk": 82, "def": 100, "spa": 130, "spd": 100, "spe": 80},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "abilities": ["Chlorophyll", "Thick Fat"],
+      "items": ["Leftovers", "Black Sludge"],
+      "moves": ["Giga Drain", "Sludge Bomb", "Leaf Storm", "Earth Power"]
+    },
+    {
+      "id": "boss-red-blastoise",
+      "nickname": "Red-Blastoise",
+      "species": "Blastoise",
+      "nature": "Modest",
+      "types": ["Water", "Steel"],
+      "baseStats": {"hp": 124, "atk": 83, "def": 105, "spa": 115, "spd": 105, "spe": 78},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "abilities": ["Mega Launcher"],
+      "items": ["Leftovers"],
+      "moves": ["Water Pulse", "Aura Sphere", "Flash Cannon", "Dark Pulse"]
+    },
+    {
+      "id": "boss-red-lapras",
+      "nickname": "Red-Lapras",
+      "species": "Lapras",
+      "nature": "Modest",
+      "baseStats": {"hp": 201, "atk": 85, "def": 102, "spa": 115, "spd": 102, "spe": 60},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "abilities": ["Water Absorb", "Hydration"],
+      "items": ["Leftovers", "Damp Rock"],
+      "moves": ["Sheer Cold", "Rain Dance", "Ice Beam", "Surf"]
+    },
+    {
+      "id": "boss-red-snorlax",
+      "nickname": "Red-Snorlax",
+      "species": "Snorlax",
+      "nature": "Adamant",
+      "types": ["Normal", "Ghost"],
+      "baseStats": {"hp": 185, "atk": 110, "def": 110, "spa": 65, "spd": 110, "spe": 30},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "abilities": ["Thick Fat", "Immunity"],
+      "items": ["Leftovers"],
+      "moves": ["Fissure", "Body Slam", "Self-Destruct", "Body Press"]
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+Koraidon @ Choice Scarf
+Ability: Orichalcum Pulse
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Collision Course
+- Dragon Claw
+- Flare Blitz
+- U-turn
+
+Necrozma-Dusk-Mane @ Leftovers
+Ability: Prism Armor
+EVs: 252 HP / 252 Def / 4 SpD
+Impish Nature
+- Sunsteel Strike
+- Earthquake
+- Stealth Rock
+- Morning Sun
+
+Ho-Oh @ Heavy-Duty Boots
+Ability: Regenerator
+EVs: 248 HP / 208 SpD / 52 Spe
+Careful Nature
+- Sacred Fire
+- Brave Bird
+- Recover
+- Whirlwind
+
+Arceus-Water @ Splash Plate
+Ability: Multitype
+EVs: 252 HP / 200 Def / 56 Spe
+Bold Nature
+- Judgment
+- Ice Beam
+- Recover
+- Toxic
+
+Eternatus @ Black Sludge
+Ability: Pressure
+EVs: 252 HP / 4 SpA / 252 Spe
+Timid Nature
+- Dynamax Cannon
+- Sludge Bomb
+- Flamethrower
+- Recover
+
+Ting-Lu @ Leftovers
+Ability: Vessel of Ruin
+EVs: 252 HP / 4 Def / 252 SpD
+Careful Nature
+- Earthquake
+- Ruination
+- Spikes
+- Whirlwind

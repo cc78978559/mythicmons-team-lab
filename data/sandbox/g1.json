@@ -1,0 +1,73 @@
+{
+  "name": "G1 Weakmon Cheat Team",
+  "members": [
+    {
+      "id": "g1-persian",
+      "nickname": "G1 Persian",
+      "species": "Persian",
+      "baseStats": {"hp": 95, "atk": 70, "def": 60, "spa": 65, "spd": 95, "spe": 115},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "abilities": ["Technician", "Limber", "Insomnia", "Fur Coat", "Intimidate"],
+      "items": ["Assault Vest", "Rocky Helmet", "Heavy-Duty Boots", "Leftovers"],
+      "moves": ["Fake Out", "Chilling Water", "U-turn", "Snarl"]
+    },
+    {
+      "id": "g1-wigglytuff",
+      "nickname": "G1 Wigglytuff",
+      "species": "Wigglytuff",
+      "baseStats": {"hp": 140, "atk": 70, "def": 75, "spa": 115, "spd": 80, "spe": 45},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Modest",
+      "abilities": ["Competitive", "Cute Charm", "Magic Guard", "Thick Fat", "Sap Sipper", "Insomnia"],
+      "items": ["Leftovers", "Rocky Helmet"],
+      "moves": ["Hyper Voice", "Fire Blast", "Stealth Rock", "Wish"]
+    },
+    {
+      "id": "g1-dewgong",
+      "nickname": "G1 Dewgong",
+      "species": "Dewgong",
+      "baseStats": {"hp": 90, "atk": 70, "def": 110, "spa": 100, "spd": 125, "spe": 70},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "abilities": ["Thick Fat", "Hydration", "Ice Body", "Lightning Rod", "Water Absorb", "Rain Dish", "Sap Sipper", "Snow Cloak"],
+      "items": ["Leftovers", "Heavy-Duty Boots", "Damp Rock", "Icy Rock", "Rocky Helmet"],
+      "moves": ["Aqua Jet", "Weather Ball", "Rain Dance", "Snowscape"]
+    },
+    {
+      "id": "g1-electabuzz",
+      "nickname": "G1 Electabuzz",
+      "species": "Electabuzz",
+      "baseStats": {"hp": 65, "atk": 83, "def": 87, "spa": 95, "spd": 115, "spe": 120},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "abilities": ["Static"],
+      "items": ["Assault Vest", "Heavy-Duty Boots", "Leftovers", "Eviolite"],
+      "moves": ["Thunder", "Volt Switch", "Ice Punch", "Knock Off"]
+    },
+    {
+      "id": "g1-rapidash",
+      "nickname": "G1 Rapidash",
+      "species": "Rapidash",
+      "baseStats": {"hp": 65, "atk": 120, "def": 70, "spa": 80, "spd": 80, "spe": 135},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Adamant",
+      "abilities": ["Flash Fire", "Drought", "Rock Head", "Lightning Rod"],
+      "items": ["Leftovers", "Heavy-Duty Boots", "Heat Rock"],
+      "moves": ["Megahorn", "High Horsepower", "Flare Blitz", "Wild Charge"]
+    },
+    {
+      "id": "g1-magmar",
+      "nickname": "G1 Magmar",
+      "species": "Magmar",
+      "baseStats": {"hp": 85, "atk": 95, "def": 87, "spa": 100, "spd": 115, "spe": 93},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "abilities": ["Flame Body"],
+      "items": ["Assault Vest", "Heavy-Duty Boots", "Leftovers", "Eviolite"],
+      "moves": ["Solar Beam", "Lava Plume", "Flame Charge", "Scorching Sands"]
+    }
+  ]
+}

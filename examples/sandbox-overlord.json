@@ -1,0 +1,51 @@
+{
+  "name": "Sandbox Overlord",
+  "customMoves": [
+    {
+      "id": "custom-nuke",
+      "name": "Custom Nuke",
+      "type": "Dragon",
+      "category": "Physical",
+      "basePower": 150,
+      "accuracy": 90,
+      "pp": 8,
+      "priority": 0
+    }
+  ],
+  "members": [
+    {
+      "id": "overlord-dragonite",
+      "nickname": "Fourfold",
+      "species": "Dragonite",
+      "level": 100,
+      "types": ["Dragon", "Flying"],
+      "baseStats": {
+        "hp": 91,
+        "atk": 300,
+        "def": 95,
+        "spa": 100,
+        "spd": 100,
+        "spe": 180
+      },
+      "evs": {
+        "hp": 0,
+        "atk": 252,
+        "def": 0,
+        "spa": 0,
+        "spd": 4,
+        "spe": 252
+      },
+      "abilities": ["Huge Power", "Pure Power", "Guts", "Mold Breaker"],
+      "items": ["Life Orb", "Choice Band", "Leftovers"],
+      "moves": ["Earthquake", "Extreme Speed", "Recover", "Swords Dance", "Custom Nuke"]
+    },
+    {
+      "id": "support-rotom",
+      "species": "Rotom-Wash",
+      "level": 100,
+      "abilities": ["Levitate"],
+      "items": ["Heavy-Duty Boots"],
+      "moves": ["Volt Switch", "Hydro Pump", "Will-O-Wisp", "Pain Split"]
+    }
+  ]
+}

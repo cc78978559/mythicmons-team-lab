@@ -1,0 +1,41 @@
+{
+  "name": "G5 Six Mon Team",
+  "members": [
+    {
+      "id": "g5-zoroark", "nickname": "G5 Zoroark", "species": "Zoroark",
+      "types": ["Dark", "Ghost"], "baseStats": {"hp": 105, "atk": 60, "def": 60, "spa": 150, "spd": 60, "spe": 135},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31}, "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Timid", "abilities": ["Imposter"], "items": ["Choice Scarf"], "moves": ["Trick", "Dark Pulse", "Shadow Ball", "Volt Switch"]
+    },
+    {
+      "id": "g5-watchog", "nickname": "G5 Watchog", "species": "Watchog",
+      "types": ["Normal", "Flying"], "baseStats": {"hp": 171, "atk": 115, "def": 87, "spa": 60, "spd": 87, "spe": 60},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 0}, "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 0},
+      "nature": "Brave", "abilities": ["Analytic"], "items": ["Leftovers"], "moves": ["Knock Off", "Revenge", "Brave Bird", "U-turn"]
+    },
+    {
+      "id": "g5-emolga", "nickname": "G5 Emolga", "species": "Emolga",
+      "types": ["Normal", "Flying"], "baseStats": {"hp": 115, "atk": 105, "def": 60, "spa": 105, "spd": 60, "spe": 133},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31}, "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Serious", "abilities": ["Motor Drive"], "items": ["Flying Gem"], "moves": ["Volt Switch", "Defog", "U-turn", "Acrobatics"]
+    },
+    {
+      "id": "g5-liepard", "nickname": "G5 Liepard", "species": "Liepard",
+      "types": ["Dark", "Ghost"], "baseStats": {"hp": 64, "atk": 118, "def": 90, "spa": 50, "spd": 88, "spe": 106},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31}, "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Adamant", "abilities": ["Prankster"], "items": ["Choice Scarf"], "moves": ["Trick", "Sucker Punch", "U-turn", "Shadow Claw"]
+    },
+    {
+      "id": "g5-cinccino", "nickname": "G5 Cinccino", "species": "Cinccino",
+      "types": ["Normal", "Grass"], "baseStats": {"hp": 75, "atk": 125, "def": 60, "spa": 60, "spd": 65, "spe": 145},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31}, "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Adamant", "abilities": ["Technician", "Skill Link"], "items": ["King's Rock", "Focus Sash"], "moves": ["Tail Slap", "Bullet Seed", "Tidy Up", "Icicle Spear"]
+    },
+    {
+      "id": "g5-whimsicott", "nickname": "G5 Whimsicott", "species": "Whimsicott",
+      "types": ["Fairy", "Steel"], "baseStats": {"hp": 166, "atk": 67, "def": 85, "spa": 77, "spd": 85, "spe": 60},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31}, "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Serious", "abilities": ["Prankster"], "items": ["Leftovers"], "moves": ["Tailwind", "Trick Room", "Encore", "Defog"]
+    }
+  ]
+}

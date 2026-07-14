@@ -1,0 +1,17 @@
+{
+  "id": "gen9-expanded-ou-unrestricted-v1",
+  "format": "gen9mythicmonssandbox",
+  "description": "Expanded 5v6 pool with six modern OU archetypes and four unrestricted legendary teams.",
+  "benchmarks": [
+    {"id": "balanced-core", "name": "OU Balanced Core", "archetype": "ou-balance", "team": "balanced-core.txt", "weight": 1},
+    {"id": "fat-balance", "name": "OU Fat Balance", "archetype": "ou-stall", "team": "fat-balance.txt", "weight": 1},
+    {"id": "offense-pressure", "name": "OU Offense Pressure", "archetype": "ou-offense", "team": "offense-pressure.txt", "weight": 1},
+    {"id": "rain-offense", "name": "OU Rain Offense", "archetype": "ou-weather", "team": "rain-offense.txt", "weight": 1},
+    {"id": "trick-room", "name": "OU Trick Room", "archetype": "ou-trick-room", "team": "trick-room.txt", "weight": 1},
+    {"id": "hazard-stack", "name": "OU Hazard Stack", "archetype": "ou-hazards", "team": "hazard-stack.txt", "weight": 1},
+    {"id": "ubers-balance", "name": "Unrestricted Balance", "archetype": "unrestricted-balance", "team": "ubers-balance.txt", "weight": 1},
+    {"id": "ubers-dual-bike", "name": "Dual Bike Offense", "archetype": "unrestricted-offense", "team": "ubers-dual-bike.txt", "weight": 1},
+    {"id": "ubers-rain", "name": "Primal Rain Offense", "archetype": "unrestricted-weather", "team": "ubers-rain.txt", "weight": 1},
+    {"id": "ubers-stall", "name": "Unrestricted Stall", "archetype": "unrestricted-stall", "team": "ubers-stall.txt", "weight": 1}
+  ]
+}

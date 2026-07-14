@@ -1,0 +1,7 @@
+{
+  "name": "@mythicmons/node-static-disabled",
+  "version": "1.0.0",
+  "description": "Local CLI safety stub replacing node-static from pokemon-showdown server dependencies.",
+  "main": "index.js",
+  "license": "UNLICENSED"
+}

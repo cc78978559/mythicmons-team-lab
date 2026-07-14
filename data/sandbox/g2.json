@@ -1,0 +1,80 @@
+{
+  "name": "G2 Weakmon Cheat Team",
+  "customAbilities": [
+    {
+      "id": "all-moves-plus-one-priority",
+      "entry": "{\n\t\tname: \"All Moves +1 Priority\",\n\t\tshortDesc: \"All moves used by this Pokemon have +1 priority.\",\n\t\tonModifyPriority(priority) { return priority + 1; },\n\t}"
+    }
+  ],
+  "members": [
+    {
+      "id": "g2-furret",
+      "nickname": "G2 Furret",
+      "species": "Furret",
+      "baseStats": {"hp": 115, "atk": 76, "def": 94, "spa": 45, "spd": 85, "spe": 120},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Timid",
+      "abilities": ["Frisk", "Speed Boost"],
+      "items": ["Leftovers", "Heavy-Duty Boots"],
+      "moves": ["Baton Pass", "Coil", "Protect", "Substitute"]
+    },
+    {
+      "id": "g2-noctowl",
+      "nickname": "G2 Noctowl",
+      "species": "Noctowl",
+      "baseStats": {"hp": 100, "atk": 50, "def": 70, "spa": 116, "spd": 116, "spe": 100},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Modest",
+      "abilities": ["Tinted Lens", "Sheer Force"],
+      "items": ["Choice Specs", "Life Orb", "Heavy-Duty Boots"],
+      "moves": ["Moonblast", "Psychic", "Hurricane", "Haze"]
+    },
+    {
+      "id": "g2-octillery",
+      "nickname": "G2 Octillery",
+      "species": "Octillery",
+      "baseStats": {"hp": 95, "atk": 105, "def": 75, "spa": 105, "spd": 75, "spe": 75},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "abilities": ["Moody", "Skill Link", "Sniper", "Technician", "Super Luck"],
+      "items": ["King's Rock", "Wide Lens", "Razor Claw"],
+      "moves": ["Surf", "Rock Blast", "Bullet Seed", "Ice Beam"]
+    },
+    {
+      "id": "g2-meganium",
+      "nickname": "G2 Meganium",
+      "species": "Meganium",
+      "baseStats": {"hp": 80, "atk": 82, "def": 100, "spa": 113, "spd": 100, "spe": 110},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "abilities": ["Leaf Guard", "Desolate Land", "Thick Fat"],
+      "items": ["Leftovers"],
+      "moves": ["Solar Beam", "Leech Seed", "Weather Ball", "Solar Blade"]
+    },
+    {
+      "id": "g2-corsola",
+      "nickname": "G2 Corsola",
+      "species": "Corsola",
+      "baseStats": {"hp": 65, "atk": 85, "def": 95, "spa": 95, "spd": 95, "spe": 35},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "abilities": ["Regenerator", "Natural Cure", "Skill Link", "Hustle", "all-moves-plus-one-priority"],
+      "items": ["Leftovers"],
+      "moves": ["Rock Blast", "Icicle Spear", "Scald", "Stealth Rock"]
+    },
+    {
+      "id": "g2-delibird",
+      "nickname": "G2 Delibird",
+      "species": "Delibird",
+      "baseStats": {"hp": 45, "atk": 85, "def": 45, "spa": 65, "spd": 45, "spe": 75},
+      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
+      "nature": "Adamant",
+      "abilities": ["Hustle", "Prankster", "Technician", "Insomnia", "Refrigerate", "Dazzling"],
+      "items": ["Focus Sash", "Safety Goggles", "Wide Lens", "Heavy-Duty Boots"],
+      "moves": ["Ice Shard", "Destiny Bond", "Haze", "Fake Out"]
+    }
+  ]
+}

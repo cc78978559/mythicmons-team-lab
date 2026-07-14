@@ -1,0 +1,380 @@
+{
+    "package":  "mythicmons-team-lab-v13-dynasty-portable",
+    "createdAt":  "2026-07-12T10:12:38.7179333+08:00",
+    "aiVersion":  "stateful-choice-v12-with-dynasty-v4",
+    "savedTeamCount":  42,
+    "requiresFirstRunNpmCi":  true,
+    "excluded":  [
+                     "node_modules",
+                     "historical output",
+                     "scratch work",
+                     "credentials"
+                 ],
+    "files":  [
+                  {
+                      "path":  "benchmarks/gen9expanded/balanced-core.txt",
+                      "bytes":  980,
+                      "sha256":  "993c5441b34c448db92f0e7003a4e578e570bc68e15e9d2140a0cc37fc971524"
+                  },
+                  {
+                      "path":  "benchmarks/gen9expanded/fat-balance.txt",
+                      "bytes":  906,
+                      "sha256":  "1b3758b40fcd9d6a37d419b7ab00d6c599831909cfb93df787164de3670f4079"
+                  },
+                  {
+                      "path":  "benchmarks/gen9expanded/hazard-stack.txt",
+                      "bytes":  985,
+                      "sha256":  "b363b8a610476cd69075bffec74e3d4ec656619e677577941e9b97b7f2d5f358"
+                  },
+                  {
+                      "path":  "benchmarks/gen9expanded/index.json",
+                      "bytes":  1504,
+                      "sha256":  "aa23b184dcfba9983aae73b6ae987b87fdc93665c334845543ef920a20ced7fd"
+                  },
+                  {
+                      "path":  "benchmarks/gen9expanded/offense-pressure.txt",
+                      "bytes":  988,
+                      "sha256":  "28fc2b5dee168e402cc408172e884608377bf91db56ab7f144aa1e2d4039efcb"
+                  },
+                  {
+                      "path":  "benchmarks/gen9expanded/rain-offense.txt",
+                      "bytes":  950,
+                      "sha256":  "9cad85e414f34ff79d671133d4be180cbd29507dc49caa74bb54b06bc275313d"
+                  },
+                  {
+                      "path":  "benchmarks/gen9expanded/trick-room.txt",
+                      "bytes":  1010,
+                      "sha256":  "eeb4c1b9de86d38b39f271e7d733e4324ceeb438e20dfc844a4f0f300c96b53d"
+                  },
+                  {
+                      "path":  "benchmarks/gen9expanded/ubers-balance.txt",
+                      "bytes":  859,
+                      "sha256":  "fa13ddda922c8ad50f94599a2eaa35c8190409116f7669b181cb3e6d3839a21f"
+                  },
+                  {
+                      "path":  "benchmarks/gen9expanded/ubers-dual-bike.txt",
+                      "bytes":  883,
+                      "sha256":  "8560394dbefaee6c149db7d675cc5d3c242e06501470f0ece118a3b921eff623"
+                  },
+                  {
+                      "path":  "benchmarks/gen9expanded/ubers-rain.txt",
+                      "bytes":  887,
+                      "sha256":  "8f1be801fe4eb9c359f69655e722a70f51e2c4bcc1de29b4d37f99bf0cd3635f"
+                  },
+                  {
+                      "path":  "benchmarks/gen9expanded/ubers-stall.txt",
+                      "bytes":  838,
+                      "sha256":  "7477cdb5e688acad6a35fd88942596204e377640e37b4f0294bd4afc01685b99"
+                  },
+                  {
+                      "path":  "benchmarks/gen9ou/balanced-core.txt",
+                      "bytes":  980,
+                      "sha256":  "993c5441b34c448db92f0e7003a4e578e570bc68e15e9d2140a0cc37fc971524"
+                  },
+                  {
+                      "path":  "benchmarks/gen9ou/fat-balance.txt",
+                      "bytes":  906,
+                      "sha256":  "1b3758b40fcd9d6a37d419b7ab00d6c599831909cfb93df787164de3670f4079"
+                  },
+                  {
+                      "path":  "benchmarks/gen9ou/hazard-stack.txt",
+                      "bytes":  985,
+                      "sha256":  "b363b8a610476cd69075bffec74e3d4ec656619e677577941e9b97b7f2d5f358"
+                  },
+                  {
+                      "path":  "benchmarks/gen9ou/index.json",
+                      "bytes":  1096,
+                      "sha256":  "c548fe2fed006014ea7cd9c5dbdb3360ca40914c88f59e9bf2ed70cfacf9a293"
+                  },
+                  {
+                      "path":  "benchmarks/gen9ou/offense-pressure.txt",
+                      "bytes":  988,
+                      "sha256":  "28fc2b5dee168e402cc408172e884608377bf91db56ab7f144aa1e2d4039efcb"
+                  },
+                  {
+                      "path":  "benchmarks/gen9ou/rain-offense.txt",
+                      "bytes":  950,
+                      "sha256":  "9cad85e414f34ff79d671133d4be180cbd29507dc49caa74bb54b06bc275313d"
+                  },
+                  {
+                      "path":  "benchmarks/gen9ou/trick-room.txt",
+                      "bytes":  1010,
+                      "sha256":  "eeb4c1b9de86d38b39f271e7d733e4324ceeb438e20dfc844a4f0f300c96b53d"
+                  },
+                  {
+                      "path":  "data/draft/g1-six-team.json",
+                      "bytes":  3943,
+                      "sha256":  "a96cc01d3986bc26d3103527eccaf39479dc9a934efc687ed09ada67687cd8f5"
+                  },
+                  {
+                      "path":  "data/draft/g2-six-team.json",
+                      "bytes":  4858,
+                      "sha256":  "e6c32529024879eb99f14e760e799fab96587d0c6590b25af26063a2f3480388"
+                  },
+                  {
+                      "path":  "data/draft/g3-six-team.json",
+                      "bytes":  4421,
+                      "sha256":  "151b6a60703fb9e0e2f606f9409e42f601db00f6442765234657f7edfa7c4f9d"
+                  },
+                  {
+                      "path":  "data/draft/g4-six-team.json",
+                      "bytes":  3799,
+                      "sha256":  "4bc1c66f868834da598c85f51fa9c3bafdf793e4662a3be220006927e01f9364"
+                  },
+                  {
+                      "path":  "data/draft/g5-six-team.json",
+                      "bytes":  3109,
+                      "sha256":  "17116485a65a9059edd9276ece9dc8b6c5ccc9a843b1b50af592395c75c1ea60"
+                  },
+                  {
+                      "path":  "data/draft/g6-six-team.json",
+                      "bytes":  3522,
+                      "sha256":  "26b251ee0368869f27c952514e661256ac410626d0df59e42dbd02f656eea8e7"
+                  },
+                  {
+                      "path":  "data/sandbox/g1.json",
+                      "bytes":  3575,
+                      "sha256":  "87296fcdf5f85a2250c2930b1031ceddba0995721c0e06cce1c6bda4de7d0ee3"
+                  },
+                  {
+                      "path":  "data/sandbox/g2.json",
+                      "bytes":  3698,
+                      "sha256":  "2023936220a91d8c682f058184ab16dbc265b8f62c934ba9a3801ddfc68449ef"
+                  },
+                  {
+                      "path":  "data/teams.json",
+                      "bytes":  250580,
+                      "sha256":  "6faa66407271f22e8ebe64c315cf38c173eb041f29d48e7b6286b22337910033"
+                  },
+                  {
+                      "path":  "examples/sandbox-overlord.json",
+                      "bytes":  1179,
+                      "sha256":  "45e6f3141c1f03aae81055715f65f49e81a5e6dd25017140177c991c370c5898"
+                  },
+                  {
+                      "path":  "examples/teamA.txt",
+                      "bytes":  980,
+                      "sha256":  "993c5441b34c448db92f0e7003a4e578e570bc68e15e9d2140a0cc37fc971524"
+                  },
+                  {
+                      "path":  "examples/teamB.txt",
+                      "bytes":  961,
+                      "sha256":  "5b910e21652c5c830b5e93d138365652a28793a3ae947da103e8d3605562ac25"
+                  },
+                  {
+                      "path":  "HANDOFF.md",
+                      "bytes":  2774,
+                      "sha256":  "7325d840d864dbe2255087a2462e0ed2616cf3090333582be015b4aca32e3f11"
+                  },
+                  {
+                      "path":  "package.json",
+                      "bytes":  2033,
+                      "sha256":  "739f872c4e9d9c16cfedb67a9414e91e867304ae329095b763ffe5dc6b0ba814"
+                  },
+                  {
+                      "path":  "package-lock.json",
+                      "bytes":  77363,
+                      "sha256":  "e6ee01df8c90f01d4e16502697c7e150b43b167dd2d3ff1ec134d84a7e499e09"
+                  },
+                  {
+                      "path":  "README.md",
+                      "bytes":  10296,
+                      "sha256":  "a70d5aeb6ab4bca66d842d9933d476d395db3c13bdf2a60ca9c8ed6e82edab77"
+                  },
+                  {
+                      "path":  "setup-portable.ps1",
+                      "bytes":  1703,
+                      "sha256":  "6909cdbbe03d8c48f52afade30417098d77032d3577ea9553e182e6f4e216197"
+                  },
+                  {
+                      "path":  "src/cli/draftLeagueV3.ts",
+                      "bytes":  43708,
+                      "sha256":  "6382bfecc22a044bb0cd2ce2052c01b5c16a88df71a985531bc49fb3c5ba7b76"
+                  },
+                  {
+                      "path":  "src/cli/draftLeagueV4.ts",
+                      "bytes":  24572,
+                      "sha256":  "11da6ff7f50915af4cb67b9a87cb5615e630f7bbf5a87b4838868707cc0010d9"
+                  },
+                  {
+                      "path":  "src/cli/draftTournament.ts",
+                      "bytes":  33817,
+                      "sha256":  "81acb647d33f55dbf3f0024473f36fb0aa84b729a45455824672b1c991cb2fbd"
+                  },
+                  {
+                      "path":  "src/cli/evaluate.ts",
+                      "bytes":  3311,
+                      "sha256":  "462c68be43d63300e111263eaf2cc55284c87999749253c0bb96a5986f5d803a"
+                  },
+                  {
+                      "path":  "src/cli/modernHybrids.ts",
+                      "bytes":  31564,
+                      "sha256":  "e8ed2eca85ad7127a51d5c6f714bd4fa9ee16803ed51875e7a589aebb3a483e2"
+                  },
+                  {
+                      "path":  "src/cli/sandbox.ts",
+                      "bytes":  4121,
+                      "sha256":  "5127a68f1dd5c6c8c0e2ffe43ef58796cf1843670dad6eb72faf5e3616140b73"
+                  },
+                  {
+                      "path":  "src/cli/simulate.ts",
+                      "bytes":  4742,
+                      "sha256":  "b0216bf299f66a003bbb67e9395b8a2b7e7ee489a1068fc1a4a920e077fe0a41"
+                  },
+                  {
+                      "path":  "src/cli/team.ts",
+                      "bytes":  6076,
+                      "sha256":  "cf8305f5967be93bd89be74ebfbf374bb9ebcc548a51198b2a631fc3a19798bd"
+                  },
+                  {
+                      "path":  "src/cli/variants.ts",
+                      "bytes":  11452,
+                      "sha256":  "15feb65ac5c22657837c062ecde32524e0c8a1acb0dc222cee6f4bb4962221ee"
+                  },
+                  {
+                      "path":  "src/draft/battleDecisionExtractor.ts",
+                      "bytes":  2868,
+                      "sha256":  "fd6d6fa64bfd5262f2757fc26c2c21a5451edbd6560a8388e46fcfc627e088c4"
+                  },
+                  {
+                      "path":  "src/draft/customRegistry.ts",
+                      "bytes":  228,
+                      "sha256":  "dc0c1a9e1febd33158967b0ee1700186032fe4b497e91867bca8c6eead255266"
+                  },
+                  {
+                      "path":  "src/draft/decisionLedger.ts",
+                      "bytes":  3622,
+                      "sha256":  "31655db0c39025aea6a7d1bc033358ac62f425a56556c96c47921cc47513b6fe"
+                  },
+                  {
+                      "path":  "src/draft/dynastyLearning.ts",
+                      "bytes":  10212,
+                      "sha256":  "2ccfc03c11431ee8ef1ab103f7b2024e0b26f6ca8ecb7a57837cbf40c6c86023"
+                  },
+                  {
+                      "path":  "src/draft/managerProfiles.ts",
+                      "bytes":  2730,
+                      "sha256":  "036be48862c7c43824a3cfc0a9d37d7526f61ff0e2779a4b785be87583b15fd9"
+                  },
+                  {
+                      "path":  "src/draft/scoring.ts",
+                      "bytes":  687,
+                      "sha256":  "990b206d40a17f672826385662910882ac346e7421889c8eba96350ae99d4814"
+                  },
+                  {
+                      "path":  "src/eval/benchmarkPool.ts",
+                      "bytes":  1023,
+                      "sha256":  "72206ab86b660efa70e7bdd49b8f016a5bd4829a04811c5dcdddee8e7386d56d"
+                  },
+                  {
+                      "path":  "src/eval/evaluator.ts",
+                      "bytes":  12320,
+                      "sha256":  "6c757707f710d698b9724730bc75152adabfbef326752844f07cbebfdc6bcfbb"
+                  },
+                  {
+                      "path":  "src/eval/logAnalysis.ts",
+                      "bytes":  11564,
+                      "sha256":  "6ba05b49a6581bf5c73d549a3d04f1d2858eade577a07ca697e2587fc5d6bc89"
+                  },
+                  {
+                      "path":  "src/eval/report.ts",
+                      "bytes":  5156,
+                      "sha256":  "4ad723dfd968557b77cf3030a09d78baf223624fb1a73e5bb9b9bf89868343ec"
+                  },
+                  {
+                      "path":  "src/eval/types.ts",
+                      "bytes":  2668,
+                      "sha256":  "8f2e82f02f19ca8506ceeb2c7493e3f69761530cfeba9b17614bd7a36f788e81"
+                  },
+                  {
+                      "path":  "src/sandbox/compiler.ts",
+                      "bytes":  24114,
+                      "sha256":  "6f1c04a7f1197241b63770ea1df327bc1b2edc8ea03bf331effbb713a1114ea6"
+                  },
+                  {
+                      "path":  "src/sandbox/installer.ts",
+                      "bytes":  12615,
+                      "sha256":  "b10cb65199375ab72e36843a8d6e35e22ebb74603cfe2a7cfa41926d298c727e"
+                  },
+                  {
+                      "path":  "src/sandbox/types.ts",
+                      "bytes":  1550,
+                      "sha256":  "220d916e3ec6edce21eb87e432500fc21bd0d00c93919f297479ae66582cf8a5"
+                  },
+                  {
+                      "path":  "src/showdown/args.ts",
+                      "bytes":  1598,
+                      "sha256":  "0c1e1ab43fe1b7c0686333dddfdbd286804d911b49bd4f781463a7d7922b3554"
+                  },
+                  {
+                      "path":  "src/showdown/battle.ts",
+                      "bytes":  8244,
+                      "sha256":  "e57a07371cc90f303495b75bbb277c8a2f638005b440e9ea0af217b57dac00c9"
+                  },
+                  {
+                      "path":  "src/showdown/choice.ts",
+                      "bytes":  114890,
+                      "sha256":  "35d3d792d19480b6c6601f32cb12b9dc44c4575d370bfe1633d56996ec401e0b"
+                  },
+                  {
+                      "path":  "src/showdown/seed.ts",
+                      "bytes":  610,
+                      "sha256":  "120b46c39efe803125c93d237634192fb9a675f3a5ed1289ec8213a615ea8528"
+                  },
+                  {
+                      "path":  "src/showdown/team.ts",
+                      "bytes":  1725,
+                      "sha256":  "deee99569907615679bcf9941b21a007bba2afd586020554c758c2f148426046"
+                  },
+                  {
+                      "path":  "src/store/teamDatabase.ts",
+                      "bytes":  4132,
+                      "sha256":  "d74b22d21d763af93d0f56316933ef02425c725358f6379528b93cc448c17f61"
+                  },
+                  {
+                      "path":  "src/tests/dynastySmoke.ts",
+                      "bytes":  3837,
+                      "sha256":  "b82909f14aa3e12149c32f16c866ec40ba84c8dbb1b42048c0a968572b6746a8"
+                  },
+                  {
+                      "path":  "src/tests/regressions.ts",
+                      "bytes":  80680,
+                      "sha256":  "026eba84ed2a9fcd93e624809782175df084a0a5412163e5cc527d62fef2e135"
+                  },
+                  {
+                      "path":  "src/tests/sandboxSmoke.ts",
+                      "bytes":  2837,
+                      "sha256":  "787699c95d95e89079efb567ffc939017a7f39996c516a229e8d08aa4cecadf9"
+                  },
+                  {
+                      "path":  "src/variants/generator.ts",
+                      "bytes":  8683,
+                      "sha256":  "930944ad3647813f3f73d245b77dff07a51a1e393e6b688e0a27e87192aa4032"
+                  },
+                  {
+                      "path":  "src/variants/report.ts",
+                      "bytes":  3793,
+                      "sha256":  "bc2f6b3747b4f1af54246905480e6e7b1298a702bd904e790048522a9555a547"
+                  },
+                  {
+                      "path":  "src/variants/types.ts",
+                      "bytes":  1015,
+                      "sha256":  "b545929e76873ef14052d283e04ed53cf8d21d03124117c01a05e33d43891506"
+                  },
+                  {
+                      "path":  "tsconfig.json",
+                      "bytes":  230,
+                      "sha256":  "0f82dd1eea00bd6f4eb5b3f8878942f33530c2b8ce8315851a3d5509cb935646"
+                  },
+                  {
+                      "path":  "vendor/node-static-disabled/index.js",
+                      "bytes":  288,
+                      "sha256":  "7bd7a934ebbfac948073d88ce155432e51413b6d77c4520addfd8df616d8564c"
+                  },
+                  {
+                      "path":  "vendor/node-static-disabled/package.json",
+                      "bytes":  227,
+                      "sha256":  "155b57b5e22dcc98f006ed66e1a2be30de696fdd157212cadb265c896c6adfbe"
+                  }
+              ]
+}

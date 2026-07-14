@@ -1,0 +1,53 @@
+Kyogre @ Choice Scarf
+Ability: Drizzle
+EVs: 4 Def / 252 SpA / 252 Spe
+Timid Nature
+- Water Spout
+- Origin Pulse
+- Thunder
+- Ice Beam
+
+Miraidon @ Choice Specs
+Ability: Hadron Engine
+EVs: 4 Def / 252 SpA / 252 Spe
+Timid Nature
+- Electro Drift
+- Draco Meteor
+- Volt Switch
+- Overheat
+
+Zacian-Crowned @ Rusted Sword
+Ability: Intrepid Sword
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Behemoth Blade
+- Close Combat
+- Wild Charge
+- Swords Dance
+
+Calyrex-Shadow @ Choice Scarf
+Ability: As One (Spectrier)
+EVs: 4 Def / 252 SpA / 252 Spe
+Timid Nature
+- Astral Barrage
+- Psychic
+- Draining Kiss
+- Trick
+
+Arceus-Water @ Splash Plate
+Ability: Multitype
+EVs: 252 HP / 4 SpA / 252 Spe
+Timid Nature
+- Judgment
+- Ice Beam
+- Recover
+- Calm Mind
+
+Necrozma-Dusk-Mane @ Leftovers
+Ability: Prism Armor
+EVs: 252 HP / 252 Def / 4 SpD
+Impish Nature
+- Sunsteel Strike
+- Earthquake
+- Stealth Rock
+- Morning Sun

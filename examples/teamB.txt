@@ -1,0 +1,59 @@
+Ting-Lu @ Leftovers
+Ability: Vessel of Ruin
+Tera Type: Poison
+EVs: 252 HP / 4 Atk / 252 SpD
+Careful Nature
+- Earthquake
+- Ruination
+- Spikes
+- Whirlwind
+
+Enamorus @ Choice Scarf
+Ability: Contrary
+Tera Type: Stellar
+EVs: 4 Def / 252 SpA / 252 Spe
+Timid Nature
+- Moonblast
+- Earth Power
+- Mystical Fire
+- Healing Wish
+
+Cinderace @ Heavy-Duty Boots
+Ability: Libero
+Tera Type: Fire
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Pyro Ball
+- U-turn
+- Court Change
+- Sucker Punch
+
+Dondozo @ Heavy-Duty Boots
+Ability: Unaware
+Tera Type: Dragon
+EVs: 252 HP / 252 Def / 4 SpD
+Impish Nature
+- Liquidation
+- Body Press
+- Rest
+- Sleep Talk
+
+Raging Bolt @ Booster Energy
+Ability: Protosynthesis
+Tera Type: Electric
+EVs: 64 HP / 28 Def / 252 SpA / 164 Spe
+Modest Nature
+- Thunderclap
+- Draco Meteor
+- Thunderbolt
+- Calm Mind
+
+Corviknight @ Rocky Helmet
+Ability: Pressure
+Tera Type: Dragon
+EVs: 248 HP / 252 Def / 8 SpD
+Impish Nature
+- Brave Bird
+- Body Press
+- Roost
+- U-turn
