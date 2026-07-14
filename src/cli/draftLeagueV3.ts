@@ -21,7 +21,7 @@ import {assertBattleLineup, chooseK} from "../draft/lineups";
 import {evaluateStrategyProgram, strategyProgramHash} from "../draft/strategyProgram";
 import {analyzeConfigurationTelemetry, emptyConfigurationEvidence, mergeConfigurationEvidence, type MemberConfigurationEvidence} from "../draft/configurationTelemetry";
 import {acquireRunLock} from "../draft/runLock";
-import {tacticalFamilyValue, tacticalSignals} from "../draft/tacticalMemory";
+import {tacticalFamilyValue, tacticalOpponentModel, tacticalSignals} from "../draft/tacticalMemory";
 
 type Side = "p1" | "p2";
 type Role = DraftRole;
@@ -1011,7 +1011,7 @@ async function playSeries(format: string, left: Manager, right: Manager, dex: Re
     let leftGameWins = 0, rightGameWins = 0;
     for (const orientation of ["left-p1", "right-p1"] as const) {
       const leftSide: Side = orientation === "left-p1" ? "p1" : "p2";
-      const result = await runBattle({format, teamA: Teams.pack((orientation === "left-p1" ? leftLineup : rightLineup).map(entry => entry.candidate.set)), teamB: Teams.pack((orientation === "left-p1" ? rightLineup : leftLineup).map(entry => entry.candidate.set)), seed: `${seed}:${seriesId}:pair:${pair}`, gameIndex: pair, outDir: path.join(outDir, "battles", seriesId, orientation), maxTurns, ai: "search", aiProfiles: orientation === "left-p1" ? {p1: programTactics(left, right), p2: programTactics(right, left)} : {p1: programTactics(right, left), p2: programTactics(left, right)}, openTeamSheets: true, traceAiDecisions: true});
+      const result = await runBattle({format, teamA: Teams.pack((orientation === "left-p1" ? leftLineup : rightLineup).map(entry => entry.candidate.set)), teamB: Teams.pack((orientation === "left-p1" ? rightLineup : leftLineup).map(entry => entry.candidate.set)), seed: `${seed}:${seriesId}:pair:${pair}`, gameIndex: pair, outDir: path.join(outDir, "battles", seriesId, orientation), maxTurns, ai: "search", aiProfiles: orientation === "left-p1" ? {p1: programTactics(left, right), p2: programTactics(right, left)} : {p1: programTactics(right, left), p2: programTactics(left, right)}, aiOpponentModels: orientation === "left-p1" ? {p1: tacticalOpponentModel(left.tacticalMemory, right.id), p2: tacticalOpponentModel(right.tacticalMemory, left.id)} : {p1: tacticalOpponentModel(right.tacticalMemory, left.id), p2: tacticalOpponentModel(left.tacticalMemory, right.id)}, openTeamSheets: true, traceAiDecisions: true});
       const leftWon = result.winner === (leftSide === "p1" ? "Team A" : "Team B");
       const rightWon = result.winner === (leftSide === "p1" ? "Team B" : "Team A");
       if (leftWon) leftGameWins += 1;

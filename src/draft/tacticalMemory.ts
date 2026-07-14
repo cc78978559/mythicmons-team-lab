@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import type {AiOpponentModel} from "../showdown/choice";
 
 export interface TacticalPosterior {
   mean: number;
@@ -16,6 +17,7 @@ export interface TacticalEpisode {
   ownContributions: Record<string, number>;
   ownMoveImpact: Record<string, number>;
   opponentMoves: Record<string, number>;
+  opponentMovesByFamily?: Record<string, Record<string, number>>;
   opponentSwitches: number;
   decisiveEvents: string[];
 }
@@ -30,6 +32,7 @@ export interface OpponentTacticalMemory {
   familyImpact: Record<string, TacticalPosterior>;
   moveImpact: Record<string, TacticalPosterior>;
   opponentMoveCounts: Record<string, number>;
+  opponentMoveCountsByFamily?: Record<string, Record<string, number>>;
   opponentSwitches: number;
   observedTurns: number;
   episodes: TacticalEpisode[];
@@ -59,10 +62,12 @@ export function extractTacticalEpisode(input: TacticalEpisodeInput): TacticalEpi
   const contributions: Record<string, number> = {};
   const moveImpact: Record<string, number> = {};
   const opponentMoves: Record<string, number> = {};
+  const opponentMovesByFamily: Record<string, Record<string, number>> = {};
   const participants = new Set<string>();
   const fainted = new Set<string>();
   const lastMove: Partial<Record<"p1" | "p2", {actor: string; move: string}>> = {};
   const active: Partial<Record<"p1" | "p2", string>> = {};
+  const activeFamily: Partial<Record<"p1" | "p2", string>> = {};
   const recoilFainted = new Set<string>();
   const decisiveEvents: string[] = [];
   let ownLead: string | null = null;
@@ -82,6 +87,7 @@ export function extractTacticalEpisode(input: TacticalEpisodeInput): TacticalEpi
       const name = switchEvent[3];
       const family = player === ownPlayer ? ownFamily(name, input.familyByName) : opponentFamily(name, switchEvent[4]);
       active[player] = name;
+      activeFamily[player] = family;
       if (player === ownPlayer) {
         participants.add(family);
         contributions[family] ??= 0;
@@ -102,7 +108,13 @@ export function extractTacticalEpisode(input: TacticalEpisodeInput): TacticalEpi
         participants.add(family);
         contributions[family] = (contributions[family] ?? 0) + .015;
         moveImpact[move] = (moveImpact[move] ?? 0) + .01;
-      } else opponentMoves[move] = (opponentMoves[move] ?? 0) + 1;
+      } else {
+        opponentMoves[move] = (opponentMoves[move] ?? 0) + 1;
+        const family = activeFamily[player] ?? opponentFamily(actor, actor);
+        const familyMoves = opponentMovesByFamily[family] ?? {};
+        familyMoves[move] = (familyMoves[move] ?? 0) + 1;
+        opponentMovesByFamily[family] = familyMoves;
+      }
       continue;
     }
     const faintEvent = line.match(/^\|faint\|p([12])a: ([^|]+)/);
@@ -150,6 +162,7 @@ export function extractTacticalEpisode(input: TacticalEpisodeInput): TacticalEpi
     ownContributions: Object.fromEntries(Object.entries(contributions).map(([family, value]) => [family, bounded(value / 2)])),
     ownMoveImpact: Object.fromEntries(Object.entries(moveImpact).map(([move, value]) => [move, bounded(value / 2)])),
     opponentMoves,
+    opponentMovesByFamily,
     opponentSwitches,
     decisiveEvents: decisiveEvents.slice(-16),
   };
@@ -172,6 +185,12 @@ export function updateTacticalMemory(previous: TacticalMemory | undefined, episo
     for (const [family, impact] of Object.entries(episode.ownContributions)) current.familyImpact[family] = updatePosterior(current.familyImpact[family], impact);
     for (const [move, impact] of Object.entries(episode.ownMoveImpact)) current.moveImpact[move] = updatePosterior(current.moveImpact[move], impact);
     for (const [move, count] of Object.entries(episode.opponentMoves)) current.opponentMoveCounts[move] = (current.opponentMoveCounts[move] ?? 0) + count;
+    current.opponentMoveCountsByFamily ??= {};
+    for (const [family, moves] of Object.entries(episode.opponentMovesByFamily ?? {})) {
+      const familyCounts = current.opponentMoveCountsByFamily[family] ?? {};
+      for (const [move, count] of Object.entries(moves)) familyCounts[move] = (familyCounts[move] ?? 0) + count;
+      current.opponentMoveCountsByFamily[family] = familyCounts;
+    }
     current.opponentSwitches += episode.opponentSwitches;
     current.observedTurns += episode.turns;
     current.episodes = [...current.episodes, episode].slice(-32);
@@ -198,13 +217,24 @@ export function tacticalSignals(memory: TacticalMemory | undefined, opponentId: 
   };
 }
 
+export function tacticalOpponentModel(memory: TacticalMemory | undefined, opponentId: string): AiOpponentModel {
+  const signals = tacticalSignals(memory, opponentId);
+  const opponent = memory?.opponents[opponentId];
+  return {
+    confidence: signals.confidence,
+    switchRate: signals.opponentSwitchRate,
+    moveUsage: {...(opponent?.opponentMoveCounts ?? {})},
+    moveUsageBySpecies: JSON.parse(JSON.stringify(opponent?.opponentMoveCountsByFamily ?? {})) as Record<string, Record<string, number>>,
+  };
+}
+
 export function cloneTacticalMemory(value: TacticalMemory | undefined): TacticalMemory {
   if (!value) return emptyTacticalMemory();
   return JSON.parse(JSON.stringify(value)) as TacticalMemory;
 }
 
 function emptyOpponentMemory(season: number): OpponentTacticalMemory {
-  return {games: 0, wins: 0, losses: 0, draws: 0, lastSeason: season, leadCounts: {}, familyImpact: {}, moveImpact: {}, opponentMoveCounts: {}, opponentSwitches: 0, observedTurns: 0, episodes: []};
+  return {games: 0, wins: 0, losses: 0, draws: 0, lastSeason: season, leadCounts: {}, familyImpact: {}, moveImpact: {}, opponentMoveCounts: {}, opponentMoveCountsByFamily: {}, opponentSwitches: 0, observedTurns: 0, episodes: []};
 }
 
 function updatePosterior(previous: TacticalPosterior | undefined, evidence: number): TacticalPosterior {

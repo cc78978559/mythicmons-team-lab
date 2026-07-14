@@ -145,6 +145,8 @@ V6 supports 6-30 managers. A 30-team league defaults to a 420-species pool, 60 p
 
 The manager development system starts every manager from the same neutral novice state, shared learning rules, and shared tactical ability. Draft order, market conflicts, opponents, and battle experience create path-dependent strategy posteriors. Those posteriors dynamically produce role priorities, auction economics, and battle temperament for the following season. Style names are generated after the fact from observed development and never control decisions. Each season contributes at most one effective sample per strategy axis, exploration decays to a nonzero floor, and `evolution-summary.json` provides a compact audit surface without loading battle logs into an LLM context. Legendary, Mythical, and each of the 35 custom Pokemon have one persistent league asset; a seeded cohort of elite ordinary species issues one to three independently tracked assets and never exceeds three. Developmental dynasty checkpoints use state version 6 and require an explicit migration from earlier rule states.
 
+Battle experience also builds a confidence-bounded opponent model from public logs. It learns move usage per opposing member, falls back to team-wide samples when member evidence is sparse, and learns observed switching frequency. Search AI blends those empirical priors with its baseline response model instead of replacing it, so limited evidence cannot collapse exploration. Decision traces record the model confidence and sample counts used for every choice.
+
 ```powershell
 $env:V4_OUT='output/draft-league-v4'
 $env:V4_SEASONS='8'

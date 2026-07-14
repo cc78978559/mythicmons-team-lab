@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {cloneTacticalMemory, extractTacticalEpisode, tacticalFamilyValue, tacticalSignals, updateTacticalMemory} from "../draft/tacticalMemory";
+import {cloneTacticalMemory, extractTacticalEpisode, tacticalFamilyValue, tacticalOpponentModel, tacticalSignals, updateTacticalMemory} from "../draft/tacticalMemory";
+import {learnedMoveMultiplier, learnedSwitchMultiplier} from "../showdown/choice";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "mythic-tactical-memory-"));
 try {
@@ -63,6 +64,11 @@ try {
   assert.equal(signals.opponentLeadConcentration, 1);
   assert.equal(signals.historicalWinRate, 0);
   assert.ok(signals.confidence > 0);
+  const model = tacticalOpponentModel(memory, "g1-red");
+  assert.ok(model.moveUsage.focusblast > 0);
+  assert.ok(model.moveUsageBySpecies.redpikachu.focusblast > 0);
+  assert.ok(learnedMoveMultiplier("focusblast", ["focusblast", "protect"], model, "redpikachu") > learnedMoveMultiplier("protect", ["focusblast", "protect"], model, "redpikachu"));
+  assert.ok(learnedSwitchMultiplier(model) >= .35 && learnedSwitchMultiplier(model) <= 3);
   assert.deepEqual(cloneTacticalMemory(memory), memory);
   console.log("tactical memory smoke passed");
 } finally {

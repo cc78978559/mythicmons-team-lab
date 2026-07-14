@@ -10,6 +10,7 @@ import {
   type AiStrategy,
   type AiDecisionTrace,
   type AiTacticalProfile,
+  type AiOpponentModel,
   type BattleAiContext,
   type ChoiceRequest,
 } from "./choice";
@@ -29,6 +30,7 @@ export interface BattleInput {
   openTeamSheets?: boolean;
   traceAiDecisions?: boolean;
   aiProfiles?: Partial<Record<"p1" | "p2", Partial<AiTacticalProfile>>>;
+  aiOpponentModels?: Partial<Record<"p1" | "p2", Partial<AiOpponentModel>>>;
 }
 
 export interface BattleResult {
@@ -71,8 +73,8 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
     p2: Teams.unpack(input.teamB) ?? [],
   };
   const aiContexts = {
-    p1: createBattleAiContext(input.format, {openTeamSheets, teams, tacticalProfile: input.aiProfiles?.p1}),
-    p2: createBattleAiContext(input.format, {openTeamSheets, teams, tacticalProfile: input.aiProfiles?.p2}),
+    p1: createBattleAiContext(input.format, {openTeamSheets, teams, tacticalProfile: input.aiProfiles?.p1, opponentModel: input.aiOpponentModels?.p1}),
+    p2: createBattleAiContext(input.format, {openTeamSheets, teams, tacticalProfile: input.aiProfiles?.p2, opponentModel: input.aiOpponentModels?.p2}),
   };
   const pendingRequests: Partial<Record<"p1" | "p2", ChoiceRequest>> = {};
   const idleTimeoutMs = input.idleTimeoutMs ?? 5000;
@@ -167,7 +169,7 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
   fs.writeFileSync(rawLogPath, rawBlocks.join("\n\n"), "utf8");
   fs.writeFileSync(publicLogPath, publicLines.join("\n"), "utf8");
   fs.writeFileSync(decisionLogPath, `${JSON.stringify(decisionTraces, null, 2)}\n`, "utf8");
-  fs.writeFileSync(endDataPath, `${JSON.stringify({winner, turns, ended, timeout, stalled, stallReason, errors, seed, ai: input.ai, aiVersion: AI_VERSION, aiProfiles: {p1: aiContexts.p1.tacticalProfile.id, p2: aiContexts.p2.tacticalProfile.id}, openTeamSheets, traceAiDecisions, aiDecisionCount: decisionTraces.length, ...endData}, null, 2)}\n`, "utf8");
+  fs.writeFileSync(endDataPath, `${JSON.stringify({winner, turns, ended, timeout, stalled, stallReason, errors, seed, ai: input.ai, aiVersion: AI_VERSION, aiProfiles: {p1: aiContexts.p1.tacticalProfile.id, p2: aiContexts.p2.tacticalProfile.id}, aiOpponentModelConfidence: {p1: aiContexts.p1.opponentModel.confidence, p2: aiContexts.p2.opponentModel.confidence}, openTeamSheets, traceAiDecisions, aiDecisionCount: decisionTraces.length, ...endData}, null, 2)}\n`, "utf8");
 
   if (errors.length) {
     throw new Error(`Battle protocol error in game ${input.gameIndex + 1}:\n${errors.join("\n")}`);

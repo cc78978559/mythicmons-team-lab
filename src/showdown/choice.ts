@@ -73,13 +73,29 @@ export interface BattleAiContext {
   roster: Record<PlayerId, Map<string, KnownActive>>;
   lastDecision: Record<PlayerId, AiDecisionTrace | null>;
   tacticalProfile: AiTacticalProfile;
+  opponentModel: AiOpponentModel;
 }
 
 export interface BattleAiOptions {
   openTeamSheets?: boolean;
   teams?: Partial<Record<PlayerId, PokemonSet[]>>;
   tacticalProfile?: Partial<AiTacticalProfile>;
+  opponentModel?: Partial<AiOpponentModel>;
 }
+
+export interface AiOpponentModel {
+  confidence: number;
+  switchRate: number;
+  moveUsage: Record<string, number>;
+  moveUsageBySpecies: Record<string, Record<string, number>>;
+}
+
+export const EMPTY_OPPONENT_MODEL: AiOpponentModel = {
+  confidence: 0,
+  switchRate: 0,
+  moveUsage: {},
+  moveUsageBySpecies: {},
+};
 
 export interface AiTacticalProfile {
   id: string;
@@ -130,6 +146,13 @@ export interface AiDecisionTrace {
   strategy: "search";
   selected: string;
   personalityId: string;
+  opponentModel: {
+    confidence: number;
+    switchRate: number;
+    activeSpecies: string | null;
+    activeMoveSamples: number;
+    fallbackMoveSamples: number;
+  };
   candidates: Array<{
     choice: string;
     score: number;
@@ -185,6 +208,21 @@ export function createBattleAiContext(format: string, options: BattleAiOptions =
     },
     lastDecision: {p1: null, p2: null},
     tacticalProfile: normalizeTacticalProfile(options.tacticalProfile),
+    opponentModel: normalizeOpponentModel(options.opponentModel),
+  };
+}
+
+export function normalizeOpponentModel(model: Partial<AiOpponentModel> = {}): AiOpponentModel {
+  const moveUsage = Object.fromEntries(Object.entries(model.moveUsage ?? {})
+    .map(([move, count]) => [toID(move), Math.max(0, Number.isFinite(count) ? count : 0)] as const)
+    .filter(([move, count]) => Boolean(move) && count > 0));
+  return {
+    confidence: clamp(model.confidence ?? 0, 0, 1),
+    switchRate: clamp(model.switchRate ?? 0, 0, 1),
+    moveUsage,
+    moveUsageBySpecies: Object.fromEntries(Object.entries(model.moveUsageBySpecies ?? {}).map(([species, usage]) => [toID(species), Object.fromEntries(Object.entries(usage)
+      .map(([move, count]) => [toID(move), Math.max(0, Number.isFinite(count) ? count : 0)] as const)
+      .filter(([move, count]) => Boolean(move) && count > 0))])),
   };
 }
 
@@ -572,6 +610,7 @@ function chooseSearch(request: ChoiceRequest, playerId: PlayerId, context: Battl
     strategy: "search",
     selected,
     personalityId: context.tacticalProfile.id,
+    opponentModel: opponentModelTrace(context, playerId),
     candidates: ranked.map(entry => ({
       choice: entry.action.choice,
       score: roundDecisionValue(entry.score),
@@ -588,6 +627,18 @@ function chooseSearch(request: ChoiceRequest, playerId: PlayerId, context: Battl
     })),
   };
   return selected;
+}
+
+function opponentModelTrace(context: BattleAiContext, playerId: PlayerId): AiDecisionTrace["opponentModel"] {
+  const species = context.active[opponentOf(playerId)]?.species ?? null;
+  const scoped = species ? context.opponentModel.moveUsageBySpecies[toID(species)] : undefined;
+  return {
+    confidence: roundDecisionValue(context.opponentModel.confidence),
+    switchRate: roundDecisionValue(context.opponentModel.switchRate),
+    activeSpecies: species,
+    activeMoveSamples: Object.values(scoped ?? {}).reduce((sum, count) => sum + count, 0),
+    fallbackMoveSamples: Object.values(context.opponentModel.moveUsage).reduce((sum, count) => sum + count, 0),
+  };
 }
 
 function tacticalPersonalityAdjustment(action: SearchAction, context: BattleAiContext): number {
@@ -657,8 +708,10 @@ function opponentSearchResponses(request: ChoiceRequest, playerId: PlayerId, con
   if (!active) return [];
   const weighted: Array<{response: UnweightedSearchResponse; weight: number}> = [];
   const activeSheet = context.openTeamSheets ? findTeamSheet(context, opponentId, active.name, active.species) : undefined;
-  for (const moveId of legalOpponentMoveIds(context, opponentId, active)) {
-    const weight = opponentMoveResponseWeight(moveId, request, playerId, context);
+  const legalMoveIds = legalOpponentMoveIds(context, opponentId, active);
+  for (const moveId of legalMoveIds) {
+    const weight = opponentMoveResponseWeight(moveId, request, playerId, context)
+      * learnedMoveMultiplier(moveId, legalMoveIds, context.opponentModel, active.species);
     weighted.push({response: {kind: "move", moveId}, weight});
     const move = context.dex.moves.get(moveId);
     if (!context.teraUsed[opponentId] && activeSheet?.teraType && move.category !== "Status") {
@@ -674,12 +727,32 @@ function opponentSearchResponses(request: ChoiceRequest, playerId: PlayerId, con
       if (switchState.hpPercent === 0) continue;
       weighted.push({
         response: {kind: "switch", set},
-        weight: opponentSwitchResponseWeight(set, request, playerId, context),
+        weight: opponentSwitchResponseWeight(set, request, playerId, context)
+          * learnedSwitchMultiplier(context.opponentModel),
       });
     }
   }
   const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
   return weighted.map(entry => ({...entry.response, policyShare: entry.weight / Math.max(0.001, total)}) as SearchResponse);
+}
+
+export function learnedMoveMultiplier(moveId: string, legalMoveIds: readonly string[], model: AiOpponentModel, opponentSpecies?: string): number {
+  if (model.confidence <= 0 || legalMoveIds.length === 0) return 1;
+  const scopedUsage = opponentSpecies ? model.moveUsageBySpecies[toID(opponentSpecies)] : undefined;
+  const usage = scopedUsage && Object.keys(scopedUsage).length ? scopedUsage : model.moveUsage;
+  const total = Object.values(usage).reduce((sum, count) => sum + count, 0);
+  if (total <= 0) return 1;
+  const smoothing = .5;
+  const observedShare = ((usage[toID(moveId)] ?? 0) + smoothing) / (total + smoothing * legalMoveIds.length);
+  const uniformShare = 1 / legalMoveIds.length;
+  const empiricalRatio = clamp(observedShare / uniformShare, .3, 3);
+  return 1 + model.confidence * (empiricalRatio - 1);
+}
+
+export function learnedSwitchMultiplier(model: AiOpponentModel): number {
+  if (model.confidence <= 0) return 1;
+  const empiricalRatio = clamp((model.switchRate + .02) / .1, .35, 3);
+  return 1 + model.confidence * (empiricalRatio - 1);
 }
 
 function opponentMoveResponseWeight(
