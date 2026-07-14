@@ -4,7 +4,7 @@ import path from "node:path";
 import {toID} from "pokemon-showdown";
 import {compileSandboxTeam} from "../sandbox/compiler";
 import type {SandboxTeam} from "../sandbox/types";
-import {DRAFT_GENERATIONS} from "./customRegistry";
+import {DRAFT_GENERATIONS, RETIRED_DRAFT_MEMBER_IDS} from "./customRegistry";
 
 export interface RegistrySnapshot {
   schemaVersion: 1;
@@ -94,7 +94,11 @@ function readRegistryFiles(directory: string): Array<{name: string; contents: Bu
 function validateRegistry(documents: SandboxTeam[]): void {
   const memberIds = new Set<string>(), effects = {move: new Set<string>(), ability: new Set<string>(), item: new Set<string>()};
   for (const document of documents) {
-    for (const member of document.members) unique(memberIds, toID(member.id), `member ${member.id}`);
+    for (const member of document.members) {
+      const id = toID(member.id);
+      if (RETIRED_DRAFT_MEMBER_IDS.has(id)) throw new Error(`Retired draft member cannot re-enter the registry: ${member.id}`);
+      unique(memberIds, id, `member ${member.id}`);
+    }
     for (const move of document.customMoves ?? []) unique(effects.move, toID(move.id), `custom move ${move.id}`);
     for (const ability of document.customAbilities ?? []) unique(effects.ability, toID(ability.id), `custom ability ${ability.id}`);
     for (const item of document.customItems ?? []) unique(effects.item, toID(item.id), `custom item ${item.id}`);

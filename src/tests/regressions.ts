@@ -398,7 +398,7 @@ function testQualityDiversityArchiveKeepsDistantViableStrategies(): void {
 function testBundledDraftRegistryIsComplete(): void {
   let members = 0;
   const expectedByGeneration: Record<(typeof DRAFT_GENERATIONS)[number], number> = {
-    g1: 11,
+    g1: 10,
     g2: 6,
     g3: 6,
     g4: 6,
@@ -412,7 +412,7 @@ function testBundledDraftRegistryIsComplete(): void {
     assert.equal(team.members.length, expectedByGeneration[generation], `${generation} has an unexpected draft member count`);
     members += team.members.length;
   }
-  assert.equal(members, 40);
+  assert.equal(members, 39);
 }
 
 function dynastyRoster(): DynastyRosterMember[] {

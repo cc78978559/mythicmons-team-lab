@@ -1,5 +1,5 @@
 {
-  "name": "G1 Eleven-Mon Team",
+  "name": "G1 Ten-Mon Team",
   "members": [
     {
       "id": "g1-beedrill", "nickname": "G1 Beedrill", "species": "Beedrill",
@@ -27,15 +27,6 @@
       "nature": "Relaxed", "abilities": ["Intimidate", "Flash Fire"],
       "items": ["Leftovers", "Air Balloon", "Heavy-Duty Boots", "Rocky Helmet"],
       "moves": ["Stealth Rock", "Toxic", "Flamethrower", "Extreme Speed"]
-    },
-    {
-      "id": "g1-wigglytuff", "nickname": "G1 Wigglytuff", "species": "Wigglytuff",
-      "types": ["Steel", "Fairy"], "baseStats": {"hp": 167, "atk": 45, "def": 126, "spa": 115, "spd": 57, "spe": 75},
-      "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
-      "evs": {"hp": 252, "atk": 252, "def": 252, "spa": 252, "spd": 252, "spe": 252},
-      "nature": "Sassy", "abilities": ["Competitive"],
-      "items": ["Leftovers", "Assault Vest"],
-      "moves": ["Ice Beam", "Thunderbolt", "Moonblast", "Flamethrower"]
     },
     {
       "id": "g1-persian", "nickname": "G1 Persian", "species": "Persian",
