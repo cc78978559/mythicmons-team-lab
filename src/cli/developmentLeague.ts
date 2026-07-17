@@ -26,7 +26,7 @@ interface Entrant {
 }
 interface DevelopmentManager {id: string; name: string; titles: number; totalPoints: number; seasons: SeasonRecord[]; baseProfile: ManagerProfile; currentProfile: ManagerProfile; lineage: LineageIdentity; lineageHistory: LineageIdentity[]}
 interface PreviousRow {slotId: string; childId: string; childName: string; parentId: string; parentName: string; rightsHolderId: string; optionYearsRemaining: number; contractYearsRemaining?: number; status: string; totalPoints?: number; averageRank?: number; titles?: number; developmentSeasons?: number}
-interface PreviousEntrants {schemaVersion: number; cycle?: number; capacity?: number; source: {root: string}; entrants: Entrant[]; academies?: AcademyState[]; salaryDebts?: SalaryGuaranteeDebt[]; academyFinancialHealth?: AcademyFinancialHealth[]; academyRecoveryPlans?: AcademyRecoveryRecord[]}
+interface PreviousEntrants {schemaVersion: number; cycle?: number; capacity?: number; source: {root: string; season?: number; seed?: string}; entrants: Entrant[]; academies?: AcademyState[]; salaryDebts?: SalaryGuaranteeDebt[]; academyFinancialHealth?: AcademyFinancialHealth[]; academyRecoveryPlans?: AcademyRecoveryRecord[]}
 interface PreviousSummary {cycle?: number; capacity?: number; retained: PreviousRow[]; promoted: PreviousRow[]; eliminated: PreviousRow[]}
 interface ParentCandidate {id: string; name: string; profile: ManagerProfile; lineage: LineageIdentity; lineageHistory: LineageIdentity[]; rightsHolderId: string; source: "major" | "development"; points: number; rank: number; champion: boolean}
 
@@ -124,7 +124,19 @@ function loadPrevious(directory: string) {
   const entrants = read<PreviousEntrants>(path.join(directory, "entrants.json"));
   const summary = read<PreviousSummary>(path.join(directory, "development-summary.json"));
   const state = read<{managers: DevelopmentManager[]}>(path.join(directory, "league", "dynasty-state.json"));
-  if (path.resolve(entrants.source.root) !== source) throw new Error("Previous development cycle belongs to a different major-league source");
+  const recordedSource = path.resolve(entrants.source.root);
+  if (recordedSource !== source) {
+    const recordedStatePath = path.join(recordedSource, "dynasty-state.json");
+    if (!fs.existsSync(recordedStatePath)) throw new Error("Previous development cycle belongs to a different major-league source");
+    const recordedState = read<SourceState>(recordedStatePath);
+    const sameJourney = entrants.source.seed === sourceState.seed
+      && entrants.source.season === recordedState.completedSeason
+      && recordedState.seed === sourceState.seed
+      && recordedState.completedSeason <= sourceState.completedSeason
+      && recordedState.registry?.hash === sourceState.registry?.hash
+      && JSON.stringify(recordedState.fingerprint) === JSON.stringify(sourceState.fingerprint);
+    if (!sameJourney) throw new Error("Previous development cycle belongs to a different major-league source");
+  }
   return {entrants, summary, state};
 }
 

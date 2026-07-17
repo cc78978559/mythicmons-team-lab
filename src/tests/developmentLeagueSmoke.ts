@@ -159,7 +159,7 @@ const exitPending = academyRecoveryRecords(financialControls, [{...insolventHeal
 assert.equal(exitPending.find(record => record.academyId === academyState.academyId)?.state, "exit-pending");
 
 const root = process.cwd(), workspace = fs.mkdtempSync(path.join(os.tmpdir(), "mythic-development-league-"));
-const source = path.join(workspace, "source"), output = path.join(workspace, "development"), nextOutput = path.join(workspace, "development-next"), debtOutput = path.join(workspace, "development-debt"), retirementOutput = path.join(workspace, "development-retirement");
+const source = path.join(workspace, "source"), relocatedSource = path.join(workspace, "source-relocated"), output = path.join(workspace, "development"), nextOutput = path.join(workspace, "development-next"), debtOutput = path.join(workspace, "development-debt"), retirementOutput = path.join(workspace, "development-retirement");
 try {
   const baseline = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "draftLeagueV12.ts")], {cwd: root, env: {...process.env, V12_OUT: source, V12_SEASONS: "1", V12_MANAGER_LIMIT: "6", V12_PAIRS: "1", V12_POOL_SIZE: "100", V12_AUCTION_LOTS: "10", V12_REGULAR_ROUNDS: "1", V12_MAX_TURNS: "20", V12_MIN_ROSTER: "6", V12_MAX_ROSTER: "6", V12_SEED: "development-league-smoke", V12_EVOLUTION_MODE: "punctuated", V12_EVOLUTION_POLICY: "shadow", V12_EVIDENCE_RETENTION: "compact", V12_EVIDENCE_SAMPLE_RATE: "0"}, encoding: "utf8", maxBuffer: 64 * 1024 * 1024});
   assert.equal(baseline.status, 0, baseline.stderr || baseline.stdout);
@@ -211,9 +211,11 @@ try {
   assert(fs.existsSync(path.join(output, "development-report.md")));
 
   const firstLeagueState = read<any>(path.join(output, "league", "dynasty-state.json"));
-  const nextDevelopment = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "developmentLeague.ts"), "--source", source, "--previous", output, "--out", nextOutput, "--seasons", "2", "--capacity", "6", "--parent-limit", "6", "--promotion-slots", "1", "--elimination-slots", "1", "--max-founder-share-percent", "17", "--kinship-depth", "2", "--max-parent-similarity-percent", "0", "--academy-grant-pool", "240", "--academy-market-policy", "active", "--academy-market-consent-policy", "ignore", "--academy-market-contract-policy", "ignore", "--academy-market-max-transactions", "2", "--academy-signing-fee", "0", "--academy-transfer-fee", "0", "--academy-loan-fee", "0", "--academy-transfer-min-fit-percent", "-100", "--regular-rounds", "1", "--max-turns", "20"], {cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024});
+  fs.cpSync(source, relocatedSource, {recursive: true});
+  const nextDevelopment = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "developmentLeague.ts"), "--source", relocatedSource, "--previous", output, "--out", nextOutput, "--seasons", "2", "--capacity", "6", "--parent-limit", "6", "--promotion-slots", "1", "--elimination-slots", "1", "--max-founder-share-percent", "17", "--kinship-depth", "2", "--max-parent-similarity-percent", "0", "--academy-grant-pool", "240", "--academy-market-policy", "active", "--academy-market-consent-policy", "ignore", "--academy-market-contract-policy", "ignore", "--academy-market-max-transactions", "2", "--academy-signing-fee", "0", "--academy-transfer-fee", "0", "--academy-loan-fee", "0", "--academy-transfer-min-fit-percent", "-100", "--regular-rounds", "1", "--max-turns", "20"], {cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024});
   assert.equal(nextDevelopment.status, 0, nextDevelopment.stderr || nextDevelopment.stdout);
   assert.equal(digest(fs.readFileSync(sourceStatePath)), sourceHash, "A later development cycle must also leave the major league untouched");
+  assert.equal(digest(fs.readFileSync(path.join(relocatedSource, "dynasty-state.json"))), sourceHash, "A relocated equivalent major-league source must remain read-only");
   const nextEntrantsDocument = read<any>(path.join(nextOutput, "entrants.json"));
   const nextEntrants = nextEntrantsDocument.entrants;
   const nextSummary = read<any>(path.join(nextOutput, "development-summary.json"));
