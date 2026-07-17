@@ -29,6 +29,7 @@ interface PreviousRow {slotId: string; childId: string; childName: string; paren
 interface PreviousEntrants {schemaVersion: number; cycle?: number; capacity?: number; source: {root: string; season?: number; seed?: string}; entrants: Entrant[]; academies?: AcademyState[]; salaryDebts?: SalaryGuaranteeDebt[]; academyFinancialHealth?: AcademyFinancialHealth[]; academyRecoveryPlans?: AcademyRecoveryRecord[]}
 interface PreviousSummary {cycle?: number; capacity?: number; retained: PreviousRow[]; promoted: PreviousRow[]; eliminated: PreviousRow[]}
 interface ParentCandidate {id: string; name: string; profile: ManagerProfile; lineage: LineageIdentity; lineageHistory: LineageIdentity[]; rightsHolderId: string; source: "major" | "development"; points: number; rank: number; champion: boolean}
+interface MajorSourceTransition {schemaVersion: 1; type: "promotion"; source: {root: string; seed: string; completedSeason: number; stateSha256: string; fingerprint: SourceState["fingerprint"]; registryHash?: string}; target: {root: string; seed: string; completedSeason: number; fingerprint: SourceState["fingerprint"]; registryHash?: string}}
 
 const args = process.argv.slice(2), root = process.cwd();
 const source = path.resolve(option("--source", "output/draft-league-v12"));
@@ -135,9 +136,30 @@ function loadPrevious(directory: string) {
       && recordedState.completedSeason <= sourceState.completedSeason
       && recordedState.registry?.hash === sourceState.registry?.hash
       && JSON.stringify(recordedState.fingerprint) === JSON.stringify(sourceState.fingerprint);
-    if (!sameJourney) throw new Error("Previous development cycle belongs to a different major-league source");
+    if (!sameJourney && !authorizedPromotionTransition(entrants, recordedSource, recordedState, recordedStatePath)) throw new Error("Previous development cycle belongs to a different major-league source");
   }
   return {entrants, summary, state};
+}
+
+function authorizedPromotionTransition(entrants: PreviousEntrants, recordedSource: string, recordedState: SourceState, recordedStatePath: string): boolean {
+  const transitionPath = path.join(source, "major-source-transition.json");
+  if (!fs.existsSync(transitionPath)) return false;
+  const transition = read<MajorSourceTransition>(transitionPath), sourceHash = crypto.createHash("sha256").update(fs.readFileSync(recordedStatePath)).digest("hex");
+  return transition.schemaVersion === 1
+    && transition.type === "promotion"
+    && path.resolve(transition.source.root) === recordedSource
+    && transition.source.seed === entrants.source.seed
+    && transition.source.seed === recordedState.seed
+    && transition.source.completedSeason === entrants.source.season
+    && transition.source.completedSeason === recordedState.completedSeason
+    && transition.source.stateSha256 === sourceHash
+    && transition.source.registryHash === recordedState.registry?.hash
+    && JSON.stringify(transition.source.fingerprint) === JSON.stringify(recordedState.fingerprint)
+    && path.resolve(transition.target.root) === source
+    && transition.target.seed === sourceState.seed
+    && transition.target.completedSeason <= sourceState.completedSeason
+    && transition.target.registryHash === sourceState.registry?.hash
+    && JSON.stringify(transition.target.fingerprint) === JSON.stringify(sourceState.fingerprint);
 }
 
 function classifyPreviousLifecycle() {
