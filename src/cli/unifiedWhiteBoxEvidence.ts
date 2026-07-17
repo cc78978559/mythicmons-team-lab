@@ -34,7 +34,7 @@ writePlan();
 
 if (args.includes("--run")) {
   const completed = new Set(manifest.runs.filter(run => run.status === "complete").map(run => run.replicaId));
-  const queue = plan.cases.filter(entry => entry.selected && entry.status === "executable" && entry.runner === "general").flatMap(hypothesis => oneReplicaPerSeed(hypothesis).filter(replica => !completed.has(replica.id)).map(replica => ({hypothesis, replica}))).slice(0, maximumExperiments);
+  const queue = plan.cases.filter(entry => entry.selected && entry.status === "executable" && entry.runner !== null).flatMap(hypothesis => oneReplicaPerSeed(hypothesis).filter(replica => !completed.has(replica.id)).map(replica => ({hypothesis, replica}))).slice(0, maximumExperiments);
   for (const {hypothesis, replica} of queue) {
     const outputMb = directorySize(out) / 1048576, freeGb = freeBytes(out) / 1073741824;
     if (outputMb >= maximumOutputMb) { manifest.stopReason = `output-budget:${round(outputMb)}MB/${maximumOutputMb}MB`; break; }
@@ -65,8 +65,10 @@ function runExperiment(hypothesis: UnifiedEvidenceCase, replica: UnifiedEvidence
   const directory = path.join(out, "experiments", hypothesis.id, replica.id), startedAt = new Date().toISOString();
   if (fs.existsSync(directory)) throw new Error(`Untracked experiment directory exists: ${directory}`);
   try {
-    const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "counterfactualWhiteBox.ts"), "--source", replica.root, "--out", directory, "--case-index", String(replica.reviewIndex), "--followup-seasons", String(followupSeasons)], {cwd: root, env: {...process.env}, encoding: "utf8", maxBuffer: 64 * 1024 * 1024});
+    const command = replica.runner === "lineup" ? lineupCommand(replica, directory) : [path.join(root, "src", "cli", "counterfactualWhiteBox.ts"), "--source", replica.root, "--out", directory, "--case-index", String(replica.reviewIndex), "--followup-seasons", String(followupSeasons)];
+    const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), ...command], {cwd: root, env: {...process.env}, encoding: "utf8", maxBuffer: 64 * 1024 * 1024});
     if (result.status !== 0) throw new Error(result.stderr || result.stdout || `Counterfactual exited ${result.status}`);
+    if (replica.runner === "lineup") verifyLineupExperiment(directory, replica);
     const retention = [path.join(directory, "incumbent"), path.join(directory, "whitebox")].map(branch => compactWhiteBoxRun(branch));
     manifest.runs.push({hypothesisId: hypothesis.id, replicaId: replica.id, seed: replica.sourceSeed, status: "complete", directory, startedAt, completedAt: new Date().toISOString(), retention});
     writePlan();
@@ -77,6 +79,27 @@ function runExperiment(hypothesis: UnifiedEvidenceCase, replica: UnifiedEvidence
     writePlan();
     throw error;
   }
+}
+
+function lineupCommand(replica: UnifiedEvidenceReplica, directory: string): string[] {
+  const scenario = replica.lineupScenario;
+  if (replica.season === null || !scenario) throw new Error(`Executable lineup replica is incomplete: ${replica.id}`);
+  return [path.join(root, "src", "cli", "counterfactualWhiteBoxLineup.ts"), "--source", replica.root, "--out", directory, "--decision-id", replica.decisionId, "--manager", replica.actor, "--season", String(replica.season), "--band", String(scenario.band), "--style-limit", String(scenario.styleLimit), "--style-scale", String(scenario.styleScale)];
+}
+
+function verifyLineupExperiment(directory: string, replica: UnifiedEvidenceReplica): void {
+  const branch = path.join(directory, "whitebox");
+  for (const entry of fs.readdirSync(branch, {withFileTypes: true}).filter(value => value.isDirectory() && /^season-\d+$/.test(value.name))) {
+    const file = path.join(branch, entry.name, "decision-ledger.json"); if (!fs.existsSync(file)) continue;
+    for (const record of read<any>(file).records ?? []) {
+      const experiment = record.context?.whiteBoxLineupExperiment;
+      if (experiment?.trace?.decisionId !== replica.decisionId) continue;
+      if (!experiment.gate?.recommended) throw new Error(`Lineup assist gate changed during replay: ${replica.decisionId}`);
+      if (experiment.trace.comparison?.shadow !== replica.shadow) throw new Error(`Lineup scenario selection drifted during replay: ${replica.decisionId}`);
+      return;
+    }
+  }
+  throw new Error(`Missing replayed lineup gate: ${replica.decisionId}`);
 }
 
 function refreshAggregates(): UnifiedEvidenceAggregate[] {

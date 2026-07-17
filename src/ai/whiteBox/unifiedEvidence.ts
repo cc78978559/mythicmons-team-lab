@@ -3,9 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 import {reviewWhiteBoxDifferences, type WhiteBoxDifferenceCase} from "./review";
 import {whiteBoxExperimentEligibility} from "./sampling";
+import {scanWhiteBoxOpportunities, type WhiteBoxOpportunityCase, type WhiteBoxOpportunityScenario} from "./opportunity";
 
 export type UnifiedEvidenceStatus = "executable" | "requires-gate" | "archive-only";
 export type UnifiedEvidenceRunner = "general" | "lineup" | null;
+export const UNIFIED_LINEUP_SCENARIO: WhiteBoxOpportunityScenario = {id: "cautious-lineup-assist-v1", band: .5, styleLimit: 3, styleScale: 1.1};
 
 export interface UnifiedEvidenceReplica {
   id: string;
@@ -14,11 +16,13 @@ export interface UnifiedEvidenceReplica {
   sourceSeason: number;
   reviewIndex: number;
   decisionId: string;
+  shadow: string;
   actor: string;
   season: number | null;
   status: UnifiedEvidenceStatus;
   runner: UnifiedEvidenceRunner;
   reasons: string[];
+  lineupScenario?: WhiteBoxOpportunityScenario;
 }
 
 export interface UnifiedEvidenceCase {
@@ -43,6 +47,7 @@ export interface UnifiedEvidenceCase {
   status: UnifiedEvidenceStatus;
   runner: UnifiedEvidenceRunner;
   reasons: string[];
+  lineupScenario?: WhiteBoxOpportunityScenario;
   selected: boolean;
 }
 
@@ -50,7 +55,7 @@ export interface UnifiedEvidencePlan {
   schemaVersion: 2;
   createdAt: string;
   config: {maximumCases: number; maximumPerDomain: number; minimumImpact: number};
-  sources: Array<{root: string; seed: string; completedSeason: number; comparisons: number; agreements: number; differences: number; battleTraceFiles: number; battleComparisons: number; battleDifferences: number; battleEvidence: "available" | "legacy-without-whitebox" | "not-retained"}>;
+  sources: Array<{root: string; seed: string; completedSeason: number; comparisons: number; agreements: number; differences: number; lineupCompleteComparisons: number; lineupIncompleteComparisons: number; lineupScenarioDifferences: number; lineupAssistApproved: number; battleTraceFiles: number; battleComparisons: number; battleDifferences: number; battleEvidence: "available" | "legacy-without-whitebox" | "not-retained"}>;
   metrics: {
     scanned: number;
     afterImpactFilter: number;
@@ -76,11 +81,14 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
     const review = reviewWhiteBoxDifferences(input);
     const state = readJson<{seed?: unknown; completedSeason?: unknown}>(path.join(input, "dynasty-state.json"));
     const seed = String(state.seed ?? "unknown"), completedSeason = Number(state.completedSeason ?? 0);
-    review.cases.forEach((entry, index) => raw.push(toEvidenceCase(input, seed, completedSeason, entry, index + 1)));
+    review.cases.forEach((entry, index) => { if (!entry.decisionId.startsWith("lineup:")) raw.push(toEvidenceCase(input, seed, completedSeason, entry, index + 1)); });
+    const opportunity = scanWhiteBoxOpportunities([input], [UNIFIED_LINEUP_SCENARIO], {maximumCasesPerScenario: 10000, domains: ["lineup"]}), lineupScenario = opportunity.scenarios[0];
+    const lineupCases = lineupScenario.cases.filter(entry => entry.decisionId.startsWith("lineup:"));
+    raw.push(...lineupCases.map(entry => toLineupEvidenceCase(input, seed, completedSeason, entry)));
     const battle = collectBattleCases(input, seed, completedSeason);
     raw.push(...battle.cases);
     const battleEvidence = battle.comparisons ? "available" : battle.files ? "legacy-without-whitebox" : "not-retained";
-    sources.push({root: input, seed, completedSeason, comparisons: review.comparisons, agreements: review.agreements, differences: review.cases.length, battleTraceFiles: battle.files, battleComparisons: battle.comparisons, battleDifferences: battle.cases.length, battleEvidence});
+    sources.push({root: input, seed, completedSeason, comparisons: review.comparisons, agreements: review.agreements, differences: review.cases.length, lineupCompleteComparisons: opportunity.completeByDomain.lineup ?? 0, lineupIncompleteComparisons: opportunity.incompleteByDomain.lineup ?? 0, lineupScenarioDifferences: lineupCases.length, lineupAssistApproved: lineupCases.filter(entry => entry.assistGate?.recommended).length, battleTraceFiles: battle.files, battleComparisons: battle.comparisons, battleDifferences: battle.cases.length, battleEvidence});
   }
   const filtered = raw.filter(entry => entry.impact >= minimumImpact);
   const grouped = new Map<string, UnifiedEvidenceCase[]>();
@@ -144,6 +152,18 @@ function collectBattleCases(root: string, seed: string, sourceSeason: number): {
   return {files: files.length, comparisons, cases};
 }
 
+function toLineupEvidenceCase(root: string, seed: string, sourceSeason: number, entry: WhiteBoxOpportunityCase): UnifiedEvidenceCase {
+  const gate = entry.assistGate;
+  let status: UnifiedEvidenceStatus = gate?.recommended ? "executable" : "requires-gate", runner: UnifiedEvidenceRunner = "lineup", reasons = gate?.hardRejections.length ? [...gate.hardRejections] : gate ? [] : ["missing-lineup-assist-gate"];
+  if (entry.season === null) { status = "archive-only"; runner = null; reasons = ["missing-intervention-season"]; }
+  const classification: WhiteBoxDifferenceCase["classification"] = entry.rationalDelta > 0 ? "rational-correction" : "reasonable-style-choice";
+  const impact = round(Math.abs(entry.rationalDelta) + Math.abs(entry.styleDelta) * .5), classWeight = classification === "rational-correction" ? 200 : 100, statusWeight = status === "executable" ? 40 : status === "requires-gate" ? 15 : 0;
+  const signals = gate?.supportingSignals.join(",") ?? "";
+  const fingerprint = digest(["lineup", UNIFIED_LINEUP_SCENARIO.id, classification, status, reasons.join(","), choiceShape(entry.incumbent), choiceShape(entry.selected), signals].join("|"));
+  const id = digest([root, entry.decisionId, entry.actor, entry.incumbent, entry.selected].join("|"));
+  return {id, root, sourceSeed: seed, sourceSeason, reviewIndex: 0, decisionId: entry.decisionId, domain: "lineup", actor: entry.actor, season: entry.season, classification, incumbent: entry.incumbent, shadow: entry.selected, impact, priority: round(classWeight + statusWeight + impact + Math.max(0, entry.season ?? 0) * .01), fingerprint, duplicates: 1, duplicateCaseIds: [], replicas: [], status, runner, reasons, lineupScenario: {...UNIFIED_LINEUP_SCENARIO}, selected: false};
+}
+
 export function unifiedEvidenceMarkdown(plan: UnifiedEvidencePlan): string {
   const m = plan.metrics;
   const lines = ["# 统一白箱反事实证据清单", "", `- 来源：${plan.sources.length}`, `- 扫描差异：${m.scanned}`, `- 去重后：${m.uniqueFingerprints}`, `- 跨种子假设：${m.crossSeedHypotheses}`, `- 入选：${m.selected}`, `- 可执行/需门禁/仅归档：${m.executable}/${m.requiresGate}/${m.archiveOnly}`, "", "| 优先级 | 领域 | 状态 | 赛季 | 经理 | 旧方案 | 白箱方案 | 副本/种子 |", "|---:|---|---|---:|---|---|---|---:|"];
@@ -169,7 +189,7 @@ function toEvidenceCase(root: string, seed: string, sourceSeason: number, entry:
   return {id, root, sourceSeed: seed, sourceSeason, reviewIndex, decisionId: entry.decisionId, domain, actor: entry.actor, season: entry.season, classification: entry.classification, incumbent: entry.incumbent, shadow: entry.shadow, impact, priority, fingerprint, duplicates: 1, duplicateCaseIds: [], replicas: [], status, runner, reasons, selected: false};
 }
 
-function replicaFor(entry: UnifiedEvidenceCase): UnifiedEvidenceReplica { return {id: entry.id, root: entry.root, sourceSeed: entry.sourceSeed, sourceSeason: entry.sourceSeason, reviewIndex: entry.reviewIndex, decisionId: entry.decisionId, actor: entry.actor, season: entry.season, status: entry.status, runner: entry.runner, reasons: [...entry.reasons]}; }
+function replicaFor(entry: UnifiedEvidenceCase): UnifiedEvidenceReplica { return {id: entry.id, root: entry.root, sourceSeed: entry.sourceSeed, sourceSeason: entry.sourceSeason, reviewIndex: entry.reviewIndex, decisionId: entry.decisionId, shadow: entry.shadow, actor: entry.actor, season: entry.season, status: entry.status, runner: entry.runner, reasons: [...entry.reasons], ...(entry.lineupScenario ? {lineupScenario: {...entry.lineupScenario}} : {})}; }
 
 function detailedDomain(decisionId: string): string {
   if (decisionId.startsWith("lineup:")) return "lineup";

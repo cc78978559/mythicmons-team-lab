@@ -10,10 +10,15 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), "unified-whitebox-"));
 try {
   const candidate = (id: string, rational: number, style: number) => ({id, eligible: true, reasonable: true, hardRejections: [], rationalScore: rational, rawStyleScore: style, appliedStyleScore: style, finalScore: rational + style, contributions: [{id: "test.value", group: "value", source: "competence", value: rational, reason: "test"}]});
   const shadow = (decisionId: string, incumbent: string, selected: string) => ({version: "white-box-decision-v1", decisionId, comparison: {incumbent, shadow: selected, agrees: false}, candidateCount: 2, reasonableCount: 2, hardRejectedCount: 0, candidates: [candidate(incumbent, 2, 0), candidate(selected, 2.4, .1)]});
+  const lineupShadow = () => ({version: "white-box-decision-v1", decisionId: "lineup:series-1:manager-03", comparison: {incumbent: "a+b+c+d+e+f", shadow: "a+b+c+d+e+g", agrees: false}, candidateCount: 2, reasonableCount: 2, hardRejectedCount: 0, reasonableBand: .25, styleContributionLimit: 2, candidates: [
+    {id: "a+b+c+d+e+f", eligible: true, reasonable: true, hardRejections: [], rationalScore: 2, rawStyleScore: 0, appliedStyleScore: 0, finalScore: 2, contributions: [{id: "lineup.strength", group: "strength", source: "competence", value: 2, reason: "strength"}, {id: "lineup.risk", group: "personality", source: "personality", value: 0, reason: "risk"}, {id: "lineup.counter", group: "matchup", source: "personality", value: 0, reason: "counter"}]},
+    {id: "a+b+c+d+e+g", eligible: true, reasonable: true, hardRejections: [], rationalScore: 1.95, rawStyleScore: .1, appliedStyleScore: .1, finalScore: 2.05, contributions: [{id: "lineup.strength", group: "strength", source: "competence", value: 1.95, reason: "strength"}, {id: "lineup.risk", group: "personality", source: "personality", value: .05, reason: "risk"}, {id: "lineup.counter", group: "matchup", source: "personality", value: .05, reason: "counter"}]},
+  ]});
   fs.writeFileSync(path.join(root, "dynasty-state.json"), JSON.stringify({seed: "unified-smoke", completedSeason: 2, decisionRecords: [
     {id: "keeper-1", actor: "manager-01", decision: "keeper", context: {season: 2, keeperWhiteBoxShadow: shadow("keeper:manager-01:2", "a+b", "a")}},
     {id: "keeper-2", actor: "manager-02", decision: "keeper", context: {season: 2, keeperWhiteBoxShadow: shadow("keeper:manager-02:2", "a+b", "a")}},
-    {id: "lineup-1", actor: "manager-03", decision: "lineup", context: {season: 2, whiteBoxShadow: shadow("lineup:series-1:manager-03", "a+b+c+d+e+f", "a+b+c+d+e+g")}},
+    {id: "lineup-1", actor: "manager-03", decision: "lineup", context: {season: 2, whiteBoxShadow: lineupShadow()}},
+    {id: "lineup-compact", actor: "manager-03", decision: "lineup", context: {season: 2, whiteBoxShadow: {...lineupShadow(), decisionId: "lineup:series-2:manager-03", candidateCount: 3}}},
     {id: "draft-1", actor: "manager-04", decision: "draft", context: {season: 2, whiteBoxShadow: shadow("acquire:supplemental:2:1:manager-04", "a", "b")}},
   ]}));
   const battleDir = path.join(root, "season-02", "battles", "game-1"); fs.mkdirSync(battleDir, {recursive: true});
@@ -27,7 +32,12 @@ try {
   assert.equal(plan.cases.find(entry => entry.domain === "keeper")?.duplicates, 2);
   assert.equal(plan.cases.find(entry => entry.domain === "keeper")?.replicas.length, 2);
   assert.equal(plan.cases.find(entry => entry.domain === "keeper")?.status, "executable");
-  assert.equal(plan.cases.find(entry => entry.domain === "lineup")?.status, "requires-gate");
+  assert.equal(plan.sources[0].lineupAssistApproved, 1);
+  assert.equal(plan.sources[0].lineupCompleteComparisons, 1);
+  assert.equal(plan.sources[0].lineupIncompleteComparisons, 1);
+  assert.equal(plan.cases.find(entry => entry.domain === "lineup")?.status, "executable");
+  assert.equal(plan.cases.find(entry => entry.domain === "lineup")?.runner, "lineup");
+  assert.deepEqual(plan.cases.find(entry => entry.domain === "lineup")?.lineupScenario, {id: "cautious-lineup-assist-v1", band: .5, styleLimit: 3, styleScale: 1.1});
   assert.equal(plan.cases.find(entry => entry.domain === "battle")?.status, "requires-gate");
   assert.equal(plan.cases.find(entry => entry.domain === "acquisition")?.status, "archive-only");
   assert.match(unifiedEvidenceMarkdown(plan), /统一白箱反事实证据清单/);

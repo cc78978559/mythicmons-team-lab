@@ -18,6 +18,8 @@ Planning is the default. Cases are classified as:
 - `requires-gate`: evidence is useful, but the domain still needs a dedicated admission gate or replay route.
 - `archive-only`: the stored difference is incomplete or unsupported for intervention.
 
+Lineup hypotheses use the existing cautious assist scenario exactly: reasonable band `.5`, style limit `3`, and style scale `1.1`. The planner only re-scores traces that retained every lineup candidate. A scenario difference becomes executable only when the lineup assist gate approves its rational regression, net margin, structural coverage, and independent supporting signals. Compact/incomplete candidate traces are counted separately and never treated as agreements.
+
 Run at most one admitted experiment explicitly:
 
 ```powershell
@@ -45,4 +47,5 @@ Reaching the formal threshold never activates behavior automatically. A hypothes
 
 Battle evidence is scanned only where full `ai-decisions.json` traces were retained. A source with compact-only battle summaries is marked `battleEvidence: not-retained`; an older trace without white-box fields is marked `legacy-without-whitebox`. Neither state is evidence of agreement.
 
-This is the first unified layer. It does not yet execute lineup, battle, learning, memory, or evolution interventions, and it does not weaken their existing domain-specific gates.
+This is the first unified layer. It does not weaken existing domain-specific gates.
+The unified runner now executes gate-approved lineup replicas through the isolated lineup replay route. After replay it verifies that the same scenario choice and assist gate were reproduced before compacting evidence. Battle, learning, memory, and evolution interventions remain unsupported.
