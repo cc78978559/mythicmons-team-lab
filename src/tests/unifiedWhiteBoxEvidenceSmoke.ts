@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
 import {buildUnifiedEvidencePlan, unifiedEvidenceMarkdown} from "../ai/whiteBox/unifiedEvidence";
+import {aggregateUnifiedEvidence} from "../ai/whiteBox/unifiedAggregation";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "unified-whitebox-"));
 try {
@@ -20,9 +21,11 @@ try {
   const plan = buildUnifiedEvidencePlan([root], {maximumCases: 10, maximumPerDomain: 2});
   assert.equal(plan.metrics.scanned, 5);
   assert.equal(plan.metrics.uniqueFingerprints, 4);
+  assert.equal(plan.schemaVersion, 2);
   assert.equal(plan.sources[0].battleEvidence, "available");
   assert.equal(plan.sources[0].battleDifferences, 1);
   assert.equal(plan.cases.find(entry => entry.domain === "keeper")?.duplicates, 2);
+  assert.equal(plan.cases.find(entry => entry.domain === "keeper")?.replicas.length, 2);
   assert.equal(plan.cases.find(entry => entry.domain === "keeper")?.status, "executable");
   assert.equal(plan.cases.find(entry => entry.domain === "lineup")?.status, "requires-gate");
   assert.equal(plan.cases.find(entry => entry.domain === "battle")?.status, "requires-gate");
@@ -34,10 +37,28 @@ try {
     if (result.status !== 0) throw new Error(result.stderr || result.stdout);
   }
   const manifest = JSON.parse(fs.readFileSync(path.join(output, "evidence-manifest.json"), "utf8"));
-  assert.equal(manifest.schemaVersion, 1);
+  assert.equal(manifest.schemaVersion, 2);
   assert.equal(manifest.plan.metrics.scanned, 5);
   assert.deepEqual(manifest.runs, []);
   assert.ok(fs.existsSync(path.join(output, "evidence-plan.md")));
+  const second = path.join(root, "second"); fs.mkdirSync(second, {recursive: true});
+  const secondState = JSON.parse(fs.readFileSync(path.join(root, "dynasty-state.json"), "utf8")); secondState.seed = "unified-smoke-2";
+  const secondKeeper = secondState.decisionRecords[0].context.keeperWhiteBoxShadow;
+  secondKeeper.comparison = {incumbent: "c+d", shadow: "c", agrees: false};
+  secondKeeper.candidates[0].id = "c+d"; secondKeeper.candidates[1].id = "c";
+  fs.writeFileSync(path.join(second, "dynasty-state.json"), JSON.stringify(secondState));
+  const crossSeed = buildUnifiedEvidencePlan([root, second]);
+  assert.ok(crossSeed.metrics.crossSeedHypotheses >= 3);
+  assert.equal(new Set(crossSeed.cases.find(entry => entry.domain === "keeper")!.replicas.map(replica => replica.sourceSeed)).size, 2);
+  const sample = (seed: string, points = 1, prefixVerified = true) => ({seed, caseId: seed, prefixVerified, comparison: {managerId: "manager-01", interventionSeason: 1, finalSeason: 2, incumbent: {id: "manager-01", cash: 10, contracts: 1, payroll: 5, titles: 0, totalPoints: 10, finalRank: 5, finalPoints: 10, finalChampion: false}, whitebox: {id: "manager-01", cash: 10, contracts: 1, payroll: 5, titles: 0, totalPoints: 10 + points, finalRank: 4, finalPoints: 10 + points, finalChampion: false}, delta: {cash: 0, contracts: 0, payroll: 0, titles: 0, totalPoints: points, finalRank: -1, finalPoints: points}, champions: {incumbent: [], whitebox: []}}});
+  assert.equal(aggregateUnifiedEvidence("h", "keeper", [sample("a"), sample("b")]).stage, "workflow-validation");
+  assert.equal(aggregateUnifiedEvidence("h", "keeper", [sample("a"), sample("b"), sample("c")]).stage, "preliminary");
+  const formal = Array.from({length: 30}, (_, index) => sample(`seed-${index % 10}`));
+  const aggregate = aggregateUnifiedEvidence("h", "keeper", formal);
+  assert.equal(aggregate.stage, "formal-review");
+  assert.equal(aggregate.conclusion, "candidate-for-activation-review");
+  assert.equal(aggregate.activationEligible, true);
+  assert.equal(aggregateUnifiedEvidence("h", "keeper", [sample("bad", 1, false)]).conclusion, "blocked");
 } finally {
   fs.rmSync(root, {recursive: true, force: true});
 }

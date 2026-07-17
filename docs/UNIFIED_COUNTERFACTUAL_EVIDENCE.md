@@ -2,6 +2,8 @@
 
 The unified evidence planner scans one or more audited dynasty roots without changing league behavior. It combines stored management, lineup, market, and retained battle shadow differences into one deduplicated, stratified catalog.
 
+Repeated cases are split into two levels. A `hypothesis` is one stable domain, choice structure, classification, and contribution pattern. Its `replicas` retain the exact source root, seed, season, actor, review index, and replay route. Deduplication therefore reduces review noise without discarding independent experiments. At execution time, at most one replica per source seed contributes to a hypothesis.
+
 ```powershell
 npm run counterfactual:whitebox-unified -- `
   --inputs output/official-era-02/league `
@@ -25,10 +27,21 @@ npm run counterfactual:whitebox-unified -- `
   --run `
   --max-experiments 1 `
   --max-output-mb 1024 `
-  --min-free-gb 20
+  --min-free-gb 20 `
+  --activation-samples 30 `
+  --activation-seeds 10
 ```
 
 The manifest is resumable and configuration-bound. Completed branches are compacted with the existing audit-summary retention policy. Failed experiment directories are removed after the failure is recorded. The runner stops before launch when either the output budget or free-disk reserve is exhausted.
+
+Completed experiments are aggregated separately for each hypothesis:
+
+- fewer than 3 samples: workflow validation;
+- 3–9 samples, or fewer than 5 seeds: preliminary evidence;
+- at least 10 samples and 5 seeds: extended validation;
+- at least 30 samples and 10 seeds: formal review eligibility.
+
+Reaching the formal threshold never activates behavior automatically. A hypothesis must also have no fatal prefix/audit issue and must pass the paired competitive gate. The strongest output is `candidate-for-activation-review`, which still requires an explicit reviewed code or policy change.
 
 Battle evidence is scanned only where full `ai-decisions.json` traces were retained. A source with compact-only battle summaries is marked `battleEvidence: not-retained`; an older trace without white-box fields is marked `legacy-without-whitebox`. Neither state is evidence of agreement.
 

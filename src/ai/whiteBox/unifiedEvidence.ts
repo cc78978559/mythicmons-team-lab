@@ -7,6 +7,20 @@ import {whiteBoxExperimentEligibility} from "./sampling";
 export type UnifiedEvidenceStatus = "executable" | "requires-gate" | "archive-only";
 export type UnifiedEvidenceRunner = "general" | "lineup" | null;
 
+export interface UnifiedEvidenceReplica {
+  id: string;
+  root: string;
+  sourceSeed: string;
+  sourceSeason: number;
+  reviewIndex: number;
+  decisionId: string;
+  actor: string;
+  season: number | null;
+  status: UnifiedEvidenceStatus;
+  runner: UnifiedEvidenceRunner;
+  reasons: string[];
+}
+
 export interface UnifiedEvidenceCase {
   id: string;
   root: string;
@@ -25,6 +39,7 @@ export interface UnifiedEvidenceCase {
   fingerprint: string;
   duplicates: number;
   duplicateCaseIds: string[];
+  replicas: UnifiedEvidenceReplica[];
   status: UnifiedEvidenceStatus;
   runner: UnifiedEvidenceRunner;
   reasons: string[];
@@ -32,7 +47,7 @@ export interface UnifiedEvidenceCase {
 }
 
 export interface UnifiedEvidencePlan {
-  schemaVersion: 1;
+  schemaVersion: 2;
   createdAt: string;
   config: {maximumCases: number; maximumPerDomain: number; minimumImpact: number};
   sources: Array<{root: string; seed: string; completedSeason: number; comparisons: number; agreements: number; differences: number; battleTraceFiles: number; battleComparisons: number; battleDifferences: number; battleEvidence: "available" | "legacy-without-whitebox" | "not-retained"}>;
@@ -40,6 +55,7 @@ export interface UnifiedEvidencePlan {
     scanned: number;
     afterImpactFilter: number;
     uniqueFingerprints: number;
+    crossSeedHypotheses: number;
     selected: number;
     executable: number;
     requiresGate: number;
@@ -71,7 +87,7 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
   for (const entry of filtered) grouped.set(entry.fingerprint, [...(grouped.get(entry.fingerprint) ?? []), entry]);
   const unique = [...grouped.values()].map(group => {
     const ranked = [...group].sort(comparePriority), representative = ranked[0];
-    return {...representative, duplicates: group.length, duplicateCaseIds: ranked.slice(1).map(entry => entry.id)};
+    return {...representative, id: representative.fingerprint, duplicates: group.length, duplicateCaseIds: ranked.slice(1).map(entry => entry.id), replicas: ranked.map(replicaFor)};
   }).sort(comparePriority);
   const domainCounts = new Map<string, number>();
   let selected = 0;
@@ -81,7 +97,7 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
     if (entry.selected) { selected += 1; domainCounts.set(entry.domain, count + 1); }
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     createdAt: new Date().toISOString(),
     config: {maximumCases, maximumPerDomain, minimumImpact},
     sources,
@@ -89,6 +105,7 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
       scanned: raw.length,
       afterImpactFilter: filtered.length,
       uniqueFingerprints: unique.length,
+      crossSeedHypotheses: unique.filter(entry => new Set(entry.replicas.map(replica => replica.sourceSeed)).size > 1).length,
       selected,
       executable: unique.filter(entry => entry.status === "executable").length,
       requiresGate: unique.filter(entry => entry.status === "requires-gate").length,
@@ -117,9 +134,11 @@ function collectBattleCases(root: string, seed: string, sourceSeason: number): {
       const impact = round(Math.abs(rationalDelta ?? 0) + Math.abs(finalDelta ?? 0) * .5);
       const classWeight = classification === "illegal-incumbent" ? 400 : classification === "rational-correction" ? 200 : classification === "reasonable-style-choice" ? 100 : 0;
       const relative = path.relative(root, file).replaceAll("\\", "/"), season = seasonFromPath(relative);
-      const fingerprint = digest(["battle", classification, comparison.incumbent, comparison.shadow, incumbent?.contributions?.slice(0, 4).map((value: any) => value.id).join(",") ?? ""].join("|"));
+      const status: UnifiedEvidenceStatus = classification === "missing-candidate" ? "archive-only" : "requires-gate";
+      const reasons = classification === "missing-candidate" ? ["incomplete-candidate-evidence"] : ["battle-requires-match-level-replay-gate"];
+      const fingerprint = digest(["battle", classification, status, choiceShape(comparison.incumbent), choiceShape(comparison.shadow), incumbent?.contributions?.slice(0, 4).map((value: any) => value.id).join(",") ?? ""].join("|"));
       const id = digest([root, relative, trace.turn, trace.playerId, comparison.incumbent, comparison.shadow].join("|"));
-      cases.push({id, root, sourceSeed: seed, sourceSeason, reviewIndex: 0, decisionId: String(decision.decisionId ?? `battle:${relative}:${trace.turn}:${trace.playerId}`), domain: "battle", actor: String(trace.personalityId ?? trace.playerId ?? "unknown"), season, classification, incumbent: String(comparison.incumbent), shadow: String(comparison.shadow), impact, priority: round(classWeight + 15 + impact + Math.max(0, season ?? 0) * .01), fingerprint, duplicates: 1, duplicateCaseIds: [], status: "requires-gate", runner: null, reasons: classification === "missing-candidate" ? ["incomplete-candidate-evidence"] : ["battle-requires-match-level-replay-gate"], selected: false});
+      cases.push({id, root, sourceSeed: seed, sourceSeason, reviewIndex: 0, decisionId: String(decision.decisionId ?? `battle:${relative}:${trace.turn}:${trace.playerId}`), domain: "battle", actor: String(trace.personalityId ?? trace.playerId ?? "unknown"), season, classification, incumbent: String(comparison.incumbent), shadow: String(comparison.shadow), impact, priority: round(classWeight + 15 + impact + Math.max(0, season ?? 0) * .01), fingerprint, duplicates: 1, duplicateCaseIds: [], replicas: [], status, runner: null, reasons, selected: false});
     }
   }
   return {files: files.length, comparisons, cases};
@@ -127,8 +146,8 @@ function collectBattleCases(root: string, seed: string, sourceSeason: number): {
 
 export function unifiedEvidenceMarkdown(plan: UnifiedEvidencePlan): string {
   const m = plan.metrics;
-  const lines = ["# 统一白箱反事实证据清单", "", `- 来源：${plan.sources.length}`, `- 扫描差异：${m.scanned}`, `- 去重后：${m.uniqueFingerprints}`, `- 入选：${m.selected}`, `- 可执行/需门禁/仅归档：${m.executable}/${m.requiresGate}/${m.archiveOnly}`, "", "| 优先级 | 领域 | 状态 | 赛季 | 经理 | 旧方案 | 白箱方案 | 重复 |", "|---:|---|---|---:|---|---|---|---:|"];
-  for (const entry of plan.cases.filter(entry => entry.selected)) lines.push(`| ${entry.priority.toFixed(2)} | ${entry.domain} | ${entry.status} | ${entry.season ?? "-"} | ${entry.actor} | ${entry.incumbent} | ${entry.shadow} | ${entry.duplicates} |`);
+  const lines = ["# 统一白箱反事实证据清单", "", `- 来源：${plan.sources.length}`, `- 扫描差异：${m.scanned}`, `- 去重后：${m.uniqueFingerprints}`, `- 跨种子假设：${m.crossSeedHypotheses}`, `- 入选：${m.selected}`, `- 可执行/需门禁/仅归档：${m.executable}/${m.requiresGate}/${m.archiveOnly}`, "", "| 优先级 | 领域 | 状态 | 赛季 | 经理 | 旧方案 | 白箱方案 | 副本/种子 |", "|---:|---|---|---:|---|---|---|---:|"];
+  for (const entry of plan.cases.filter(entry => entry.selected)) lines.push(`| ${entry.priority.toFixed(2)} | ${entry.domain} | ${entry.status} | ${entry.season ?? "-"} | ${entry.actor} | ${entry.incumbent} | ${entry.shadow} | ${entry.replicas.length}/${new Set(entry.replicas.map(replica => replica.sourceSeed)).size} |`);
   lines.push("", "`executable` 只表示已有隔离重放器和必要门禁；不会自动改变正式联赛。运行实验仍需显式 `--run`。", "");
   return lines.join("\n");
 }
@@ -145,10 +164,12 @@ function toEvidenceCase(root: string, seed: string, sourceSeason: number, entry:
   const classWeight = entry.classification === "illegal-incumbent" ? 400 : entry.classification === "rational-correction" ? 200 : entry.classification === "reasonable-style-choice" ? 100 : 0;
   const statusWeight = status === "executable" ? 40 : status === "requires-gate" ? 15 : 0;
   const priority = round(classWeight + statusWeight + impact + Math.max(0, entry.season ?? 0) * .01);
-  const fingerprint = digest([domain, entry.classification, entry.incumbent, entry.shadow, entry.counterfactual.added.join(","), entry.counterfactual.removed.join(","), entry.counterfactual.contributionDeltas.slice(0, 4).map(value => value.id).join(",")].join("|"));
+  const fingerprint = digest([domain, entry.classification, status, reasons.join(","), choiceShape(entry.incumbent), choiceShape(entry.shadow), `added:${entry.counterfactual.added.length}`, `removed:${entry.counterfactual.removed.length}`, entry.counterfactual.contributionDeltas.slice(0, 4).map(value => value.id).join(",")].join("|"));
   const id = digest([root, entry.decisionId, entry.actor, entry.incumbent, entry.shadow, entry.source].join("|"));
-  return {id, root, sourceSeed: seed, sourceSeason, reviewIndex, decisionId: entry.decisionId, domain, actor: entry.actor, season: entry.season, classification: entry.classification, incumbent: entry.incumbent, shadow: entry.shadow, impact, priority, fingerprint, duplicates: 1, duplicateCaseIds: [], status, runner, reasons, selected: false};
+  return {id, root, sourceSeed: seed, sourceSeason, reviewIndex, decisionId: entry.decisionId, domain, actor: entry.actor, season: entry.season, classification: entry.classification, incumbent: entry.incumbent, shadow: entry.shadow, impact, priority, fingerprint, duplicates: 1, duplicateCaseIds: [], replicas: [], status, runner, reasons, selected: false};
 }
+
+function replicaFor(entry: UnifiedEvidenceCase): UnifiedEvidenceReplica { return {id: entry.id, root: entry.root, sourceSeed: entry.sourceSeed, sourceSeason: entry.sourceSeason, reviewIndex: entry.reviewIndex, decisionId: entry.decisionId, actor: entry.actor, season: entry.season, status: entry.status, runner: entry.runner, reasons: [...entry.reasons]}; }
 
 function detailedDomain(decisionId: string): string {
   if (decisionId.startsWith("lineup:")) return "lineup";
@@ -165,6 +186,7 @@ function detailedDomain(decisionId: string): string {
 function comparePriority(left: UnifiedEvidenceCase, right: UnifiedEvidenceCase): number { return right.priority - left.priority || right.impact - left.impact || left.id.localeCompare(right.id); }
 function countBy(values: string[]): Record<string, number> { const result: Record<string, number> = {}; for (const value of values) result[value] = (result[value] ?? 0) + 1; return Object.fromEntries(Object.entries(result).sort(([a], [b]) => a.localeCompare(b))); }
 function digest(value: string): string { return crypto.createHash("sha256").update(value).digest("hex").slice(0, 20); }
+function choiceShape(value: string): string { if (value === "none" || value === "release-all" || value === "hold" || value === "replace") return value; if (/^move\s/i.test(value)) return value.includes("terastallize") ? "move:tera" : "move"; if (/^switch\s/i.test(value)) return "switch"; const members = value.split("+").filter(Boolean); return `members:${members.length}`; }
 function findNamedFiles(directory: string, name: string): string[] { const files: string[] = []; if (!fs.existsSync(directory)) return files; for (const entry of fs.readdirSync(directory, {withFileTypes: true})) { const target = path.join(directory, entry.name); if (entry.isDirectory()) files.push(...findNamedFiles(target, name)); else if (entry.name === name) files.push(target); } return files; }
 function seasonFromPath(value: string): number | null { const match = value.match(/(?:^|\/)season-(\d+)(?:\/|$)/); return match ? Number(match[1]) : null; }
 function numericDelta(before: unknown, after: unknown): number | null { return typeof before === "number" && Number.isFinite(before) && typeof after === "number" && Number.isFinite(after) ? round(after - before) : null; }
