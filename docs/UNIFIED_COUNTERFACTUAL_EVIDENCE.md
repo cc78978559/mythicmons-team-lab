@@ -59,7 +59,29 @@ npm run counterfactual:whitebox-battle -- `
 
 It accepts only a white-box disagreement that passes the battle assist gate: a minimum rational gain, bounded final-score regression, and bounded combined downside/worst-case regression. It first proves that the incumbent battle reproduces the complete retained decision trace, then changes exactly one legal, reasonable candidate and proves that the branch prefix is identical. A missing capsule, hash mismatch, AI-version drift, target drift, or gate rejection stops the experiment. Ordinary league behavior remains unchanged.
 
-Battle hypotheses are separated by the active species matchup and action family; unrelated move-to-switch situations are not pooled merely because their command shapes look alike. Aggregation scores only win/draw/loss from the acting side's perspective. Turn count is audit context, never a reward. Formal activation review requires 30 paired battles, 10 independent seeds, at least 10 outcome-changing pairs, and a one-sided exact binomial result at or below `.10`. Neutral-heavy evidence therefore cannot become a positive result by sample count alone; a formal-size batch with zero changed outcomes stops as a no-benefit hypothesis instead of consuming samples indefinitely.
+Battle hypotheses are separated by the active species matchup and action family; unrelated move-to-switch situations are not pooled merely because their command shapes look alike. Aggregation scores only win/draw/loss from the acting side's perspective. Turn count is audit context, never a reward. Formal activation review requires 30 paired battles, 10 independent seeds, at least 10 outcome-changing pairs, at least 5 seed clusters with a directional mean effect, and a one-sided exact binomial result at or below `.10`. The binomial test operates on seed-cluster directions rather than individual battles, so several correlated battles from one seed cannot manufacture significance. A formal-size batch with zero changed outcomes stops as a no-benefit hypothesis instead of consuming samples indefinitely.
+
+The targeted local sampler selects the replayable battle hypothesis with the broadest independent-seed coverage, unless `--hypothesis` pins one. It schedules one replica from every seed before taking a second replica from any seed, is resumable, and stops on disk limits, launch limits, terminal evidence, or a failed replay. Planning is the default and launches no battles:
+
+```powershell
+npm run counterfactual:whitebox-battle-sample -- `
+  --inputs output/shadow-a,output/shadow-b `
+  --out output/battle-sampler
+```
+
+Run a bounded local batch explicitly:
+
+```powershell
+npm run counterfactual:whitebox-battle-sample -- `
+  --inputs output/shadow-a,output/shadow-b `
+  --out output/battle-sampler `
+  --run `
+  --max-launches 10 `
+  --target-samples 30 `
+  --minimum-seeds 10 `
+  --max-samples 90 `
+  --max-per-seed 9
+```
 
 This is the first unified layer. It does not weaken existing domain-specific gates.
 The unified runner executes gate-approved lineup replicas and exact battle replicas through separate isolated routes. Battle branches retain only their two games and summary rather than using dynasty-directory compaction. Their multi-sample results use the battle-specific paired aggregate above. Learning, memory, and evolution interventions remain unsupported.

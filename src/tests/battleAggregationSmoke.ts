@@ -20,6 +20,8 @@ const negative = positive.map((entry, index) => sample(index, entry.whitebox.win
 assert.equal(aggregateBattleCounterfactuals(negative).promotion, "reject-hypothesis");
 const neutral = Array.from({length: 30}, (_, index) => sample(index, "Team A", "Team A"));
 assert.equal(aggregateBattleCounterfactuals(neutral).promotion, "reject-hypothesis");
+const clustered = [...Array.from({length:20},(_,index)=>({...sample(index,"Team B","Team A"),seed:"hot-seed"})),...Array.from({length:9},(_,index)=>({...sample(index+20,"Team A","Team B"),seed:`cold-${index}`})),{...sample(29,"Team A","Team A"),seed:"hot-seed"}];
+const clusteredAggregate=aggregateBattleCounterfactuals(clustered);assert.equal(clusteredAggregate.metrics.better,20);assert.equal(clusteredAggregate.metrics.betterSeeds,1);assert.equal(clusteredAggregate.metrics.worseSeeds,9);assert.equal(clusteredAggregate.promotion,"reject-hypothesis");
 assert.equal(aggregateBattleCounterfactuals([sample(0, "Team B", "Team A", false)], {minimumSamples: 3, minimumSeeds: 2, minimumDecisivePairs: 2}).promotion, "blocked");
 
 console.log("Battle counterfactual aggregation smoke test passed");
