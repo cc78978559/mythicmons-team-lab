@@ -174,6 +174,9 @@ try {
   assert(entrantsDocument.academies.every((academy: any) => academy.revision === 0));
   assert(entrantsDocument.academies.every((academy: any) => academy.treasury === 26 && Math.abs(Object.values(academy.allocations).reduce((sum: number, value: any) => sum + value, 0) - 1) < 1e-9));
   assert.equal(entrantsDocument.contracts.payrollOutflow, 24);
+  assert.equal(entrantsDocument.policy.academyEconomy.grantLoadPercent, 0);
+  assert.equal(entrantsDocument.policy.academyEconomy.grantDebtPercent, 0);
+  assert.equal(entrantsDocument.policy.academyEconomy.payrollReservePercent, 0);
   assert.equal(entrantsDocument.contracts.arrears, 0);
   assert(Math.abs(entrantsDocument.contracts.conservationError) < 1e-9);
   assert(entrantsDocument.contracts.contracts.every((contract: any) => contract.status === "paid" && contract.paid === 4));

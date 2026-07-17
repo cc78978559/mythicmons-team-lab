@@ -79,6 +79,8 @@ npm run release:development-ai -- `
   --multiseed output/development-ecology-multiseed-v1 `
   --populations output/development-ecology-populations-v1 `
   --calibration output/development-ecology-calibration-v1 `
+  --scale-30 output/development-ecology-30-reserve100-v1 `
+  --scale-30-recovery output/development-ecology-30-reserve100-recovery-v1 `
   --out output/development-ai-release-v1 `
   --force
 ```

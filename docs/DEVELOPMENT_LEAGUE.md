@@ -53,6 +53,10 @@ Compact retention keeps the first, middle, and final cycle plus aggregate JSON a
 
 For bounded economic parameter comparison and the current experimental recommendation, see `docs/DEVELOPMENT_ECOLOGY_CALIBRATION.md` and run `npm run calibrate:development-league`.
 
+The production V12 major league defaults to 30 managers. The six-manager commands above are deliberately cheap ecology-validation profiles, not the formal league capacity. For scaled validation, set `--capacity 30 --parent-limit 30`; scale the six-academy grant pool of 105 linearly to 525, and explicitly choose promotion, elimination, and market-transaction limits appropriate for the larger pyramid.
+
+The measured production-scale profile and its debt/recovery comparison are documented in `docs/DEVELOPMENT_ECOLOGY_30.md`.
+
 ## Run
 
 ```powershell
@@ -117,6 +121,12 @@ Each cycle must use a new output directory. `--previous` is read-only. If `--cap
 `--academy-evolution-percent` defaults to 10 and is bounded to 0–50. Alumni outcomes produce a signed performance score from competitive status and rank. Facility quality changes by at most 20% of the configured rate per cohort; patience and experimentation have still smaller limits. A positive alumnus may move the compact culture template by at most 25% of the configured rate, further scaled by performance. Setting the rate to zero preserves outcome evidence while freezing organization values.
 
 Academies begin with 30 budget units. The calibrated default fixed grant pool is 105 units per cohort and is split with weights from `0.5` to `1.5` according to prior alumni performance, so one academy's larger share necessarily reduces another's. Positive alumni performance can add up to 10 organization-revenue units. Each academy may spend at most 30 units per cohort. Allocations always sum to one, spending subaccounts sum to total spend, and every output enforces `opening budget + grant + revenue - spend = closing budget`. With no available spend, facility, scouting, culture, patience, and experimentation remain unchanged.
+
+`--academy-grant-load-percent` adds a bounded grant weight for every affiliated manager beyond the first. It defaults to zero, preserving the calibrated six-academy profile. Larger league pyramids can use it as a solidarity payment for organizations carrying multiple development contracts without increasing the total grant pool.
+
+`--academy-grant-debt-percent` adds a reactive recovery weight based on the prior cycle's verified salary-guarantee debt, normalized by the market base salary. It also defaults to zero. The weight redistributes the existing fixed pool and does not create money; debt settlement and conservation remain separately audited.
+
+`--academy-payroll-reserve-percent` protects a percentage of prior guaranteed debt plus the current-cycle salary of continuing contracted managers before facilities and scouting spend is calculated. It defaults to zero for backward compatibility. At 100%, existing contractual payroll is senior to discretionary academy development spending.
 
 Only organizations selected into the major-parent pool receive development academies. A larger source league therefore cannot create inactive academies that collect grants without parenting, employing, or developing a manager.
 
