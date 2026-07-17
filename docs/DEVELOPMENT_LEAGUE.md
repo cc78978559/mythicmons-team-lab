@@ -154,7 +154,30 @@ Important outputs:
 - `promotion-package.json` plus `promotion-package.json.gz`: verified payload metadata and the complete promotable AI personality.
 - `development-report.md`: compact human-readable standings and status.
 
-## Explicit top-league promotion
+## In-place top-league promotion (recommended)
+
+At a clean audited season boundary, the production path automatically relegates the bottom `N` managers and assigns the top `N` verified development candidates in one atomic transaction. It preserves the dynasty directory, season numbering, assets, contracts, cash, dead money, market history, money supply, all completed-season evidence, and every non-relegated manager. The incoming manager keeps its development-league personality, learned memory, strategy program, and lineage, but starts a new major-league personal career with zero titles, points, and top-league seasons. Its punctuated-evolution pressure starts at zero rather than inheriting the outgoing manager's pressure.
+
+```powershell
+npm run promote-development-in-place -- `
+  --major-source output/draft-league-v12 `
+  --promotion output/development-league/promotion-package.json `
+  --auto-bottom 3 `
+  --transaction-id after-season-09
+```
+
+The command requires a matching clean `audit-summary.json`, verifies the compressed promotion-package hash, rejects a live `.run.lock`, stores a compressed exact pre-transaction state and audit under `promotion-transactions/<id>/`, then atomically replaces `dynasty-state.json`. Explicit retirement or exceptional vacancies remain available with `--replacements manager-05,manager-06 --candidate-indices 1,2 --reason retirement`.
+
+Before another season has changed the state, the exact transaction can be rolled back:
+
+```powershell
+npm run promote-development-in-place -- `
+  --rollback output/draft-league-v12/promotion-transactions/after-season-09/transaction.json
+```
+
+Rollback is refused unless the current state hash still equals the committed post-promotion hash. After promotion, resume the same dynasty normally with the next internal season number. If the runtime source changed since the checkpoint, authorize that source transition once with `V12_ALLOW_CODE_UPGRADE=true`.
+
+## New-journey promotion (legacy/experimental)
 
 A promoted manager can only enter through an explicitly authorized retirement or relegation vacancy. This starts a new competitive journey: learned personalities and lineages are preserved, while contracts, assets, cash, titles, points, and season records reset.
 
@@ -172,4 +195,4 @@ The source major league remains read-only. The command verifies the promotion-pa
 
 ## Current boundary
 
-The current version supports one development tier, any number of explicitly chained cohorts, bounded multi-generation ancestry, founder-share control, depth-bounded kinship exclusion, parameter/strategy-based personality similarity, organization-specific academy nurture, evolution, budgets, manager consent, transaction salary negotiation, recurring payroll, contract expiry, renewal, deterministic arbitration, cross-cycle arrears guarantees, debt repayment, release, academy financial-health ratings, recovery-duration tracking, leadership allocation intervention, emergency sales, spending controls, acquisition embargoes and trusteeship, maturity, fertility windows, and deterministic retirement. It does not yet create separate regional affiliate rosters, trade academy staff, negotiate multi-party deals, guarantee unearned future salary after release, replace the underlying academy personality under trusteeship, resume the old top-league economy in place, or support expansion slots. Promotion begins a new competitive journey so the prototype cannot mutate an existing production dynasty in place.
+The current version supports one development tier, any number of explicitly chained cohorts, bounded multi-generation ancestry, founder-share control, depth-bounded kinship exclusion, parameter/strategy-based personality similarity, organization-specific academy nurture, evolution, budgets, manager consent, transaction salary negotiation, recurring payroll, contract expiry, renewal, deterministic arbitration, cross-cycle arrears guarantees, debt repayment, release, academy financial-health ratings, recovery-duration tracking, leadership allocation intervention, emergency sales, spending controls, acquisition embargoes and trusteeship, maturity, fertility windows, deterministic retirement, and auditable in-place top-league promotion. It does not yet create separate regional affiliate rosters, trade academy staff, negotiate multi-party deals, guarantee unearned future salary after release, replace the underlying academy personality under trusteeship, or support expansion slots.
