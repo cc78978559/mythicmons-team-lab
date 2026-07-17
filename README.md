@@ -2,6 +2,8 @@
 
 Phase 1 is a thin experiment harness around Pokémon Showdown. It does not reimplement battle mechanics.
 
+Current production capabilities, unfinished AI domains, activation gates, and the next implementation sequence are tracked in [`docs/CURRENT_STATUS_AND_ROADMAP.md`](docs/CURRENT_STATUS_AND_ROADMAP.md).
+
 ## Commands
 
 Run one fixed Team A vs Team B battle:
