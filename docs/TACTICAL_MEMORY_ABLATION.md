@@ -111,3 +111,21 @@ npm run sample:tactical-memory-ablation -- `
 The sampler excludes capsules without the requested shadow, non-cumulative incumbents, unchanged acting-side models, incomplete traces, active battle assists, or incompatible AI versions. The incumbent must reproduce the retained decision trace exactly. The candidate branch then replaces only the acting side's model; teams, opposing AI, active opponent model on the other side, tactical profiles, battle rules, and Showdown seed remain fixed. Candidate identity includes the shadow policy, and manifests lock that policy across resume.
 
 The four-season workflow probe produced four distinct candidates across two seeds. Three bounded paired replays completed with exact source verification and no failures. They had no decision or outcome divergence, which validates plumbing only and is not competitive evidence. Formal review still requires independently seeded journeys and the normal decisive-pair gate.
+
+## Seasonal-decay holdout result
+
+Three previously unused nine-season journeys (`memory-decay-holdout-a` through `-c`) collected both policies from season one while the active league policy remained `cumulative` with the validated `.15` confidence floor. Before any replay, the sampler locked the normal formal thresholds and a catalog of 121 acting-side models that actually differed, covering 53 exact Showdown seeds.
+
+The complete source-pool census produced:
+
+- samples/seeds: 121/53;
+- exact source verification failures: 0;
+- decision divergences: 12/121;
+- seasonal-decay better/neutral/worse: 0/117/4;
+- decisive pairs: 4;
+- better/neutral/worse seed clusters: 0/51/2;
+- mean candidate score delta: -0.0331;
+- seed-cluster improvement/regression p: 1.0000/0.2500;
+- conclusion: `insufficient-evidence` because only four pairs and two seed clusters changed outcomes.
+
+The observed direction is negative, including two regressions among 16 high-confidence samples, but it does not meet the predeclared directional evidence gate. Seasonal decay is therefore not activated, and `cumulative` remains the production behavior policy. The dual shadow is retained for future independent evidence; repeating these same capsules or relaxing the gate would not constitute confirmation.
