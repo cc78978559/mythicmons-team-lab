@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import {cloneManagerProfile, emptyGenome, materializeManagerProfile, type DraftRole, type ManagerConfigurationGenome, type ManagerEconomics, type ManagerOrganizationGenome, type ManagerProfile, type ManagerSystemGenome, type ManagerTraits} from "./managerProfiles";
 import {crossoverStrategyPrograms, mutateStrategyProgram} from "./strategyProgram";
+import {buildWhiteBoxEvolutionTrace, type WhiteBoxEvolutionTrace} from "../ai/whiteBox/evolution";
 
 export interface LineageIdentity {
   lineageId: string;
@@ -43,6 +44,15 @@ export interface EvolutionDescendant {
   secondParentSlotId?: string;
   ecologicalFitness: number;
   protectedCopy: boolean;
+  whiteBoxEvolutionTrace: WhiteBoxEvolutionTrace;
+}
+
+export interface ManagerOffspringInput {
+  parent: EvolutionCompetitor;
+  slotProfile: ManagerProfile;
+  birthSeason: number;
+  seed: string;
+  secondParent?: EvolutionCompetitor;
 }
 
 interface Species {id: string; centroid: number[]; members: EvolutionCompetitor[]}
@@ -58,6 +68,40 @@ const PROGRAM_INPUTS = ["baseline", "strength", "price", "roleBreadth", "typeOve
 
 export function founderLineage(managerId: string): LineageIdentity {
   return {lineageId: `founder:${managerId}`, generation: 0, parentLineageIds: [], founderId: managerId, birthSeason: 0, niche: "unobserved", mutations: []};
+}
+
+export function createManagerOffspring(input: ManagerOffspringInput): EvolutionDescendant {
+  const {parent, secondParent, slotProfile, birthSeason, seed} = input;
+  const child = inheritProfile(parent.profile, secondParent?.profile, slotProfile, `${seed}:inherit`);
+  const inherited = cloneManagerProfile(child);
+  const mutations = mutateProfile(child, `${seed}:mutation`);
+  const parentLineageIds = [parent.lineage.lineageId, ...(secondParent ? [secondParent.lineage.lineageId] : [])];
+  const lineageId = `dev-s${birthSeason}:${slotProfile.id}:${digest(`${seed}:${parentLineageIds.join("+")}:${mutations.join(",")}`).slice(0, 12)}`;
+  const whiteBoxEvolutionTrace = buildWhiteBoxEvolutionTrace({
+    eventId: `development-birth:${birthSeason}:${slotProfile.id}`,
+    previousLineageId: parent.lineage.lineageId,
+    parentLineageId: parent.lineage.lineageId,
+    secondParentLineageId: secondParent?.lineage.lineageId,
+    protectedCopy: false,
+    ecologicalFitness: .5,
+    crossoverSeed: `${seed}:crossover`,
+    mutationSeed: `${seed}:mutation`,
+    primaryParent: parent.profile,
+    inherited,
+    mutated: child,
+    declaredMutations: mutations,
+    programEvolution: /^(1|true|yes)$/i.test(process.env.V4_PROGRAM_EVOLUTION || "false"),
+  });
+  return {
+    slotId: slotProfile.id,
+    profile: materializeManagerProfile(child),
+    lineage: {lineageId, generation: Math.max(parent.lineage.generation, secondParent?.lineage.generation ?? 0) + 1, parentLineageIds, founderId: parent.lineage.founderId, birthSeason, niche: `development:${parent.lineage.niche}`, mutations},
+    parentSlotId: parent.slotId,
+    secondParentSlotId: secondParent?.slotId,
+    ecologicalFitness: .5,
+    protectedCopy: false,
+    whiteBoxEvolutionTrace,
+  };
 }
 
 export function clusterBehaviorSpecies(competitors: readonly EvolutionCompetitor[], threshold = .34): Species[] {
@@ -76,8 +120,16 @@ export function clusterBehaviorSpecies(competitors: readonly EvolutionCompetitor
   return species;
 }
 
-export function evolveManagerPopulation(competitors: readonly EvolutionCompetitor[], season: number, seed: string, historical: readonly EvolutionCompetitor[] = []): EvolutionDescendant[] {
+export interface EvolutionPopulationOptions {
+  targetSlotIds?: readonly string[];
+  protectedCopies?: boolean;
+}
+
+export function evolveManagerPopulation(competitors: readonly EvolutionCompetitor[], season: number, seed: string, historical: readonly EvolutionCompetitor[] = [], options: EvolutionPopulationOptions = {}): EvolutionDescendant[] {
   if (!competitors.length) return [];
+  const targetSlotIds = options.targetSlotIds ? new Set(options.targetSlotIds) : undefined;
+  const slots = [...competitors].filter(entry => !targetSlotIds || targetSlotIds.has(entry.slotId)).sort((a, b) => a.slotId.localeCompare(b.slotId));
+  if (!slots.length) return [];
   const activeLineages = new Set(competitors.map(entry => entry.lineage.lineageId));
   const population = [...competitors, ...historical.filter(entry => !activeLineages.has(entry.lineage.lineageId))];
   const maxPoints = Math.max(1, ...population.map(entry => entry.points));
@@ -97,26 +149,41 @@ export function evolveManagerPopulation(competitors: readonly EvolutionCompetito
     protectedCopy: true,
   }));
   for (const parent of competitors.filter(entry => entry.champion || entry.rank === 1)) if (!protectedParents.some(selection => selection.parent.lineage.lineageId === parent.lineage.lineageId)) protectedParents.push({parent, protectedCopy: true});
-  const selections: Array<{parent: EvolutionCompetitor; protectedCopy: boolean}> = protectedParents.sort((a, b) => Number(Boolean(b.parent.champion)) - Number(Boolean(a.parent.champion)) || fitness.get(b.parent.slotId)! - fitness.get(a.parent.slotId)!).slice(0, competitors.length);
+  const selections: Array<{parent: EvolutionCompetitor; protectedCopy: boolean}> = options.protectedCopies === false ? [] : protectedParents.sort((a, b) => Number(Boolean(b.parent.champion)) - Number(Boolean(a.parent.champion)) || fitness.get(b.parent.slotId)! - fitness.get(a.parent.slotId)!).slice(0, slots.length);
   const offspringCap = Math.max(2, Math.ceil(competitors.length * .1));
   const counts = new Map<string, number>();
   for (const selection of selections) counts.set(selection.parent.slotId, 1);
-  while (selections.length < competitors.length) {
+  while (selections.length < slots.length) {
     const eligible = population.filter(entry => (counts.get(entry.slotId) ?? 0) < offspringCap);
     const parent = weightedPick(eligible.length ? eligible : population, entry => fitness.get(entry.slotId)!, `${seed}:${season}:parent:${selections.length}`);
     selections.push({parent, protectedCopy: false});
     counts.set(parent.slotId, (counts.get(parent.slotId) ?? 0) + 1);
   }
 
-  const slots = [...competitors].sort((a, b) => a.slotId.localeCompare(b.slotId));
   return slots.map((slot, index) => {
     const {parent, protectedCopy} = selections[index];
     const group = speciesBySlot.get(parent.slotId)!;
     const crossover = !protectedCopy && unit(`${seed}:${season}:cross:${slot.slotId}`) < .12;
     const second = crossover ? weightedPick(population.filter(entry => entry.lineage.lineageId !== parent.lineage.lineageId), entry => fitness.get(entry.slotId)!, `${seed}:${season}:mate:${slot.slotId}`) : undefined;
     const child = inheritProfile(parent.profile, second?.profile, slot.profile, `${seed}:${season}:child:${slot.slotId}`);
+    const inherited = cloneManagerProfile(child);
     const mutations = protectedCopy ? ["protected-elite-copy"] : mutateProfile(child, `${seed}:${season}:mutation:${slot.slotId}`);
     const parentIds = [parent.lineage.lineageId, ...(second ? [second.lineage.lineageId] : [])];
+    const whiteBoxEvolutionTrace = buildWhiteBoxEvolutionTrace({
+      eventId: `evolution:${season}:${slot.slotId}`,
+      previousLineageId: slot.lineage.lineageId,
+      parentLineageId: parent.lineage.lineageId,
+      secondParentLineageId: second?.lineage.lineageId,
+      protectedCopy,
+      ecologicalFitness: fitness.get(parent.slotId)!,
+      crossoverSeed: `${seed}:${season}:cross:${slot.slotId}`,
+      mutationSeed: `${seed}:${season}:mutation:${slot.slotId}`,
+      primaryParent: parent.profile,
+      inherited,
+      mutated: child,
+      declaredMutations: mutations,
+      programEvolution: /^(1|true|yes)$/i.test(process.env.V4_PROGRAM_EVOLUTION || "false"),
+    });
     return {
       slotId: slot.slotId,
       profile: materializeManagerProfile(child),
@@ -133,6 +200,7 @@ export function evolveManagerPopulation(competitors: readonly EvolutionCompetito
       secondParentSlotId: second?.slotId,
       ecologicalFitness: fitness.get(parent.slotId)!,
       protectedCopy,
+      whiteBoxEvolutionTrace,
     };
   });
 }

@@ -1,0 +1,7 @@
+import assert from "node:assert/strict";
+import {evaluateWhiteBoxCounterfactualBatch,whiteBoxCounterfactualBatchMarkdown,type WhiteBoxCounterfactualSample} from "../ai/whiteBox/counterfactualBatch";
+const sample=(seed:string,points:number,prefixVerified=true):WhiteBoxCounterfactualSample=>({seed,caseId:`case-${seed}`,prefixVerified,comparison:{managerId:"m",interventionSeason:2,finalSeason:3,incumbent:{id:"m",cash:10,contracts:2,payroll:20,titles:0,totalPoints:4,finalRank:3,finalPoints:2,finalChampion:false},whitebox:{id:"m",cash:12,contracts:1,payroll:15,titles:0,totalPoints:4+points,finalRank:points>0?2:points<0?4:3,finalPoints:2+points,finalChampion:false},delta:{cash:2,contracts:-1,payroll:-5,titles:0,totalPoints:points,finalRank:points>0?-1:points<0?1:0,finalPoints:points},champions:{incumbent:["x"],whitebox:["x"]}}});
+const insufficient=evaluateWhiteBoxCounterfactualBatch([sample("a",1),sample("b",-1)]);assert.equal(insufficient.promotion,"insufficient-evidence");assert.equal(insufficient.metrics.competitiveWinRate,.5);assert.match(whiteBoxCounterfactualBatchMarkdown(insufficient),/跨种子反事实聚合/);
+const rejected=evaluateWhiteBoxCounterfactualBatch(Array.from({length:10},(_,index)=>sample(`s${index}`,-1)));assert.equal(rejected.promotion,"reject-current-rule");
+const blocked=evaluateWhiteBoxCounterfactualBatch([sample("a",1,false),sample("b",1)],2);assert.equal(blocked.promotion,"blocked");
+console.log("White-box counterfactual batch smoke test passed");

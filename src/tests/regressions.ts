@@ -231,6 +231,10 @@ function testDynastyKeeperRulesProtectFutureBudgets(): void {
   const roster = dynastyRoster();
   const result = selectKeepers(profile, roster, [{family: "family-0", pokemon: "Mon 0", salary: 50, years: 2, lastSeasonAppearances: 20, lastSeasonKos: 20}]);
   assert.ok(result.keepers.length <= 3);
+  assert.equal(result.whiteBoxCounterfactual.executable, true, "Keeper shadow winner must retain an executable contract payload");
+  assert.equal(result.whiteBoxCounterfactual.selected, result.whiteBoxShadow.comparison.shadow);
+  assert.equal(result.whiteBoxShadow.policyVersion, "keeper-v2");
+  assert.equal(result.whiteBoxShadow.parameters?.["keeper.replacementfriction"], .35);
   assert.ok(result.keepers.reduce((sum, keeper) => sum + keeper.salary, 0) <= 70);
   const retainedVeteran = result.keepers.find(keeper => keeper.family === "family-0");
   if (retainedVeteran) assert.equal(retainedVeteran.salary, 65, "Third-year veteran salary should include the veteran tax");
@@ -308,6 +312,8 @@ function testKeeperContractsTrackAssetCopies(): void {
     assert.equal(result.keepers[0].assetId, "exeggutor:elite-ordinary:2", "A same-species copy must retain its own asset identity");
     assert.notEqual(result.keepers[0].salary, 40, "A different copy must not inherit another asset's salary");
     assert.equal(result.released.length, 1, "An unselected same-species copy must be released independently");
+    const uniqueFamily = selectKeepers(profile, [copy("exeggutor:elite-ordinary:2", 8), copy("exeggutor:elite-ordinary:3", 7)], [oldCopy], 2);
+    assert.equal(uniqueFamily.keepers.length, 1, "A manager must not retain two asset copies from the same family");
   } finally {
     restoreEnv("V4_CONTRACT_MODEL", previous.model);
     restoreEnv("V4_MAX_KEEPERS", previous.keepers);
@@ -590,7 +596,7 @@ function testCompositeItemsStackSharedStatModifiers(): void {
 }
 
 function testTechnician70Threshold(): void {
-  const source = JSON.parse(fs.readFileSync("../audit-g4-kricketune/g4-kricketune.json", "utf8")) as SandboxTeam;
+  const source = JSON.parse(fs.readFileSync(path.join("data", "draft", "g4-six-team.json"), "utf8")) as SandboxTeam;
   const compiled = compileSandboxTeam(source);
   const tables = loadGeneratedExports(compiled.files["abilities.js"]);
   const ability = tables.Abilities["technician70"] as {
@@ -1685,7 +1691,7 @@ async function testAiReadsCompositeAbilityMetadata(): Promise<void> {
 }
 
 async function testMegaSolPersonalSunMechanics(): Promise<void> {
-  const source = JSON.parse(fs.readFileSync("../audit-g2-meganium/g2-meganium.json", "utf8")) as SandboxTeam;
+  const source = JSON.parse(fs.readFileSync(path.join("data", "draft", "g2-six-team.json"), "utf8")) as SandboxTeam;
   const compiled = compileSandboxTeam({
     ...source,
     name: "Mega Sol Personal Sun Probe",

@@ -2,6 +2,11 @@ import type {DecisionRecord} from "./decisionLedger";
 import {classifyEmergentStyle, clampTrait, type DraftRole, type ManagerDevelopment, type ManagerProfile, type ManagerTraits, type MatchupMemory} from "./managerProfiles";
 import {advanceContract, arbitrationSalary, initialContract, payrollResult, type AssetClass, type SportsContract} from "./sportsMarket";
 import type {MemberConfigurationEvidence} from "./configurationTelemetry";
+import {chooseK} from "./lineups";
+import {evaluateWhiteBoxDecision, summarizeWhiteBoxShadow, type WhiteBoxShadowSummary} from "../ai/whiteBox/decision";
+import {buildKeeperPortfolioCandidate, keeperPortfolioId, whiteBoxKeeperMemberTotal, type WhiteBoxKeeperMember} from "../ai/whiteBox/keeper";
+import {KEEPER_SHADOW_PARAMETERS} from "../ai/whiteBox/parameters";
+import {evaluateWhiteBoxLearning, type WhiteBoxLearningTrace} from "../ai/whiteBox/learning";
 
 export interface DynastyRosterMember {
   assetId?: string;
@@ -75,9 +80,21 @@ export interface SeasonReview {
   emergentStyle: {label: string; confidence: number};
   keepers: KeeperContract[];
   released: Array<{family: string; pokemon: string; reason: string}>;
+  keeperWhiteBoxShadow: WhiteBoxShadowSummary;
+  keeperWhiteBoxCounterfactual: KeeperWhiteBoxCounterfactual;
+  keeperPolicy: "incumbent" | "whitebox-experiment";
+  learningWhiteBoxTrace: WhiteBoxLearningTrace;
+}
+
+export interface KeeperWhiteBoxCounterfactual {
+  selected: string | null;
+  executable: boolean;
+  keepers: KeeperContract[];
+  released: Array<{family: string; pokemon: string; reason: string}>;
 }
 
 const TRAITS = ["risk", "stars", "synergy", "counter", "value", "flexibility"] as const;
+const keeperShadowValues = KEEPER_SHADOW_PARAMETERS.snapshot().values;
 
 export function reviewManagerSeason(
   _base: ManagerProfile,
@@ -88,6 +105,7 @@ export function reviewManagerSeason(
   decisions: readonly DecisionRecord[],
   previousContracts: KeeperContract[] = [],
   activeRoster: DynastyRosterMember[] = roster,
+  season = current.development.seasons + 1,
 ): SeasonReview {
   const maxPoints = Math.max(1, ...allStandings.map(entry => entry.points));
   const performance = standing.points / maxPoints;
@@ -132,6 +150,12 @@ export function reviewManagerSeason(
   evidence.risk.value = clamp01(speedEvidence);
 
   const after = {...current.traits};
+  const learningWhiteBoxTrace = evaluateWhiteBoxLearning({
+    managerId: current.id,
+    traits: current.traits,
+    development: current.development,
+    evidence: TRAITS.map(trait => ({trait, value: evidence[trait].value, reason: evidence[trait].reason})),
+  });
   const developmentAfter: ManagerDevelopment = {
     ...current.development,
     seasons: current.development.seasons + 1,
@@ -150,12 +174,23 @@ export function reviewManagerSeason(
     after[trait] = clampTrait(.5 + (mean - .5) * confidence * 1.6);
     signals.push({trait, evidence: evidence[trait].value, delta: after[trait] - current.traits[trait], reason: evidence[trait].reason});
   }
+  if (Math.abs(developmentAfter.exploration - learningWhiteBoxTrace.exploration.after) > 1e-12) throw new Error(`White-box exploration update drifted for ${current.id}`);
+  for (const trait of TRAITS) {
+    const traced = learningWhiteBoxTrace.traits.find(entry => entry.trait === trait)!;
+    const posterior = developmentAfter.strategies[trait];
+    if (Math.abs(after[trait] - traced.afterTrait) > 1e-12
+      || Math.abs(posterior.mean - traced.posteriorAfter.mean) > 1e-12
+      || Math.abs(posterior.confidence - traced.posteriorAfter.confidence) > 1e-12
+      || Math.abs(posterior.effectiveSamples - traced.posteriorAfter.effectiveSamples) > 1e-12) {
+      throw new Error(`White-box personality learning drifted for ${current.id}:${trait}`);
+    }
+  }
 
   const emergentStyle = classifyEmergentStyle({...current, traits: after, development: developmentAfter});
   developmentAfter.styleHistory.push({season: developmentAfter.seasons, ...emergentStyle});
 
-  const {keepers, released} = selectKeepers(current, activeRoster, previousContracts);
-  return {managerId: current.id, performance, signals, before: {...current.traits}, after, developmentAfter, emergentStyle, keepers, released};
+  const {keepers, released, whiteBoxShadow, whiteBoxCounterfactual, keeperPolicy} = selectKeepers(current, activeRoster, previousContracts, Number(process.env.V4_MAX_KEEPERS || 3), season);
+  return {managerId: current.id, performance, signals, before: {...current.traits}, after, developmentAfter, emergentStyle, keepers, released, keeperWhiteBoxShadow: whiteBoxShadow, keeperWhiteBoxCounterfactual: whiteBoxCounterfactual, keeperPolicy, learningWhiteBoxTrace};
 }
 
 function lineupAlternativeEvidence(managerId: string, records: DecisionRecord[], decisions: readonly DecisionRecord[]): number {
@@ -177,7 +212,8 @@ export function selectKeepers(
   roster: DynastyRosterMember[],
   previousContracts: KeeperContract[] = [],
   limit = Number(process.env.V4_MAX_KEEPERS || 3),
-): Pick<SeasonReview, "keepers" | "released"> {
+  season = currentSeasonNumber(),
+): Pick<SeasonReview, "keepers" | "released" | "keeperPolicy"> & {whiteBoxShadow: WhiteBoxShadowSummary; whiteBoxCounterfactual: KeeperWhiteBoxCounterfactual} {
   const keeperCap = Number(process.env.V4_KEEPER_CAP || 70);
   const marketArbitration = process.env.V4_CONTRACT_MODEL === "market-arbitration";
   const sportsMarket = process.env.V4_CONTRACT_MODEL === "sports-market";
@@ -203,24 +239,84 @@ export function selectKeepers(
     const continuity = (manager.traits.synergy + continuityGene) * Math.min(3, years) * .6;
     const regularSeasonContribution = member.regularSeasonKos * .18 + member.regularSeasonAppearances * .025;
     const scarcePreference = (manager.genome?.organization?.scarceConcentration ?? 0) * (member.economicClass === "unique" || member.economicClass === "limited" ? 2 : 0);
-    return {member, years, salary, lifecycle, score: regularSeasonContribution + usage * 4 + starPreference + continuity + scarcePreference - valuePenalty};
+    const usageValue = usage * 4;
+    return {member, years, salary, lifecycle, regularSeasonContribution, usageValue, starPreference, continuity, scarcePreference, valuePenalty, score: regularSeasonContribution + usageValue + starPreference + continuity + scarcePreference - valuePenalty};
   }).sort((a, b) => b.score - a.score || a.salary - b.salary);
 
   const selected: typeof ranked = [];
+  const selectedFamilies = new Set<string>();
   let committed = 0;
   for (const candidate of ranked) {
     if (selected.length >= limit) break;
+    if (selectedFamilies.has(candidate.member.family)) continue;
     if (committed + candidate.salary > keeperCap) continue;
     if (!sportsMarket && candidate.member.appearances === 0 && candidate.member.kos === 0) continue;
     selected.push(candidate);
+    selectedFamilies.add(candidate.member.family);
     committed += candidate.salary;
   }
   const memberIdentity = (member: DynastyRosterMember): string => member.assetId ?? `family:${member.family}`;
   const selectedMembers = new Set(selected.map(entry => memberIdentity(entry.member)));
+  const eligible = ranked.filter(candidate => sportsMarket || candidate.member.appearances > 0 || candidate.member.kos > 0);
+  const whiteBoxMembers = new Map(eligible.map(candidate => {
+    const member: WhiteBoxKeeperMember = {
+      id: memberIdentity(candidate.member),
+      family: candidate.member.family,
+      salary: candidate.salary,
+      regularSeasonContribution: candidate.regularSeasonContribution,
+      usageValue: candidate.usageValue,
+      starPreference: candidate.starPreference,
+      continuity: candidate.continuity,
+      scarcePreference: candidate.scarcePreference,
+      valuePenalty: candidate.valuePenalty,
+      replacementFriction: keeperShadowValues["keeper.replacementfriction"],
+      depthInsurance: keeperShadowValues["keeper.depthinsurance"],
+    };
+    const expectedWhiteBoxScore = candidate.score + (member.replacementFriction ?? 0) + (member.depthInsurance ?? 0);
+    const difference = Math.abs(whiteBoxKeeperMemberTotal(member) - expectedWhiteBoxScore);
+    if (difference > 1e-10) throw new Error(`White-box keeper decomposition drifted by ${difference} for ${member.id}`);
+    return [member.id, member] as const;
+  }));
+  const candidates = Array.from({length: Math.min(limit, eligible.length) + 1}, (_, size) => size)
+    .flatMap(size => chooseK([...whiteBoxMembers.values()], size))
+    .map(portfolio => buildKeeperPortfolioCandidate({id: keeperPortfolioId(portfolio.map(member => member.id)), members: portfolio, keeperLimit: limit, salaryCap: keeperCap}));
+  const incumbentId = keeperPortfolioId(selected.map(entry => memberIdentity(entry.member)));
+  const whiteBoxTrace = evaluateWhiteBoxDecision({
+    decisionId: `keeper:${manager.id}:season-${season}`,
+    candidates,
+    reasonableBand: keeperShadowValues["keeper.reasonableband"],
+    styleContributionLimit: keeperShadowValues["keeper.stylelimit"],
+  });
+  const toContract = (entry: typeof ranked[number]): KeeperContract => ({assetId: entry.member.assetId, family: entry.member.family, pokemon: entry.member.pokemon, salary: entry.salary, years: entry.years, lastSeasonAppearances: entry.member.appearances, lastSeasonKos: entry.member.kos, ...(entry.lifecycle ?? {})});
+  const shadowIds = new Set(whiteBoxTrace.selected === null || whiteBoxTrace.selected === "release-all" ? [] : whiteBoxTrace.selected.split("+"));
+  const shadowSelected = ranked.filter(entry => shadowIds.has(memberIdentity(entry.member)));
+  const shadowSelectedMembers = new Set(shadowSelected.map(entry => memberIdentity(entry.member)));
+  const useWhiteBox = whiteBoxKeeperPolicyEnabled(manager.id, season);
+  if (useWhiteBox && shadowSelected.length !== shadowIds.size) throw new Error(`White-box keeper experiment cannot materialize ${manager.id} season ${season}`);
+  const activeSelected = useWhiteBox ? shadowSelected : selected;
+  const activeMembers = useWhiteBox ? shadowSelectedMembers : selectedMembers;
   return {
-    keepers: selected.map(entry => ({assetId: entry.member.assetId, family: entry.member.family, pokemon: entry.member.pokemon, salary: entry.salary, years: entry.years, lastSeasonAppearances: entry.member.appearances, lastSeasonKos: entry.member.kos, ...(entry.lifecycle ?? {})})),
-    released: roster.filter(member => !selectedMembers.has(memberIdentity(member))).map(member => ({family: member.family, pokemon: member.pokemon, reason: member.appearances === 0 ? "未进入轮换" : "续约价值低于前三或薪资结构不允许"})),
+    keepers: activeSelected.map(toContract),
+    released: roster.filter(member => !activeMembers.has(memberIdentity(member))).map(member => ({family: member.family, pokemon: member.pokemon, reason: member.appearances === 0 ? "未进入轮换" : useWhiteBox ? "白箱实验未保留" : "续约价值低于前三或薪资结构不允许"})),
+    keeperPolicy: useWhiteBox ? "whitebox-experiment" : "incumbent",
+    whiteBoxShadow: {...summarizeWhiteBoxShadow(whiteBoxTrace, incumbentId, 3), policyVersion: "keeper-v2", parameters: {...keeperShadowValues}},
+    whiteBoxCounterfactual: {
+      selected: whiteBoxTrace.selected,
+      executable: shadowSelected.length === shadowIds.size,
+      keepers: shadowSelected.map(toContract),
+      released: roster.filter(member => !shadowSelectedMembers.has(memberIdentity(member))).map(member => ({family: member.family, pokemon: member.pokemon, reason: member.appearances === 0 ? "未进入轮换" : "白箱反事实未保留"})),
+    },
   };
+}
+
+function whiteBoxKeeperPolicyEnabled(managerId: string, season: number): boolean {
+  if (process.env.V4_KEEPER_POLICY !== "whitebox-experiment") return false;
+  return process.env.V4_KEEPER_POLICY_TARGET === `${managerId}@${season}`;
+}
+
+function currentSeasonNumber(): number {
+  const value = Number(process.env.V4_CURRENT_SEASON || 1);
+  return Number.isInteger(value) && value > 0 ? value : 1;
 }
 
 function nextSportsContract(teamId: string, member: DynastyRosterMember, previous: KeeperContract | undefined): SportsContract {

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
+import {DRAFT_GENERATIONS, draftGenerationSource} from "../draft/customRegistry";
 
 interface SmokeState {
   version: number;
@@ -104,7 +105,11 @@ function assertScarcityRules(seasonDir: string): void {
     if (candidates.some(candidate => candidate.scarcity === "legendary" || candidate.scarcity === "unique-custom")) assert.equal(candidates.length, 1);
     if (candidates.some(candidate => candidate.scarcity === "elite-ordinary")) assert.ok(candidates.length <= 3);
   }
-  assert.equal(pool.filter(candidate => candidate.scarcity === "unique-custom").length, 40);
+  const registeredCustoms = DRAFT_GENERATIONS.reduce((total, generation) => {
+    const registry = JSON.parse(fs.readFileSync(draftGenerationSource(generation), "utf8")) as {members: unknown[]};
+    return total + registry.members.length;
+  }, 0);
+  assert.equal(pool.filter(candidate => candidate.scarcity === "unique-custom").length, registeredCustoms);
   const rosterRoot = path.join(seasonDir, "rosters");
   for (const manager of fs.readdirSync(rosterRoot)) {
     const roster = JSON.parse(fs.readFileSync(path.join(rosterRoot, manager, "roster.json"), "utf8")) as {members: Array<{method: string; tier: string}>};
@@ -141,6 +146,7 @@ function runDynasty(resume: boolean, options: {managerLimit?: number; expandFrom
       V4_RESUME: resume ? "true" : "false",
       V4_EXPAND_FROM_V5: options.expandFromV5 ? "true" : "false",
       V4_REGULAR_ROUNDS: "5",
+      V4_EVOLUTION_MODE: "generational",
     },
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,

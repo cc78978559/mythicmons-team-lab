@@ -53,10 +53,15 @@ assert.equal(brief.season, 1);
 assert(tokenBudget.briefCharacters <= 8_000);
 assert(tokenBudget.estimatedStandardReportTotal <= 3_000);
 const signature = auditV12Signature(output, 1);
-const rosterFile = findFiles(path.join(output, "season-01", "rosters"), "roster.json")[0];
-const originalTime = fs.statSync(rosterFile).mtimeMs;
-fs.utimesSync(rosterFile, new Date(), new Date(originalTime + 2000));
-assert.notEqual(auditV12Signature(output, 1), signature);
+  const rosterFile = findFiles(path.join(output, "season-01", "rosters"), "roster.json")[0];
+  const originalTime = fs.statSync(rosterFile).mtimeMs;
+  fs.utimesSync(rosterFile, new Date(), new Date(originalTime + 2000));
+  assert.equal(auditV12Signature(output, 1), signature, "Audit signature must ignore metadata-only timestamp drift");
+  const originalRoster = fs.readFileSync(rosterFile);
+  fs.appendFileSync(rosterFile, "\n");
+  assert.notEqual(auditV12Signature(output, 1), signature, "Audit signature must detect content changes");
+  fs.writeFileSync(rosterFile, originalRoster);
+  assert.equal(auditV12Signature(output, 1), signature, "Restoring exact content must restore the signature");
 const pinnedHash = read<any>(path.join(output, "dynasty-state.json")).registry.hash;
 const sourceFile = path.join(registrySource, "g1-six-team.json"), sourceValue = JSON.parse(fs.readFileSync(sourceFile, "utf8"));
 fs.writeFileSync(sourceFile, `${JSON.stringify(sourceValue)}\n`, "utf8");
@@ -72,7 +77,7 @@ console.log("V12 self-programming league smoke test passed");
 function runSeason(resume: boolean, seasons: string, adopt = false): void {
   const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "draftLeagueV12.ts")], {
     cwd: root,
-    env: {...process.env, V12_OUT: output, V12_SEASONS: seasons, V12_RESUME: String(resume), V12_ADOPT_REGISTRY: String(adopt), V12_REGISTRY_SOURCE: registrySource, V12_REGISTRY_REVISION: adopt ? "adopted-smoke" : "initial-smoke", V12_MANAGER_LIMIT: "6", V12_PAIRS: "1", V12_POOL_SIZE: "100", V12_AUCTION_LOTS: "10", V12_REGULAR_ROUNDS: "2", V12_MAX_TURNS: "80", V12_MIN_ROSTER: "6", V12_MAX_ROSTER: "6", V12_SEED: "automated-v12-smoke"},
+    env: {...process.env, V12_OUT: output, V12_SEASONS: seasons, V12_RESUME: String(resume), V12_ADOPT_REGISTRY: String(adopt), V12_REGISTRY_SOURCE: registrySource, V12_REGISTRY_REVISION: adopt ? "adopted-smoke" : "initial-smoke", V12_MANAGER_LIMIT: "6", V12_PAIRS: "1", V12_POOL_SIZE: "100", V12_AUCTION_LOTS: "10", V12_REGULAR_ROUNDS: "2", V12_MAX_TURNS: "80", V12_MIN_ROSTER: "6", V12_MAX_ROSTER: "6", V12_SEED: "automated-v12-smoke", V12_EVOLUTION_MODE: "generational"},
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });

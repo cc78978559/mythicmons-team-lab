@@ -2,10 +2,13 @@ import {Dex, toID} from "pokemon-showdown";
 import type {ModdedDex} from "pokemon-showdown/dist/sim/dex";
 import type {Move} from "pokemon-showdown/dist/sim/dex-moves";
 import type {PokemonSet} from "pokemon-showdown/dist/sim/teams";
+import {compareWhiteBoxShadow, evaluateWhiteBoxDecision, type WhiteBoxDecisionTrace} from "../ai/whiteBox/decision";
+import {BATTLE_SHADOW_PARAMETERS} from "../ai/whiteBox/parameters";
 
 export type AiStrategy = "first" | "damage" | "basic" | "tactical" | "search";
 export type PlayerId = "p1" | "p2";
 export const AI_VERSION = "stateful-choice-v13-personality-v2";
+const BATTLE_SHADOW_VALUES = BATTLE_SHADOW_PARAMETERS.snapshot().values;
 const INVALID_MOVE_SCORE = Number.NEGATIVE_INFINITY;
 type BoostStat = "atk" | "def" | "spa" | "spd" | "spe" | "accuracy" | "evasion";
 
@@ -152,6 +155,10 @@ export interface AiDecisionTrace {
     activeSpecies: string | null;
     activeMoveSamples: number;
     fallbackMoveSamples: number;
+  };
+  whiteBoxShadow?: {
+    comparison: ReturnType<typeof compareWhiteBoxShadow>;
+    trace: WhiteBoxDecisionTrace;
   };
   candidates: Array<{
     choice: string;
@@ -604,6 +611,22 @@ function chooseSearch(request: ChoiceRequest, playerId: PlayerId, context: Battl
   });
   ranked.sort((left, right) => right.score - left.score || left.action.choice.localeCompare(right.action.choice));
   const selected = ranked[0].action.choice;
+  const whiteBoxTrace = evaluateWhiteBoxDecision({
+    decisionId: `battle:${context.turn}:${playerId}`,
+    reasonableBand: BATTLE_SHADOW_VALUES["battle.reasonableband"],
+    styleContributionLimit: BATTLE_SHADOW_VALUES["battle.stylelimit"],
+    candidates: ranked.map(entry => ({
+      id: entry.action.choice,
+      rational: [
+        {id: "battle.expected", group: "expected", source: "competence", value: entry.expected * context.tacticalProfile.expectedWeight, reason: "Expected outcome value"},
+        {id: "battle.downside", group: "risk", source: "risk", value: entry.downside * context.tacticalProfile.downsideWeight, reason: "Weighted downside value"},
+        {id: "battle.worst", group: "risk", source: "risk", value: entry.worst * context.tacticalProfile.worstWeight, reason: "Worst-response value"},
+      ],
+      style: [
+        {id: "battle.personality", group: "personality", source: "personality", value: entry.personalityAdjustment, reason: `Tactical profile ${context.tacticalProfile.id}`},
+      ],
+    })),
+  });
   context.lastDecision[playerId] = {
     turn: context.turn,
     playerId,
@@ -611,6 +634,7 @@ function chooseSearch(request: ChoiceRequest, playerId: PlayerId, context: Battl
     selected,
     personalityId: context.tacticalProfile.id,
     opponentModel: opponentModelTrace(context, playerId),
+    whiteBoxShadow: {comparison: compareWhiteBoxShadow(whiteBoxTrace, selected), trace: whiteBoxTrace},
     candidates: ranked.map(entry => ({
       choice: entry.action.choice,
       score: roundDecisionValue(entry.score),
