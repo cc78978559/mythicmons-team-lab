@@ -154,6 +154,10 @@ export interface AiDecisionTrace {
     selected: string;
     applied: true;
   };
+  battleContext?: {
+    ownSpecies: string | null;
+    opponentSpecies: string | null;
+  };
   personalityId: string;
   opponentModel: {
     confidence: number;
@@ -638,6 +642,7 @@ function chooseSearch(request: ChoiceRequest, playerId: PlayerId, context: Battl
     playerId,
     strategy: "search",
     selected,
+    battleContext: {ownSpecies: context.active[playerId]?.species ?? null, opponentSpecies: context.active[opponentOf(playerId)]?.species ?? null},
     personalityId: context.tacticalProfile.id,
     opponentModel: opponentModelTrace(context, playerId),
     whiteBoxShadow: {comparison: compareWhiteBoxShadow(whiteBoxTrace, selected), trace: whiteBoxTrace},

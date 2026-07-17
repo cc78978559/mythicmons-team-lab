@@ -5,6 +5,8 @@ import path from "node:path";
 import {spawnSync} from "node:child_process";
 import {buildUnifiedEvidencePlan, unifiedEvidenceMarkdown} from "../ai/whiteBox/unifiedEvidence";
 import {aggregateUnifiedEvidence} from "../ai/whiteBox/unifiedAggregation";
+import {createBattleReplayCapsule} from "../showdown/battle";
+import {AI_VERSION, DEFAULT_TACTICAL_PROFILE, EMPTY_OPPONENT_MODEL} from "../showdown/choice";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "unified-whitebox-"));
 try {
@@ -22,11 +24,14 @@ try {
     {id: "draft-1", actor: "manager-04", decision: "draft", context: {season: 2, whiteBoxShadow: shadow("acquire:supplemental:2:1:manager-04", "a", "b")}},
   ]}));
   const battleDir = path.join(root, "season-02", "battles", "game-1"); fs.mkdirSync(battleDir, {recursive: true});
-  fs.writeFileSync(path.join(battleDir, "ai-decisions.json"), JSON.stringify([{turn: 3, playerId: "p1", personalityId: "manager-05", whiteBoxShadow: {comparison: {incumbent: "move 1", shadow: "switch 2", agrees: false}, trace: shadow("battle:game-1:3:p1", "move 1", "switch 2")}}]));
+  const battleShadow:any = shadow("battle:game-1:3:p1", "move 1", "switch 2"); battleShadow.candidates[1].rationalScore = 3; battleShadow.candidates[1].finalScore = 3.1;
+  fs.writeFileSync(path.join(battleDir, "ai-decisions.json"), JSON.stringify([{decisionOrdinal: 1, turn: 3, playerId: "p1", personalityId: "manager-05", battleContext: {ownSpecies: "alpha", opponentSpecies: "beta"}, whiteBoxShadow: {comparison: {incumbent: "move 1", shadow: "switch 2", agrees: false}, trace: battleShadow}}]));
+  const replay = createBattleReplayCapsule({schemaVersion: 1, aiVersion: AI_VERSION, format: "gen9customgame", teamA: "team-a", teamB: "team-b", seed: [1,2,3,4], maxTurns: 100, idleTimeoutMs: 5000, wallClockTimeoutMs: 30000, ai: "search", openTeamSheets: true, traceAiDecisions: true, aiProfiles: {p1: {...DEFAULT_TACTICAL_PROFILE,id:"manager-05"},p2: {...DEFAULT_TACTICAL_PROFILE,id:"manager-06"}}, aiOpponentModels: {p1: structuredClone(EMPTY_OPPONENT_MODEL),p2: structuredClone(EMPTY_OPPONENT_MODEL)}});
+  fs.writeFileSync(path.join(battleDir, "replay-input.json"), JSON.stringify(replay));
   const plan = buildUnifiedEvidencePlan([root], {maximumCases: 10, maximumPerDomain: 2});
   assert.equal(plan.metrics.scanned, 5);
   assert.equal(plan.metrics.uniqueFingerprints, 4);
-  assert.equal(plan.schemaVersion, 2);
+  assert.equal(plan.schemaVersion, 3);
   assert.equal(plan.sources[0].battleEvidence, "available");
   assert.equal(plan.sources[0].battleDifferences, 1);
   assert.equal(plan.cases.find(entry => entry.domain === "keeper")?.duplicates, 2);
@@ -38,16 +43,19 @@ try {
   assert.equal(plan.cases.find(entry => entry.domain === "lineup")?.status, "executable");
   assert.equal(plan.cases.find(entry => entry.domain === "lineup")?.runner, "lineup");
   assert.deepEqual(plan.cases.find(entry => entry.domain === "lineup")?.lineupScenario, {id: "cautious-lineup-assist-v1", band: .5, styleLimit: 3, styleScale: 1.1});
-  assert.equal(plan.cases.find(entry => entry.domain === "battle")?.status, "requires-gate");
+  assert.equal(plan.cases.find(entry => entry.domain === "battle")?.status, "executable");
+  assert.equal(plan.cases.find(entry => entry.domain === "battle")?.runner, "battle");
+  assert.equal(plan.cases.find(entry => entry.domain === "battle")?.battleTarget?.decisionOrdinal, 1);
   assert.equal(plan.cases.find(entry => entry.domain === "acquisition")?.status, "archive-only");
   assert.match(unifiedEvidenceMarkdown(plan), /统一白箱反事实证据清单/);
   const output = path.join(root, "evidence-output");
   for (let pass = 0; pass < 2; pass += 1) {
     const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(process.cwd(), "src", "cli", "unifiedWhiteBoxEvidence.ts"), "--inputs", root, "--out", output, "--max-cases", "10", "--max-per-domain", "2"], {cwd: process.cwd(), encoding: "utf8"});
     if (result.status !== 0) throw new Error(result.stderr || result.stdout);
+    if (pass === 0) { const legacy = JSON.parse(fs.readFileSync(path.join(output, "evidence-manifest.json"), "utf8")); legacy.schemaVersion = 2; fs.writeFileSync(path.join(output, "evidence-manifest.json"), JSON.stringify(legacy)); }
   }
   const manifest = JSON.parse(fs.readFileSync(path.join(output, "evidence-manifest.json"), "utf8"));
-  assert.equal(manifest.schemaVersion, 2);
+  assert.equal(manifest.schemaVersion, 3);
   assert.equal(manifest.plan.metrics.scanned, 5);
   assert.deepEqual(manifest.runs, []);
   assert.ok(fs.existsSync(path.join(output, "evidence-plan.md")));

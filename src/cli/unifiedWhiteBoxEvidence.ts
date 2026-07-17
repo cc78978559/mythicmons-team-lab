@@ -2,14 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
 import {buildUnifiedEvidencePlan, unifiedEvidenceMarkdown, type UnifiedEvidenceCase, type UnifiedEvidencePlan, type UnifiedEvidenceReplica} from "../ai/whiteBox/unifiedEvidence";
-import {aggregateUnifiedEvidence, unifiedEvidenceAggregateMarkdown, type UnifiedEvidenceAggregate} from "../ai/whiteBox/unifiedAggregation";
+import {aggregateUnifiedBattleEvidence, aggregateUnifiedEvidence, unifiedEvidenceAggregateMarkdown, type AnyUnifiedEvidenceAggregate} from "../ai/whiteBox/unifiedAggregation";
 import type {WhiteBoxCounterfactualSample} from "../ai/whiteBox/counterfactualBatch";
+import type {BattleCounterfactualSample} from "../ai/whiteBox/battleAggregation";
 import {compactWhiteBoxRun, type WhiteBoxRetentionTrace} from "../ai/whiteBox/retention";
 
 type RunStatus = "complete" | "failed";
 interface ExperimentRun {hypothesisId: string; replicaId: string; seed: string; status: RunStatus; directory: string; startedAt: string; completedAt: string; retention?: WhiteBoxRetentionTrace[]; error?: string}
 interface Manifest {
-  schemaVersion: 2;
+  schemaVersion: 3;
   config: {inputs: string[]; maximumCases: number; maximumPerDomain: number; minimumImpact: number; maximumExperiments: number; maximumOutputMb: number; minimumFreeGb: number; followupSeasons: number; activationSamples: number; activationSeeds: number};
   plan: UnifiedEvidencePlan;
   runs: ExperimentRun[];
@@ -26,10 +27,11 @@ const config = {inputs, maximumCases, maximumPerDomain, minimumImpact, maximumEx
 fs.mkdirSync(out, {recursive: true});
 const manifestPath = path.join(out, "evidence-manifest.json"), previousRaw = fs.existsSync(manifestPath) ? read<any>(manifestPath) : null;
 if (previousRaw?.schemaVersion === 1 && previousRaw.runs?.length) throw new Error("Schema-v1 evidence manifest has experiment runs and cannot be migrated safely; use a new --out directory");
-const previous = previousRaw?.schemaVersion === 2 ? previousRaw as Manifest : null;
+if (previousRaw && ![2,3].includes(previousRaw.schemaVersion)) throw new Error(`Unsupported evidence manifest schema: ${previousRaw.schemaVersion}`);
+const previous = previousRaw?.schemaVersion === 2 || previousRaw?.schemaVersion === 3 ? previousRaw as Manifest : null;
 if (previous && JSON.stringify(previous.config) !== JSON.stringify(config)) throw new Error("Unified evidence configuration differs from the existing manifest; use a new --out directory");
 const plan = buildUnifiedEvidencePlan(inputs, {maximumCases, maximumPerDomain, minimumImpact});
-const manifest: Manifest = {schemaVersion: 2, config, plan, runs: previous?.runs ?? [], stopReason: null};
+const manifest: Manifest = {schemaVersion: 3, config, plan, runs: previous?.runs ?? [], stopReason: null};
 writePlan();
 
 if (args.includes("--run")) {
@@ -65,11 +67,11 @@ function runExperiment(hypothesis: UnifiedEvidenceCase, replica: UnifiedEvidence
   const directory = path.join(out, "experiments", hypothesis.id, replica.id), startedAt = new Date().toISOString();
   if (fs.existsSync(directory)) throw new Error(`Untracked experiment directory exists: ${directory}`);
   try {
-    const command = replica.runner === "lineup" ? lineupCommand(replica, directory) : [path.join(root, "src", "cli", "counterfactualWhiteBox.ts"), "--source", replica.root, "--out", directory, "--case-index", String(replica.reviewIndex), "--followup-seasons", String(followupSeasons)];
+    const command = replica.runner === "lineup" ? lineupCommand(replica, directory) : replica.runner === "battle" ? battleCommand(replica, directory) : [path.join(root, "src", "cli", "counterfactualWhiteBox.ts"), "--source", replica.root, "--out", directory, "--case-index", String(replica.reviewIndex), "--followup-seasons", String(followupSeasons)];
     const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), ...command], {cwd: root, env: {...process.env}, encoding: "utf8", maxBuffer: 64 * 1024 * 1024});
     if (result.status !== 0) throw new Error(result.stderr || result.stdout || `Counterfactual exited ${result.status}`);
     if (replica.runner === "lineup") verifyLineupExperiment(directory, replica);
-    const retention = [path.join(directory, "incumbent"), path.join(directory, "whitebox")].map(branch => compactWhiteBoxRun(branch));
+    const retention = replica.runner === "battle" ? undefined : [path.join(directory, "incumbent"), path.join(directory, "whitebox")].map(branch => compactWhiteBoxRun(branch));
     manifest.runs.push({hypothesisId: hypothesis.id, replicaId: replica.id, seed: replica.sourceSeed, status: "complete", directory, startedAt, completedAt: new Date().toISOString(), retention});
     writePlan();
   } catch (error) {
@@ -79,6 +81,12 @@ function runExperiment(hypothesis: UnifiedEvidenceCase, replica: UnifiedEvidence
     writePlan();
     throw error;
   }
+}
+
+function battleCommand(replica: UnifiedEvidenceReplica, directory: string): string[] {
+  const target = replica.battleTarget;
+  if (!target) throw new Error(`Executable battle replica is incomplete: ${replica.id}`);
+  return [path.join(root, "src", "cli", "counterfactualWhiteBoxBattle.ts"), "--source-game", target.sourceGame, "--out", directory, "--decision-ordinal", String(target.decisionOrdinal)];
 }
 
 function lineupCommand(replica: UnifiedEvidenceReplica, directory: string): string[] {
@@ -102,20 +110,22 @@ function verifyLineupExperiment(directory: string, replica: UnifiedEvidenceRepli
   throw new Error(`Missing replayed lineup gate: ${replica.decisionId}`);
 }
 
-function refreshAggregates(): UnifiedEvidenceAggregate[] {
-  const aggregates: UnifiedEvidenceAggregate[] = [], aggregateRoot = path.join(out, "aggregates");
+function refreshAggregates(): AnyUnifiedEvidenceAggregate[] {
+  const aggregates: AnyUnifiedEvidenceAggregate[] = [], aggregateRoot = path.join(out, "aggregates");
   for (const hypothesis of plan.cases) {
     const runs = manifest.runs.filter(run => run.status === "complete" && run.hypothesisId === hypothesis.id);
     if (!runs.length) continue;
-    const samples: WhiteBoxCounterfactualSample[] = runs.map(run => { const summary = read<any>(path.join(run.directory, "counterfactual-summary.json")); return {seed: run.seed, caseId: run.replicaId, prefixVerified: Boolean(summary.prefixVerified), comparison: summary.comparison}; });
-    const aggregate = aggregateUnifiedEvidence(hypothesis.id, hypothesis.domain, samples, {activationSamples, activationSeeds});
+    const aggregate = hypothesis.domain === "battle" ? aggregateUnifiedBattleEvidence(hypothesis.id, runs.map(run => battleSample(run))) : aggregateUnifiedEvidence(hypothesis.id, hypothesis.domain, runs.map(run => managementSample(run)), {activationSamples, activationSeeds});
     aggregates.push(aggregate);
     write(path.join(aggregateRoot, `${hypothesis.id}.json`), aggregate);
     fs.writeFileSync(path.join(aggregateRoot, `${hypothesis.id}.md`), unifiedEvidenceAggregateMarkdown(aggregate), "utf8");
   }
-  write(path.join(out, "aggregate-index.json"), {schemaVersion: 1, hypotheses: aggregates.map(value => ({id: value.hypothesisId, domain: value.domain, stage: value.stage, conclusion: value.conclusion, samples: value.batch.metrics.samples, seeds: value.batch.metrics.seeds, activationEligible: value.activationEligible}))});
+  write(path.join(out, "aggregate-index.json"), {schemaVersion: 1, hypotheses: aggregates.map(value => { const metrics = "battleBatch" in value ? value.battleBatch.metrics : value.batch.metrics; return {id: value.hypothesisId, domain: value.domain, stage: value.stage, conclusion: value.conclusion, samples: metrics.samples, seeds: metrics.seeds, activationEligible: value.activationEligible}; })});
   return aggregates;
 }
+
+function managementSample(run: ExperimentRun): WhiteBoxCounterfactualSample { const summary = read<any>(path.join(run.directory, "counterfactual-summary.json")); return {seed: run.seed, caseId: run.replicaId, prefixVerified: Boolean(summary.prefixVerified), comparison: summary.comparison}; }
+function battleSample(run: ExperimentRun): BattleCounterfactualSample { const summary = read<any>(path.join(run.directory, "counterfactual-summary.json")); return {seed: run.seed, caseId: run.replicaId, sourceVerified: Boolean(summary.sourceVerified), prefixVerified: Boolean(summary.prefixVerified), playerId: summary.intervention?.playerId, incumbent: summary.incumbent, whitebox: summary.whitebox}; }
 
 function oneReplicaPerSeed(hypothesis: UnifiedEvidenceCase): UnifiedEvidenceReplica[] { const seen = new Set<string>(); return hypothesis.replicas.filter(replica => { if (seen.has(replica.sourceSeed)) return false; seen.add(replica.sourceSeed); return true; }); }
 function writePlan(): void { write(manifestPath, manifest); fs.writeFileSync(path.join(out, "evidence-plan.md"), unifiedEvidenceMarkdown(plan), "utf8"); }
