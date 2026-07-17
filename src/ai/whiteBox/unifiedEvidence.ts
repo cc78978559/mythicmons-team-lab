@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
 import {reviewWhiteBoxDifferences, type WhiteBoxDifferenceCase} from "./review";
 import {whiteBoxExperimentEligibility} from "./sampling";
 import {scanWhiteBoxOpportunities, type WhiteBoxOpportunityCase, type WhiteBoxOpportunityScenario} from "./opportunity";
@@ -143,7 +144,7 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
 }
 
 function collectBattleCases(root: string, seed: string, sourceSeason: number): {files: number; comparisons: number; cases: UnifiedEvidenceCase[]} {
-  const files = findNamedFiles(root, "ai-decisions.json"), cases: UnifiedEvidenceCase[] = [];
+  const files = findEvidenceFiles(root, "ai-decisions.json"), cases: UnifiedEvidenceCase[] = [];
   let comparisons = 0;
   for (const file of files) {
     const gameDir = path.dirname(file), replayFile = path.join(gameDir, "replay-input.json");
@@ -236,10 +237,10 @@ function comparePriority(left: UnifiedEvidenceCase, right: UnifiedEvidenceCase):
 function countBy(values: string[]): Record<string, number> { const result: Record<string, number> = {}; for (const value of values) result[value] = (result[value] ?? 0) + 1; return Object.fromEntries(Object.entries(result).sort(([a], [b]) => a.localeCompare(b))); }
 function digest(value: string): string { return crypto.createHash("sha256").update(value).digest("hex").slice(0, 20); }
 function choiceShape(value: string): string { if (value === "none" || value === "release-all" || value === "hold" || value === "replace") return value; if (/^move\s/i.test(value)) return value.includes("terastallize") ? "move:tera" : "move"; if (/^switch\s/i.test(value)) return "switch"; const members = value.split("+").filter(Boolean); return `members:${members.length}`; }
-function findNamedFiles(directory: string, name: string): string[] { const files: string[] = []; if (!fs.existsSync(directory)) return files; for (const entry of fs.readdirSync(directory, {withFileTypes: true})) { const target = path.join(directory, entry.name); if (entry.isDirectory()) files.push(...findNamedFiles(target, name)); else if (entry.name === name) files.push(target); } return files; }
+function findEvidenceFiles(directory: string, name: string): string[] { const files: string[] = []; if (!fs.existsSync(directory)) return files; const entries = fs.readdirSync(directory, {withFileTypes: true}); const names = new Set(entries.filter(entry => entry.isFile()).map(entry => entry.name)); if (names.has(name)) files.push(path.join(directory, name)); else if (names.has(`${name}.gz`)) files.push(path.join(directory, `${name}.gz`)); for (const entry of entries) if (entry.isDirectory()) files.push(...findEvidenceFiles(path.join(directory, entry.name), name)); return files; }
 function seasonFromPath(value: string): number | null { const match = value.match(/(?:^|\/)season-(\d+)(?:\/|$)/); return match ? Number(match[1]) : null; }
 function numericDelta(before: unknown, after: unknown): number | null { return typeof before === "number" && Number.isFinite(before) && typeof after === "number" && Number.isFinite(after) ? round(after - before) : null; }
-function readJson<T>(file: string): T { if (!fs.existsSync(file)) throw new Error(`Missing evidence input: ${file}`); return JSON.parse(fs.readFileSync(file, "utf8")) as T; }
+function readJson<T>(file: string): T { if (!fs.existsSync(file)) throw new Error(`Missing evidence input: ${file}`); const input = fs.readFileSync(file); const text = file.endsWith(".gz") ? zlib.gunzipSync(input).toString("utf8") : input.toString("utf8"); return JSON.parse(text) as T; }
 function integer(value: number, min: number, max: number, name: string): number { if (!Number.isInteger(value) || value < min || value > max) throw new Error(`${name} must be ${min}..${max}`); return value; }
 function finite(value: number, min: number, max: number, name: string): number { if (!Number.isFinite(value) || value < min || value > max) throw new Error(`${name} must be ${min}..${max}`); return value; }
 function round(value: number): number { return Math.round((value + Number.EPSILON) * 1e6) / 1e6; }

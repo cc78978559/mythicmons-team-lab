@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import zlib from "node:zlib";
 import {spawnSync} from "node:child_process";
 import {buildUnifiedEvidencePlan, unifiedEvidenceMarkdown} from "../ai/whiteBox/unifiedEvidence";
 import {aggregateUnifiedEvidence} from "../ai/whiteBox/unifiedAggregation";
@@ -28,6 +29,8 @@ try {
   fs.writeFileSync(path.join(battleDir, "ai-decisions.json"), JSON.stringify([{decisionOrdinal: 1, turn: 3, playerId: "p1", personalityId: "manager-05", battleContext: {ownSpecies: "alpha", opponentSpecies: "beta"}, whiteBoxShadow: {comparison: {incumbent: "move 1", shadow: "switch 2", agrees: false}, trace: battleShadow}}]));
   const replay = createBattleReplayCapsule({schemaVersion: 1, aiVersion: AI_VERSION, format: "gen9customgame", teamA: "team-a", teamB: "team-b", seed: [1,2,3,4], maxTurns: 100, idleTimeoutMs: 5000, wallClockTimeoutMs: 30000, ai: "search", openTeamSheets: true, traceAiDecisions: true, aiProfiles: {p1: {...DEFAULT_TACTICAL_PROFILE,id:"manager-05"},p2: {...DEFAULT_TACTICAL_PROFILE,id:"manager-06"}}, aiOpponentModels: {p1: structuredClone(EMPTY_OPPONENT_MODEL),p2: structuredClone(EMPTY_OPPONENT_MODEL)}});
   fs.writeFileSync(path.join(battleDir, "replay-input.json"), JSON.stringify(replay));
+  fs.writeFileSync(path.join(battleDir, "ai-decisions.json.gz"), zlib.gzipSync(fs.readFileSync(path.join(battleDir, "ai-decisions.json"))));
+  fs.rmSync(path.join(battleDir, "ai-decisions.json"));
   const plan = buildUnifiedEvidencePlan([root], {maximumCases: 10, maximumPerDomain: 2});
   assert.equal(plan.metrics.scanned, 5);
   assert.equal(plan.metrics.uniqueFingerprints, 4);

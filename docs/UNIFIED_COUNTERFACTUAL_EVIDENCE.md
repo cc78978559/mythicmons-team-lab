@@ -45,7 +45,7 @@ Completed experiments are aggregated separately for each hypothesis:
 
 Reaching the formal threshold never activates behavior automatically. A hypothesis must also have no fatal prefix/audit issue and must pass the paired competitive gate. The strongest output is `candidate-for-activation-review`, which still requires an explicit reviewed code or policy change.
 
-Battle evidence is scanned only where full `ai-decisions.json` traces were retained. A source with compact-only battle summaries is marked `battleEvidence: not-retained`; an older trace without white-box fields is marked `legacy-without-whitebox`. Neither state is evidence of agreement.
+Battle evidence is scanned where full `ai-decisions.json` or retained `ai-decisions.json.gz` traces exist. If both forms exist in one battle directory, the plain file wins and the trace is counted once. A source with compact-only battle summaries is marked `battleEvidence: not-retained`; an older trace without white-box fields is marked `legacy-without-whitebox`. Neither state is evidence of agreement.
 
 New battles also retain a hash-verified `replay-input.json`. It contains the packed teams, exact four-word Showdown seed, normalized tactical profiles, normalized opponent models, AI version, and battle options. The battle runner can consume that exact seed without deriving it a second time. Decision traces carry a stable global ordinal, so repeated requests in one turn cannot be confused.
 
@@ -68,6 +68,20 @@ npm run counterfactual:whitebox-battle-sample -- `
   --inputs output/shadow-a,output/shadow-b `
   --out output/battle-sampler
 ```
+
+If planning finds no gate-approved replayable disagreement, the sampler exits successfully and writes `battle-sampler-plan.json` plus a summary with `conclusion: no-eligible-hypothesis`. This is a valid negative result, not a runtime failure.
+
+To produce independent shadow roots from one audited v14 replay capsule, use the bounded seed expander. It preserves teams, manager tactics, opponent models, and battle options while deriving a fresh Showdown seed per source and game. It rejects version drift and any source that already used active assist. Planning is again the default:
+
+```powershell
+npm run generate:whitebox-battle-sources -- `
+  --source-game <battle-directory> `
+  --out output/battle-shadow-sources `
+  --seed-count 10 `
+  --games-per-seed 3
+```
+
+Add `--run` to execute. `--max-launches`, `--max-output-mb`, and `--min-free-gb` bound local work. The manifest is configuration-bound, resumable after a clean budget stop, and fused after a recorded battle failure.
 
 Run a bounded local batch explicitly:
 

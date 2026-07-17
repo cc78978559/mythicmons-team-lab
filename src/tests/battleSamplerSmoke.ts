@@ -21,6 +21,9 @@ try{
   for(let pass=0;pass<2;pass+=1){const result=spawnSync(process.execPath,command,{cwd:process.cwd(),encoding:"utf8"});if(result.status!==0)throw new Error(result.stderr||result.stdout);}
   const manifest=JSON.parse(fs.readFileSync(path.join(out,"battle-sampler-manifest.json"),"utf8")),summary=JSON.parse(fs.readFileSync(path.join(out,"battle-sampler-summary.json"),"utf8"));
   assert.equal(manifest.schemaVersion,1);assert.equal(manifest.hypothesis.availableSeeds,3);assert.equal(manifest.hypothesis.availableReplicas,6);assert.deepEqual(manifest.runs,[]);assert.equal(summary.completed,0);assert.equal(summary.stage,"not-started");assert.equal(fs.existsSync(path.join(out,"runs")),false);
+  const empty=path.join(root,"empty-source");fs.mkdirSync(empty,{recursive:true});fs.writeFileSync(path.join(empty,"dynasty-state.json"),JSON.stringify({seed:"empty",completedSeason:1,decisionRecords:[]}));
+  const emptyOut=path.join(root,"empty-output"),emptyResult=spawnSync(process.execPath,[require.resolve("tsx/cli"),path.join(process.cwd(),"src","cli","sampleWhiteBoxBattle.ts"),"--inputs",empty,"--out",emptyOut],{cwd:process.cwd(),encoding:"utf8"});
+  assert.equal(emptyResult.status,0,emptyResult.stderr||emptyResult.stdout);assert.equal(JSON.parse(fs.readFileSync(path.join(emptyOut,"battle-sampler-summary.json"),"utf8")).conclusion,"no-eligible-hypothesis");assert(fs.existsSync(path.join(emptyOut,"battle-sampler-plan.json")));
 }finally{fs.rmSync(root,{recursive:true,force:true});}
 console.log("Battle counterfactual sampler smoke test passed");
 

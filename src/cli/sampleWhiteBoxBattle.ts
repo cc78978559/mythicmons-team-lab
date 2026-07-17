@@ -24,7 +24,10 @@ const manifestFile=path.join(out,"battle-sampler-manifest.json"),previous=fs.exi
 if(previous&&JSON.stringify(previous.config)!==JSON.stringify(config))throw new Error("Battle sampler configuration differs from the existing manifest; use a new --out directory");
 const plan=buildUnifiedEvidencePlan(inputs,{maximumCases:10000,maximumPerDomain:1000}),candidates=plan.cases.filter(entry=>entry.domain==="battle"&&entry.status==="executable"&&entry.runner==="battle");
 const selectedHypothesis=selectHypothesis(candidates,previous?.hypothesis.id??requestedHypothesis);
-if(!selectedHypothesis)throw new Error("No gate-approved, exactly replayable battle hypothesis was found");
+if(!selectedHypothesis){
+  const summary={schemaVersion:1,stage:"not-started",conclusion:"no-eligible-hypothesis",promotion:"not-started",completed:0,failed:0,stopReason:"no-gate-approved-replayable-hypothesis",candidateBattleHypotheses:candidates.length,planMetrics:plan.metrics,outputMb:round(directorySize(out)/1048576)};
+  write(path.join(out,"battle-sampler-plan.json"),plan);write(path.join(out,"battle-sampler-summary.json"),summary);console.log(JSON.stringify(summary,null,2));process.exit(0);
+}
 const hypothesis:UnifiedEvidenceCase=selectedHypothesis;
 const available=boundedReplicas(hypothesis.replicas,maximumPerSeed),availableSeeds=new Set(available.map(entry=>entry.sourceSeed)).size;
 if(!hypothesis.battleScopeId)throw new Error(`Battle hypothesis has no activation scope: ${hypothesis.id}`);
