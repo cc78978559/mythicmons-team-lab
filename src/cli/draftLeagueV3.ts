@@ -29,6 +29,7 @@ import {buildAcquisitionWhiteBoxCandidate, whiteBoxAcquisitionTotal} from "../ai
 import {ACQUISITION_SHADOW_PARAMETERS, BID_SHADOW_PARAMETERS, MARKET_FLOW_SHADOW_PARAMETERS, REGISTRATION_SHADOW_PARAMETERS} from "../ai/whiteBox/parameters";
 import {evaluateWhiteBoxBid} from "../ai/whiteBox/auction";
 import {buildTradeWhiteBoxCandidate, evaluateMarketReplacement, evaluateTradeAssistGate, evaluateWaiverPriority, type TradeCandidateInput} from "../ai/whiteBox/marketFlow";
+import {loadBattleAssistApproval} from "../ai/whiteBox/battleApproval";
 
 type Side = "p1" | "p2";
 type Role = DraftRole;
@@ -118,6 +119,9 @@ const acquisitionShadowValues = ACQUISITION_SHADOW_PARAMETERS.snapshot().values;
 const registrationShadowValues = REGISTRATION_SHADOW_PARAMETERS.snapshot().values;
 const bidShadowValues = BID_SHADOW_PARAMETERS.snapshot().values;
 const marketFlowShadowValues = MARKET_FLOW_SHADOW_PARAMETERS.snapshot().values;
+const battleAssistApprovalPath=process.env.V3_BATTLE_ASSIST_APPROVAL||process.env.V4_BATTLE_ASSIST_APPROVAL||"";
+const battleAssistApproval=battleAssistApprovalPath?loadBattleAssistApproval(path.resolve(battleAssistApprovalPath)):null;
+const battleAssistScopes=battleAssistApproval?.payload.scopes.map(entry=>entry.scopeId)??[];
 
 const customSources = DRAFT_GENERATIONS.map(generation => process.env.V3_REGISTRY_DIR ? path.join(registryDirectory, path.basename(draftGenerationSource(generation))) : draftGenerationSource(generation));
 
@@ -1146,7 +1150,7 @@ async function playSeries(format: string, left: Manager, right: Manager, dex: Re
     let leftGameWins = 0, rightGameWins = 0;
     for (const orientation of ["left-p1", "right-p1"] as const) {
       const leftSide: Side = orientation === "left-p1" ? "p1" : "p2";
-      const result = await runBattle({format, teamA: Teams.pack((orientation === "left-p1" ? leftLineup : rightLineup).map(entry => entry.candidate.set)), teamB: Teams.pack((orientation === "left-p1" ? rightLineup : leftLineup).map(entry => entry.candidate.set)), seed: `${seed}:${seriesId}:pair:${pair}`, gameIndex: pair, outDir: path.join(outDir, "battles", seriesId, orientation), maxTurns, ai: "search", aiProfiles: orientation === "left-p1" ? {p1: programTactics(left, right), p2: programTactics(right, left)} : {p1: programTactics(right, left), p2: programTactics(left, right)}, aiOpponentModels: orientation === "left-p1" ? {p1: tacticalOpponentModel(left.tacticalMemory, right.id), p2: tacticalOpponentModel(right.tacticalMemory, left.id)} : {p1: tacticalOpponentModel(right.tacticalMemory, left.id), p2: tacticalOpponentModel(left.tacticalMemory, right.id)}, openTeamSheets: true, traceAiDecisions: true});
+      const result = await runBattle({format, teamA: Teams.pack((orientation === "left-p1" ? leftLineup : rightLineup).map(entry => entry.candidate.set)), teamB: Teams.pack((orientation === "left-p1" ? rightLineup : leftLineup).map(entry => entry.candidate.set)), seed: `${seed}:${seriesId}:pair:${pair}`, gameIndex: pair, outDir: path.join(outDir, "battles", seriesId, orientation), maxTurns, ai: "search", aiProfiles: orientation === "left-p1" ? {p1: programTactics(left, right), p2: programTactics(right, left)} : {p1: programTactics(right, left), p2: programTactics(left, right)}, aiOpponentModels: orientation === "left-p1" ? {p1: tacticalOpponentModel(left.tacticalMemory, right.id), p2: tacticalOpponentModel(right.tacticalMemory, left.id)} : {p1: tacticalOpponentModel(right.tacticalMemory, left.id), p2: tacticalOpponentModel(left.tacticalMemory, right.id)}, openTeamSheets: true, traceAiDecisions: true,battleAssistScopes,battleAssistApprovalSha256:battleAssistApproval?.sha256});
       const leftWon = result.winner === (leftSide === "p1" ? "Team A" : "Team B");
       const rightWon = result.winner === (leftSide === "p1" ? "Team B" : "Team A");
       if (leftWon) leftGameWins += 1;

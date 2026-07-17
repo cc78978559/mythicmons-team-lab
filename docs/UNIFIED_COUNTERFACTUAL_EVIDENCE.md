@@ -85,3 +85,22 @@ npm run counterfactual:whitebox-battle-sample -- `
 
 This is the first unified layer. It does not weaken existing domain-specific gates.
 The unified runner executes gate-approved lineup replicas and exact battle replicas through separate isolated routes. Battle branches retain only their two games and summary rather than using dynasty-directory compaction. Their multi-sample results use the battle-specific paired aggregate above. Learning, memory, and evolution interventions remain unsupported.
+
+## Scoped battle assist activation
+
+There is no global battle-assist boolean. An activation-eligible aggregate can export a hash-verified approval containing only its proven matchup/action scopes:
+
+```powershell
+npm run release:whitebox-battle-assist -- `
+  --evidence output/battle-sampler `
+  --out output/battle-assist-approval.json
+```
+
+V12 accepts that artifact explicitly at a season boundary. Set it alongside the existing official season-cycle command and paths; do not start a separate default journey merely to activate assist:
+
+```powershell
+$env:V12_BATTLE_ASSIST_APPROVAL="output/battle-assist-approval.json"
+npm run official-season-cycle -- <the existing audited journey arguments>
+```
+
+The league validates the artifact hash and AI version before starting. At runtime, an action changes only when its stable scope is present in the approval and the live assist gate still recommends it. A scope includes both active species, exact move families, and the target species of a switch. Every decision trace records scope matching, gate status, application status, and rejection reasons. Every replay capsule and battle ending records both the approved scope list and approval SHA-256. Sources produced under assist are excluded from shadow counterfactual sampling. Scoped-assist traces use AI version `stateful-choice-v14-scoped-assist-v1`; older battle capsules are deliberately ineligible rather than being silently reinterpreted. Continuing a journey across the v13-to-v14 code boundary still requires the existing one-time reviewed code-upgrade authorization; enabling a previously exported approval on unchanged v14 code does not.

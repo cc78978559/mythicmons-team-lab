@@ -10,7 +10,7 @@ interface SamplerRun {replicaId:string;seed:string;status:RunStatus;directory:st
 interface SamplerManifest {
   schemaVersion:1;
   config:{inputs:string[];targetSamples:number;minimumSeeds:number;maximumSamples:number;maximumPerSeed:number;maximumOutputMb:number;minimumFreeGb:number;requestedHypothesis:string|null};
-  hypothesis:{id:string;priority:number;availableReplicas:number;availableSeeds:number};
+  hypothesis:{id:string;scopeId:string;priority:number;availableReplicas:number;availableSeeds:number};
   runs:SamplerRun[];
   stopReason:string|null;
 }
@@ -27,7 +27,8 @@ const selectedHypothesis=selectHypothesis(candidates,previous?.hypothesis.id??re
 if(!selectedHypothesis)throw new Error("No gate-approved, exactly replayable battle hypothesis was found");
 const hypothesis:UnifiedEvidenceCase=selectedHypothesis;
 const available=boundedReplicas(hypothesis.replicas,maximumPerSeed),availableSeeds=new Set(available.map(entry=>entry.sourceSeed)).size;
-const manifest:SamplerManifest={schemaVersion:1,config,hypothesis:{id:hypothesis.id,priority:hypothesis.priority,availableReplicas:available.length,availableSeeds},runs:previous?.runs??[],stopReason:null};
+if(!hypothesis.battleScopeId)throw new Error(`Battle hypothesis has no activation scope: ${hypothesis.id}`);
+const manifest:SamplerManifest={schemaVersion:1,config,hypothesis:{id:hypothesis.id,scopeId:hypothesis.battleScopeId,priority:hypothesis.priority,availableReplicas:available.length,availableSeeds},runs:previous?.runs??[],stopReason:null};
 save();
 
 if(args.includes("--run")){
@@ -49,6 +50,7 @@ if(args.includes("--run")){
 }
 
 const aggregate=currentAggregate();
+if(aggregate)write(path.join(out,"battle-sampler-aggregate.json"),aggregate);
 const summary={schemaVersion:1,hypothesisId:hypothesis.id,availableReplicas:available.length,availableSeeds,completed:manifest.runs.filter(run=>run.status==="complete").length,failed:manifest.runs.filter(run=>run.status==="failed").length,stage:aggregate?.stage??"not-started",conclusion:aggregate?.conclusion??"not-started",promotion:aggregate?.battleBatch.promotion??"not-started",metrics:aggregate?.battleBatch.metrics??null,stopReason:manifest.stopReason,outputMb:round(directorySize(out)/1048576),manifest:manifestFile};
 write(path.join(out,"battle-sampler-summary.json"),summary);console.log(JSON.stringify(summary,null,2));
 

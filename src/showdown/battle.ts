@@ -16,6 +16,8 @@ import {
   type ChoiceRequest,
 } from "./choice";
 import {seedToShowdownSeed} from "./seed";
+import {evaluateBattleAssistGate} from "../ai/whiteBox/battle";
+import {buildBattleAssistScope} from "../ai/whiteBox/battleScope";
 
 export interface BattleInput {
   format: string;
@@ -34,6 +36,8 @@ export interface BattleInput {
   aiOpponentModels?: Partial<Record<"p1" | "p2", Partial<AiOpponentModel>>>;
   explicitSeed?: [number, number, number, number];
   decisionIntervention?: BattleDecisionIntervention;
+  battleAssistScopes?: string[];
+  battleAssistApprovalSha256?: string;
 }
 
 export interface BattleDecisionIntervention {
@@ -59,6 +63,8 @@ export interface BattleReplayInput {
   traceAiDecisions: boolean;
   aiProfiles: Record<"p1" | "p2", AiTacticalProfile>;
   aiOpponentModels: Record<"p1" | "p2", AiOpponentModel>;
+  battleAssistScopes?: string[];
+  battleAssistApprovalSha256?: string;
 }
 
 export interface BattleReplayCapsule {
@@ -89,6 +95,7 @@ export interface BattleResult {
   errors: string[];
   choiceRetries: number;
   decisionInterventionApplied: boolean;
+  battleAssistApplications: number;
 }
 
 export interface MaxTurnAdjudication {
@@ -117,8 +124,13 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
   let choiceRetries = 0;
   const openTeamSheets = input.openTeamSheets ?? false;
   const traceAiDecisions = input.traceAiDecisions ?? false;
+  const battleAssistScopes=normalizeBattleAssistScopes(input.battleAssistScopes);
+  const battleAssistApprovalSha256=normalizeOptionalSha256(input.battleAssistApprovalSha256);
+  if(battleAssistScopes.length&&(input.ai!=="search"||!traceAiDecisions))throw new Error("Battle assist scopes require search AI with decision tracing enabled");
+  if(battleAssistScopes.length&&input.decisionIntervention)throw new Error("Battle assist scopes cannot be combined with a decision intervention");
   validateDecisionIntervention(input.decisionIntervention, input.ai, traceAiDecisions);
   const interventionState = {applied: false};
+  const assistState={applications:0};
   const teams = {
     p1: Teams.unpack(input.teamA) ?? [],
     p2: Teams.unpack(input.teamB) ?? [],
@@ -150,6 +162,8 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
     traceAiDecisions,
     aiProfiles: {p1: aiContexts.p1.tacticalProfile, p2: aiContexts.p2.tacticalProfile},
     aiOpponentModels: {p1: aiContexts.p1.opponentModel, p2: aiContexts.p2.opponentModel},
+    battleAssistScopes,
+    battleAssistApprovalSha256,
   });
   fs.writeFileSync(replayInputPath, `${JSON.stringify(replayCapsule, null, 2)}\n`, "utf8");
   let idleTimer: NodeJS.Timeout | undefined;
@@ -183,7 +197,7 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
         if ((playerId === "p1" || playerId === "p2") && pendingRequests[playerId]?.side?.pokemon) latestRequests[playerId] = pendingRequests[playerId];
         if (queued && !errors.length && !timeout && !stalled) {
           choiceRetries += 1;
-          flushPendingRequests(stream, pendingRequests, input.ai, aiContexts, decisionTraces, traceAiDecisions, input.decisionIntervention, interventionState);
+          flushPendingRequests(stream, pendingRequests, input.ai, aiContexts, decisionTraces, traceAiDecisions, input.decisionIntervention, interventionState,battleAssistScopes,assistState);
         }
       } else if (messageType === "update") {
         for (const line of publicUpdateLines(lines.slice(1))) {
@@ -217,7 +231,7 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
           }
         }
         if (!errors.length && !timeout && !stalled) {
-          flushPendingRequests(stream, pendingRequests, input.ai, aiContexts, decisionTraces, traceAiDecisions, input.decisionIntervention, interventionState);
+          flushPendingRequests(stream, pendingRequests, input.ai, aiContexts, decisionTraces, traceAiDecisions, input.decisionIntervention, interventionState,battleAssistScopes,assistState);
         }
       } else if (messageType === "end") {
         ended = true;
@@ -259,7 +273,7 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
   fs.writeFileSync(rawLogPath, rawBlocks.join("\n\n"), "utf8");
   fs.writeFileSync(publicLogPath, publicLines.join("\n"), "utf8");
   fs.writeFileSync(decisionLogPath, `${JSON.stringify(decisionTraces, null, 2)}\n`, "utf8");
-  fs.writeFileSync(endDataPath, `${JSON.stringify({winner, turns, ended, timeout, adjudication, stalled, stallReason, errors, choiceRetries, seed, ai: input.ai, aiVersion: AI_VERSION, replayInput: path.basename(replayInputPath), replayInputSha256: replayCapsule.sha256, decisionIntervention: input.decisionIntervention ?? null, decisionInterventionApplied: interventionState.applied, aiProfiles: {p1: aiContexts.p1.tacticalProfile.id, p2: aiContexts.p2.tacticalProfile.id}, aiOpponentModelConfidence: {p1: aiContexts.p1.opponentModel.confidence, p2: aiContexts.p2.opponentModel.confidence}, openTeamSheets, traceAiDecisions, aiDecisionCount: decisionTraces.length, ...endData}, null, 2)}\n`, "utf8");
+  fs.writeFileSync(endDataPath, `${JSON.stringify({winner, turns, ended, timeout, adjudication, stalled, stallReason, errors, choiceRetries, seed, ai: input.ai, aiVersion: AI_VERSION, replayInput: path.basename(replayInputPath), replayInputSha256: replayCapsule.sha256, decisionIntervention: input.decisionIntervention ?? null, decisionInterventionApplied: interventionState.applied, battleAssistScopes,battleAssistApprovalSha256, battleAssistApplications:assistState.applications, aiProfiles: {p1: aiContexts.p1.tacticalProfile.id, p2: aiContexts.p2.tacticalProfile.id}, aiOpponentModelConfidence: {p1: aiContexts.p1.opponentModel.confidence, p2: aiContexts.p2.opponentModel.confidence}, openTeamSheets, traceAiDecisions, aiDecisionCount: decisionTraces.length, ...endData}, null, 2)}\n`, "utf8");
 
   if (streamFailure) throw streamFailure;
   if (input.decisionIntervention && !interventionState.applied) {
@@ -292,6 +306,7 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
     errors,
     choiceRetries,
     decisionInterventionApplied: interventionState.applied,
+    battleAssistApplications:assistState.applications,
   };
 }
 
@@ -436,6 +451,8 @@ function flushPendingRequests(
   traceAiDecisions: boolean,
   intervention?: BattleDecisionIntervention,
   interventionState: {applied: boolean} = {applied: false},
+  battleAssistScopes:readonly string[]=[],
+  assistState:{applications:number}={applications:0},
 ): void {
   for (const playerId of ["p1", "p2"] as const) {
     const request = pendingRequests[playerId];
@@ -446,6 +463,7 @@ function flushPendingRequests(
     const trace = aiContext.lastDecision[playerId];
     if (trace && traceAiDecisions) {
       trace.decisionOrdinal = decisionTraces.length + 1;
+      if(battleAssistScopes.length)choice=applyApprovedBattleAssist(trace,choice,new Set(battleAssistScopes),assistState);
       if (intervention?.decisionOrdinal === trace.decisionOrdinal) {
         choice = applyBattleDecisionIntervention(trace, choice, playerId, intervention, interventionState);
       }
@@ -455,6 +473,14 @@ function flushPendingRequests(
     recordAiChoice(aiContext, playerId, choice, request);
     stream.write(`>${playerId} ${choice}`);
   }
+}
+
+export function applyApprovedBattleAssist(trace:AiDecisionTrace,incumbent:string,approvedScopes:ReadonlySet<string>,state:{applications:number}):string{
+  const shadow=trace.whiteBoxShadow?.comparison.shadow;if(!shadow||shadow===incumbent)return incumbent;
+  const incumbentCandidate=trace.whiteBoxShadow?.trace.candidates.find(entry=>entry.id===incumbent),selectedCandidate=trace.whiteBoxShadow?.trace.candidates.find(entry=>entry.id===shadow),scope=buildBattleAssistScope({ownSpecies:trace.battleContext?.ownSpecies,opponentSpecies:trace.battleContext?.opponentSpecies,incumbent,selected:shadow,incumbentTarget:trace.actionTargets?.[incumbent],selectedTarget:trace.actionTargets?.[shadow],incumbentCandidate}),gate=evaluateBattleAssistGate(incumbentCandidate,selectedCandidate),approved=approvedScopes.has(scope.id),applied=approved&&gate.recommended;
+  trace.assistPolicy={scopeId:scope.id,approved,gateRecommended:gate.recommended,applied,reasons:[...gate.hardRejections]};
+  if(!applied)return incumbent;
+  trace.policyIncumbentSelected=incumbent;trace.selected=shadow;state.applications+=1;return shadow;
 }
 
 export function applyBattleDecisionIntervention(
@@ -488,3 +514,6 @@ function validateDecisionIntervention(intervention: BattleDecisionIntervention |
   if (!Number.isInteger(intervention.decisionOrdinal) || intervention.decisionOrdinal < 1) throw new Error("Invalid battle decision intervention ordinal");
   if (!Number.isInteger(intervention.turn) || intervention.turn < 0 || !intervention.expectedIncumbent || !intervention.selected) throw new Error("Incomplete battle decision intervention target");
 }
+
+function normalizeBattleAssistScopes(values:readonly string[]|undefined):string[]{const unique=[...new Set(values??[])].sort();if(unique.some(value=>!/^[a-f0-9]{24}$/.test(value)))throw new Error("Battle assist scopes must be 24-character lowercase hex ids");return unique;}
+function normalizeOptionalSha256(value:string|undefined):string|undefined{if(value===undefined||value==="")return undefined;if(!/^[a-f0-9]{64}$/.test(value))throw new Error("Battle assist approval SHA-256 must be lowercase hexadecimal");return value;}

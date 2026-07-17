@@ -7,6 +7,7 @@ import {scanWhiteBoxOpportunities, type WhiteBoxOpportunityCase, type WhiteBoxOp
 import {evaluateBattleAssistGate} from "./battle";
 import {loadBattleReplayCapsule} from "../../showdown/battle";
 import {AI_VERSION} from "../../showdown/choice";
+import {buildBattleAssistScope} from "./battleScope";
 
 export type UnifiedEvidenceStatus = "executable" | "requires-gate" | "archive-only";
 export type UnifiedEvidenceRunner = "general" | "lineup" | "battle" | null;
@@ -36,6 +37,7 @@ export interface UnifiedEvidenceReplica {
   reasons: string[];
   lineupScenario?: WhiteBoxOpportunityScenario;
   battleTarget?: UnifiedBattleTarget;
+  battleScopeId?: string;
 }
 
 export interface UnifiedEvidenceCase {
@@ -62,6 +64,7 @@ export interface UnifiedEvidenceCase {
   reasons: string[];
   lineupScenario?: WhiteBoxOpportunityScenario;
   battleTarget?: UnifiedBattleTarget;
+  battleScopeId?: string;
   selected: boolean;
 }
 
@@ -146,7 +149,7 @@ function collectBattleCases(root: string, seed: string, sourceSeason: number): {
     const gameDir = path.dirname(file), replayFile = path.join(gameDir, "replay-input.json");
     let replayReason: string | null = null;
     if (!fs.existsSync(replayFile)) replayReason = "missing-battle-replay-capsule";
-    else try { const replay = loadBattleReplayCapsule(replayFile); if (replay.input.aiVersion !== AI_VERSION) replayReason = "battle-ai-version-drift"; } catch { replayReason = "invalid-battle-replay-capsule"; }
+    else try { const replay = loadBattleReplayCapsule(replayFile); if (replay.input.aiVersion !== AI_VERSION) replayReason = "battle-ai-version-drift"; else if(replay.input.battleAssistScopes?.length)replayReason="battle-source-is-not-shadow"; } catch { replayReason = "invalid-battle-replay-capsule"; }
     const traces = readJson<any[]>(file);
     for (const trace of traces) {
       const shadow = trace?.whiteBoxShadow, comparison = shadow?.comparison, decision = shadow?.trace;
@@ -169,10 +172,10 @@ function collectBattleCases(root: string, seed: string, sourceSeason: number): {
       else if (!gate.recommended) { status = "requires-gate"; runner = null; reasons = [...gate.hardRejections]; }
       else { status = "executable"; runner = "battle"; reasons = []; }
       const battleTarget: UnifiedBattleTarget | undefined = hasTarget ? {sourceGame: gameDir, decisionOrdinal: trace.decisionOrdinal, playerId: trace.playerId, turn: trace.turn, expectedIncumbent: String(comparison.incumbent), selected: String(comparison.shadow)} : undefined;
-      const matchup = `${String(trace.battleContext?.ownSpecies ?? "unknown")}>${String(trace.battleContext?.opponentSpecies ?? "unknown")}`;
-      const fingerprint = digest(["battle", classification, status, matchup, battleChoiceFamily(comparison.incumbent), battleChoiceFamily(comparison.shadow), incumbent?.contributions?.slice(0, 4).map((value: any) => value.id).join(",") ?? ""].join("|"));
+      const scope=buildBattleAssistScope({ownSpecies:trace.battleContext?.ownSpecies,opponentSpecies:trace.battleContext?.opponentSpecies,incumbent:String(comparison.incumbent),selected:String(comparison.shadow),incumbentTarget:trace.actionTargets?.[comparison.incumbent],selectedTarget:trace.actionTargets?.[comparison.shadow],incumbentCandidate:incumbent??undefined});
+      const fingerprint = digest(["battle", status, scope.id, incumbent?.contributions?.slice(0, 4).map((value: any) => value.id).join(",") ?? ""].join("|"));
       const id = digest([root, relative, trace.turn, trace.playerId, comparison.incumbent, comparison.shadow].join("|"));
-      cases.push({id, root, sourceSeed: seed, sourceSeason, reviewIndex: 0, decisionId: String(decision.decisionId ?? `battle:${relative}:${trace.turn}:${trace.playerId}`), domain: "battle", actor: String(trace.personalityId ?? trace.playerId ?? "unknown"), season, classification, incumbent: String(comparison.incumbent), shadow: String(comparison.shadow), impact, priority: round(classWeight + (status === "executable" ? 40 : status === "requires-gate" ? 15 : 0) + impact + Math.max(0, season ?? 0) * .01), fingerprint, duplicates: 1, duplicateCaseIds: [], replicas: [], status, runner, reasons, ...(battleTarget ? {battleTarget} : {}), selected: false});
+      cases.push({id, root, sourceSeed: seed, sourceSeason, reviewIndex: 0, decisionId: String(decision.decisionId ?? `battle:${relative}:${trace.turn}:${trace.playerId}`), domain: "battle", actor: String(trace.personalityId ?? trace.playerId ?? "unknown"), season, classification, incumbent: String(comparison.incumbent), shadow: String(comparison.shadow), impact, priority: round(classWeight + (status === "executable" ? 40 : status === "requires-gate" ? 15 : 0) + impact + Math.max(0, season ?? 0) * .01), fingerprint, duplicates: 1, duplicateCaseIds: [], replicas: [], status, runner, reasons, battleScopeId:scope.id, ...(battleTarget ? {battleTarget} : {}), selected: false});
     }
   }
   return {files: files.length, comparisons, cases};
@@ -215,7 +218,7 @@ function toEvidenceCase(root: string, seed: string, sourceSeason: number, entry:
   return {id, root, sourceSeed: seed, sourceSeason, reviewIndex, decisionId: entry.decisionId, domain, actor: entry.actor, season: entry.season, classification: entry.classification, incumbent: entry.incumbent, shadow: entry.shadow, impact, priority, fingerprint, duplicates: 1, duplicateCaseIds: [], replicas: [], status, runner, reasons, selected: false};
 }
 
-function replicaFor(entry: UnifiedEvidenceCase): UnifiedEvidenceReplica { return {id: entry.id, root: entry.root, sourceSeed: entry.sourceSeed, sourceSeason: entry.sourceSeason, reviewIndex: entry.reviewIndex, decisionId: entry.decisionId, shadow: entry.shadow, actor: entry.actor, season: entry.season, status: entry.status, runner: entry.runner, reasons: [...entry.reasons], ...(entry.lineupScenario ? {lineupScenario: {...entry.lineupScenario}} : {}), ...(entry.battleTarget ? {battleTarget: {...entry.battleTarget}} : {})}; }
+function replicaFor(entry: UnifiedEvidenceCase): UnifiedEvidenceReplica { return {id: entry.id, root: entry.root, sourceSeed: entry.sourceSeed, sourceSeason: entry.sourceSeason, reviewIndex: entry.reviewIndex, decisionId: entry.decisionId, shadow: entry.shadow, actor: entry.actor, season: entry.season, status: entry.status, runner: entry.runner, reasons: [...entry.reasons], ...(entry.lineupScenario ? {lineupScenario: {...entry.lineupScenario}} : {}), ...(entry.battleTarget ? {battleTarget: {...entry.battleTarget}} : {}), ...(entry.battleScopeId?{battleScopeId:entry.battleScopeId}:{})}; }
 
 function detailedDomain(decisionId: string): string {
   if (decisionId.startsWith("lineup:")) return "lineup";
@@ -233,7 +236,6 @@ function comparePriority(left: UnifiedEvidenceCase, right: UnifiedEvidenceCase):
 function countBy(values: string[]): Record<string, number> { const result: Record<string, number> = {}; for (const value of values) result[value] = (result[value] ?? 0) + 1; return Object.fromEntries(Object.entries(result).sort(([a], [b]) => a.localeCompare(b))); }
 function digest(value: string): string { return crypto.createHash("sha256").update(value).digest("hex").slice(0, 20); }
 function choiceShape(value: string): string { if (value === "none" || value === "release-all" || value === "hold" || value === "replace") return value; if (/^move\s/i.test(value)) return value.includes("terastallize") ? "move:tera" : "move"; if (/^switch\s/i.test(value)) return "switch"; const members = value.split("+").filter(Boolean); return `members:${members.length}`; }
-function battleChoiceFamily(value: string): string { const move = value.match(/^move\s+(\S+)/i); if (move) return `move:${move[1].toLowerCase()}:${value.includes("terastallize") ? "tera" : "plain"}`; if (/^switch\s/i.test(value)) return "switch"; return choiceShape(value); }
 function findNamedFiles(directory: string, name: string): string[] { const files: string[] = []; if (!fs.existsSync(directory)) return files; for (const entry of fs.readdirSync(directory, {withFileTypes: true})) { const target = path.join(directory, entry.name); if (entry.isDirectory()) files.push(...findNamedFiles(target, name)); else if (entry.name === name) files.push(target); } return files; }
 function seasonFromPath(value: string): number | null { const match = value.match(/(?:^|\/)season-(\d+)(?:\/|$)/); return match ? Number(match[1]) : null; }
 function numericDelta(before: unknown, after: unknown): number | null { return typeof before === "number" && Number.isFinite(before) && typeof after === "number" && Number.isFinite(after) ? round(after - before) : null; }

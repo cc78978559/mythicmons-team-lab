@@ -7,7 +7,7 @@ import {BATTLE_SHADOW_PARAMETERS} from "../ai/whiteBox/parameters";
 
 export type AiStrategy = "first" | "damage" | "basic" | "tactical" | "search";
 export type PlayerId = "p1" | "p2";
-export const AI_VERSION = "stateful-choice-v13-personality-v2";
+export const AI_VERSION = "stateful-choice-v14-scoped-assist-v1";
 const BATTLE_SHADOW_VALUES = BATTLE_SHADOW_PARAMETERS.snapshot().values;
 const INVALID_MOVE_SCORE = Number.NEGATIVE_INFINITY;
 type BoostStat = "atk" | "def" | "spa" | "spd" | "spe" | "accuracy" | "evasion";
@@ -158,6 +158,9 @@ export interface AiDecisionTrace {
     ownSpecies: string | null;
     opponentSpecies: string | null;
   };
+  actionTargets?: Record<string,string>;
+  policyIncumbentSelected?: string;
+  assistPolicy?: {scopeId:string;approved:boolean;gateRecommended:boolean;applied:boolean;reasons:string[]};
   personalityId: string;
   opponentModel: {
     confidence: number;
@@ -643,6 +646,7 @@ function chooseSearch(request: ChoiceRequest, playerId: PlayerId, context: Battl
     strategy: "search",
     selected,
     battleContext: {ownSpecies: context.active[playerId]?.species ?? null, opponentSpecies: context.active[opponentOf(playerId)]?.species ?? null},
+    actionTargets:Object.fromEntries(ranked.map(entry=>[entry.action.choice,entry.action.kind==="switch"?switchTargetSpecies(entry.action.candidate):entry.action.move.id||entry.action.move.move])),
     personalityId: context.tacticalProfile.id,
     opponentModel: opponentModelTrace(context, playerId),
     whiteBoxShadow: {comparison: compareWhiteBoxShadow(whiteBoxTrace, selected), trace: whiteBoxTrace},
@@ -663,6 +667,8 @@ function chooseSearch(request: ChoiceRequest, playerId: PlayerId, context: Battl
   };
   return selected;
 }
+
+function switchTargetSpecies(candidate:RequestPokemon):string{return candidate.details?.split(",",1)[0]?.trim()||candidate.ident.split(":",2)[1]?.trim()||candidate.ident;}
 
 function opponentModelTrace(context: BattleAiContext, playerId: PlayerId): AiDecisionTrace["opponentModel"] {
   const species = context.active[opponentOf(playerId)]?.species ?? null;

@@ -3,7 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {loadTeam} from "../showdown/team";
-import {loadBattleReplayCapsule, runBattle} from "../showdown/battle";
+import {applyApprovedBattleAssist,loadBattleReplayCapsule, runBattle} from "../showdown/battle";
+import {buildBattleAssistScope} from "../ai/whiteBox/battleScope";
 
 async function main(): Promise<void> {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "mythicmons-replay-"));
@@ -63,6 +64,14 @@ async function main(): Promise<void> {
   assert.equal(branchTraces[target.decisionOrdinal - 1].incumbentSelected, target.selected);
   assert.equal(branchTraces[target.decisionOrdinal - 1].selected, selected);
   assert.equal(branchTraces[target.decisionOrdinal - 1].intervention.applied, true);
+
+  const assistCandidate=(id:string,rational:number,style:number)=>({id,eligible:true,reasonable:true,hardRejections:[],rationalScore:rational,rawStyleScore:style,appliedStyleScore:style,finalScore:rational+style,contributions:[{id:"battle.expected",group:"expected",source:"competence",value:rational,reason:"expected"},{id:"battle.downside",group:"risk",source:"risk",value:0,reason:"downside"},{id:"battle.worst",group:"risk",source:"risk",value:0,reason:"worst"}]});
+  const assistTrace:any={turn:1,playerId:"p1",strategy:"search",selected:"move tackle",personalityId:"test",battleContext:{ownSpecies:"Alpha",opponentSpecies:"Beta"},whiteBoxShadow:{comparison:{incumbent:"move tackle",shadow:"switch 2",agrees:false},trace:{candidates:[assistCandidate("move tackle",2,0),assistCandidate("switch 2",3,.1)]}}};
+  const assistScope=buildBattleAssistScope({ownSpecies:"Alpha",opponentSpecies:"Beta",incumbent:"move tackle",selected:"switch 2",incumbentCandidate:assistTrace.whiteBoxShadow.trace.candidates[0]});
+  assert.equal(applyApprovedBattleAssist(structuredClone(assistTrace),"move tackle",new Set(),{applications:0}),"move tackle");
+  const approvedTrace=structuredClone(assistTrace),assistState={applications:0};assert.equal(applyApprovedBattleAssist(approvedTrace,"move tackle",new Set([assistScope.id]),assistState),"switch 2");assert.equal(approvedTrace.assistPolicy.applied,true);assert.equal(assistState.applications,1);
+  assert.notEqual(buildBattleAssistScope({ownSpecies:"Gamma",opponentSpecies:"Beta",incumbent:"move tackle",selected:"switch 2",incumbentCandidate:assistTrace.whiteBoxShadow.trace.candidates[0]}).id,assistScope.id);
+  assert.notEqual(buildBattleAssistScope({ownSpecies:"Alpha",opponentSpecies:"Beta",incumbent:"move tackle",selected:"switch 2",selectedTarget:"Delta",incumbentCandidate:assistTrace.whiteBoxShadow.trace.candidates[0]}).id,buildBattleAssistScope({ownSpecies:"Alpha",opponentSpecies:"Beta",incumbent:"move tackle",selected:"switch 2",selectedTarget:"Epsilon",incumbentCandidate:assistTrace.whiteBoxShadow.trace.candidates[0]}).id);
 
   const corruptPath = path.join(root, "corrupt.json");
   const corrupt = JSON.parse(fs.readFileSync(first.replayInputPath, "utf8"));
