@@ -144,10 +144,16 @@ export interface KnownActive {
 }
 
 export interface AiDecisionTrace {
+  decisionOrdinal?: number;
   turn: number;
   playerId: PlayerId;
   strategy: "search";
   selected: string;
+  incumbentSelected?: string;
+  intervention?: {
+    selected: string;
+    applied: true;
+  };
   personalityId: string;
   opponentModel: {
     confidence: number;

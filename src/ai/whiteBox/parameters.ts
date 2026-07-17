@@ -79,6 +79,9 @@ export const BATTLE_SHADOW_PARAMETERS = new WhiteBoxParameterRegistry([
     maximum: 30,
     version: 1,
   },
+  numeric("battle.assistminimumrationalgain", "Minimum rational-score improvement required for a battle-choice intervention.", .5, 0, 50, "global", 2),
+  numeric("battle.assistmaximumfinalregression", "Maximum final-score regression allowed for a rational battle correction.", 2, 0, 30, "global", 2),
+  numeric("battle.assistmaximumriskregression", "Maximum combined downside and worst-case regression allowed for a battle correction.", 1, 0, 30, "global", 2),
 ]);
 
 export const LINEUP_SHADOW_PARAMETERS = new WhiteBoxParameterRegistry([

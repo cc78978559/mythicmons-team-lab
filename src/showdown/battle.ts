@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import {BattleStream, Teams} from "pokemon-showdown";
 import {
   AI_VERSION,
@@ -31,6 +32,39 @@ export interface BattleInput {
   traceAiDecisions?: boolean;
   aiProfiles?: Partial<Record<"p1" | "p2", Partial<AiTacticalProfile>>>;
   aiOpponentModels?: Partial<Record<"p1" | "p2", Partial<AiOpponentModel>>>;
+  explicitSeed?: [number, number, number, number];
+  decisionIntervention?: BattleDecisionIntervention;
+}
+
+export interface BattleDecisionIntervention {
+  decisionOrdinal: number;
+  playerId: "p1" | "p2";
+  turn: number;
+  expectedIncumbent: string;
+  selected: string;
+}
+
+export interface BattleReplayInput {
+  schemaVersion: 1;
+  aiVersion: string;
+  format: string;
+  teamA: string;
+  teamB: string;
+  seed: [number, number, number, number];
+  maxTurns: number;
+  idleTimeoutMs: number;
+  wallClockTimeoutMs: number;
+  ai: AiStrategy;
+  openTeamSheets: boolean;
+  traceAiDecisions: boolean;
+  aiProfiles: Record<"p1" | "p2", AiTacticalProfile>;
+  aiOpponentModels: Record<"p1" | "p2", AiOpponentModel>;
+}
+
+export interface BattleReplayCapsule {
+  schemaVersion: 1;
+  sha256: string;
+  input: BattleReplayInput;
 }
 
 export interface BattleResult {
@@ -43,6 +77,8 @@ export interface BattleResult {
   publicLogPath: string;
   endDataPath: string;
   decisionLogPath: string;
+  replayInputPath: string;
+  replayInputSha256: string;
   ai: AiStrategy;
   openTeamSheets: boolean;
   traceAiDecisions: boolean;
@@ -52,6 +88,7 @@ export interface BattleResult {
   stallReason: string | null;
   errors: string[];
   choiceRetries: number;
+  decisionInterventionApplied: boolean;
 }
 
 export interface MaxTurnAdjudication {
@@ -64,7 +101,7 @@ export interface MaxTurnAdjudication {
 
 export async function runBattle(input: BattleInput): Promise<BattleResult> {
   const stream = new BattleStream();
-  const seed = seedToShowdownSeed(input.seed, input.gameIndex);
+  const seed = input.explicitSeed ? validateShowdownSeed(input.explicitSeed) : seedToShowdownSeed(input.seed, input.gameIndex);
   const rawBlocks: string[] = [];
   const publicLines: string[] = [];
   let turns = 0;
@@ -80,6 +117,8 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
   let choiceRetries = 0;
   const openTeamSheets = input.openTeamSheets ?? false;
   const traceAiDecisions = input.traceAiDecisions ?? false;
+  validateDecisionIntervention(input.decisionIntervention, input.ai, traceAiDecisions);
+  const interventionState = {applied: false};
   const teams = {
     p1: Teams.unpack(input.teamA) ?? [],
     p2: Teams.unpack(input.teamB) ?? [],
@@ -93,6 +132,26 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
   const rejectedChoices = new Set<"p1" | "p2">();
   const idleTimeoutMs = input.idleTimeoutMs ?? 5000;
   const wallClockTimeoutMs = input.wallClockTimeoutMs ?? 30000;
+  const battleDir = path.join(input.outDir, `game-${String(input.gameIndex + 1).padStart(4, "0")}`);
+  fs.mkdirSync(battleDir, {recursive: true});
+  const replayInputPath = path.join(battleDir, "replay-input.json");
+  const replayCapsule = createBattleReplayCapsule({
+    schemaVersion: 1,
+    aiVersion: AI_VERSION,
+    format: input.format,
+    teamA: input.teamA,
+    teamB: input.teamB,
+    seed,
+    maxTurns: input.maxTurns,
+    idleTimeoutMs,
+    wallClockTimeoutMs,
+    ai: input.ai,
+    openTeamSheets,
+    traceAiDecisions,
+    aiProfiles: {p1: aiContexts.p1.tacticalProfile, p2: aiContexts.p2.tacticalProfile},
+    aiOpponentModels: {p1: aiContexts.p1.opponentModel, p2: aiContexts.p2.opponentModel},
+  });
+  fs.writeFileSync(replayInputPath, `${JSON.stringify(replayCapsule, null, 2)}\n`, "utf8");
   let idleTimer: NodeJS.Timeout | undefined;
   let wallClockTimer: NodeJS.Timeout | undefined;
 
@@ -124,7 +183,7 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
         if ((playerId === "p1" || playerId === "p2") && pendingRequests[playerId]?.side?.pokemon) latestRequests[playerId] = pendingRequests[playerId];
         if (queued && !errors.length && !timeout && !stalled) {
           choiceRetries += 1;
-          flushPendingRequests(stream, pendingRequests, input.ai, aiContexts, decisionTraces, traceAiDecisions);
+          flushPendingRequests(stream, pendingRequests, input.ai, aiContexts, decisionTraces, traceAiDecisions, input.decisionIntervention, interventionState);
         }
       } else if (messageType === "update") {
         for (const line of publicUpdateLines(lines.slice(1))) {
@@ -158,7 +217,7 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
           }
         }
         if (!errors.length && !timeout && !stalled) {
-          flushPendingRequests(stream, pendingRequests, input.ai, aiContexts, decisionTraces, traceAiDecisions);
+          flushPendingRequests(stream, pendingRequests, input.ai, aiContexts, decisionTraces, traceAiDecisions, input.decisionIntervention, interventionState);
         }
       } else if (messageType === "end") {
         ended = true;
@@ -182,11 +241,15 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
     p2: {name: "Team B", team: input.teamB},
   })}`);
 
-  await streamReader;
-  stopTimers();
-
-  const battleDir = path.join(input.outDir, `game-${String(input.gameIndex + 1).padStart(4, "0")}`);
-  fs.mkdirSync(battleDir, {recursive: true});
+  let streamFailure: unknown;
+  try {
+    await streamReader;
+  } catch (error) {
+    streamFailure = error;
+    stream.destroy();
+  } finally {
+    stopTimers();
+  }
 
   const rawLogPath = path.join(battleDir, "raw.log");
   const publicLogPath = path.join(battleDir, "public.log");
@@ -196,7 +259,12 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
   fs.writeFileSync(rawLogPath, rawBlocks.join("\n\n"), "utf8");
   fs.writeFileSync(publicLogPath, publicLines.join("\n"), "utf8");
   fs.writeFileSync(decisionLogPath, `${JSON.stringify(decisionTraces, null, 2)}\n`, "utf8");
-  fs.writeFileSync(endDataPath, `${JSON.stringify({winner, turns, ended, timeout, adjudication, stalled, stallReason, errors, choiceRetries, seed, ai: input.ai, aiVersion: AI_VERSION, aiProfiles: {p1: aiContexts.p1.tacticalProfile.id, p2: aiContexts.p2.tacticalProfile.id}, aiOpponentModelConfidence: {p1: aiContexts.p1.opponentModel.confidence, p2: aiContexts.p2.opponentModel.confidence}, openTeamSheets, traceAiDecisions, aiDecisionCount: decisionTraces.length, ...endData}, null, 2)}\n`, "utf8");
+  fs.writeFileSync(endDataPath, `${JSON.stringify({winner, turns, ended, timeout, adjudication, stalled, stallReason, errors, choiceRetries, seed, ai: input.ai, aiVersion: AI_VERSION, replayInput: path.basename(replayInputPath), replayInputSha256: replayCapsule.sha256, decisionIntervention: input.decisionIntervention ?? null, decisionInterventionApplied: interventionState.applied, aiProfiles: {p1: aiContexts.p1.tacticalProfile.id, p2: aiContexts.p2.tacticalProfile.id}, aiOpponentModelConfidence: {p1: aiContexts.p1.opponentModel.confidence, p2: aiContexts.p2.opponentModel.confidence}, openTeamSheets, traceAiDecisions, aiDecisionCount: decisionTraces.length, ...endData}, null, 2)}\n`, "utf8");
+
+  if (streamFailure) throw streamFailure;
+  if (input.decisionIntervention && !interventionState.applied) {
+    throw new Error(`Battle decision intervention ${input.decisionIntervention.decisionOrdinal} was not reached`);
+  }
 
   if (errors.length) {
     throw new Error(`Battle protocol error in game ${input.gameIndex + 1}:\n${errors.join("\n")}`);
@@ -212,6 +280,8 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
     publicLogPath,
     endDataPath,
     decisionLogPath,
+    replayInputPath,
+    replayInputSha256: replayCapsule.sha256,
     ai: input.ai,
     openTeamSheets,
     traceAiDecisions,
@@ -221,7 +291,54 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
     stallReason,
     errors,
     choiceRetries,
+    decisionInterventionApplied: interventionState.applied,
   };
+}
+
+export function createBattleReplayCapsule(input: BattleReplayInput): BattleReplayCapsule {
+  validateBattleReplayInput(input);
+  const cloned = JSON.parse(JSON.stringify(input)) as BattleReplayInput;
+  return {schemaVersion: 1, sha256: replayInputDigest(cloned), input: cloned};
+}
+
+export function loadBattleReplayCapsule(file: string): BattleReplayCapsule {
+  const capsule = JSON.parse(fs.readFileSync(file, "utf8")) as BattleReplayCapsule;
+  if (capsule.schemaVersion !== 1 || capsule.input?.schemaVersion !== 1 || !/^[a-f0-9]{64}$/.test(capsule.sha256 ?? "")) {
+    throw new Error(`Invalid battle replay capsule: ${file}`);
+  }
+  validateBattleReplayInput(capsule.input);
+  const actual = replayInputDigest(capsule.input);
+  if (actual !== capsule.sha256) throw new Error(`Battle replay capsule hash mismatch: ${file}`);
+  return capsule;
+}
+
+function replayInputDigest(input: BattleReplayInput): string {
+  return crypto.createHash("sha256").update(canonicalJson(input)).digest("hex");
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function validateBattleReplayInput(input: BattleReplayInput): void {
+  if (input.schemaVersion !== 1) throw new Error("Unsupported battle replay input schema");
+  if (!input.aiVersion || !input.format || !input.teamA || !input.teamB) throw new Error("Incomplete battle replay input");
+  validateShowdownSeed(input.seed);
+  if (!Number.isInteger(input.maxTurns) || input.maxTurns < 1) throw new Error("Invalid replay maxTurns");
+  if (!Number.isFinite(input.idleTimeoutMs) || input.idleTimeoutMs <= 0 || !Number.isFinite(input.wallClockTimeoutMs) || input.wallClockTimeoutMs <= 0) throw new Error("Invalid replay timeout");
+  if (!input.aiProfiles?.p1 || !input.aiProfiles?.p2 || !input.aiOpponentModels?.p1 || !input.aiOpponentModels?.p2) throw new Error("Incomplete replay AI state");
+}
+
+function validateShowdownSeed(seed: [number, number, number, number]): [number, number, number, number] {
+  if (!Array.isArray(seed) || seed.length !== 4 || seed.some(value => !Number.isInteger(value) || value < 0 || value > 0xffffffff)) {
+    throw new Error("Showdown seed must contain four unsigned 32-bit integers");
+  }
+  return [...seed] as [number, number, number, number];
 }
 
 export function adjudicateMaxTurns(requests: Partial<Record<"p1" | "p2", ChoiceRequest>>): MaxTurnAdjudication | null {
@@ -317,17 +434,57 @@ function flushPendingRequests(
   aiContexts: Record<"p1" | "p2", BattleAiContext>,
   decisionTraces: AiDecisionTrace[],
   traceAiDecisions: boolean,
+  intervention?: BattleDecisionIntervention,
+  interventionState: {applied: boolean} = {applied: false},
 ): void {
   for (const playerId of ["p1", "p2"] as const) {
     const request = pendingRequests[playerId];
     if (!request) continue;
     delete pendingRequests[playerId];
     const aiContext = aiContexts[playerId];
-    const choice = chooseAction(request, playerId, ai, aiContext);
+    let choice = chooseAction(request, playerId, ai, aiContext);
     const trace = aiContext.lastDecision[playerId];
-    if (trace && traceAiDecisions) decisionTraces.push(trace);
+    if (trace && traceAiDecisions) {
+      trace.decisionOrdinal = decisionTraces.length + 1;
+      if (intervention?.decisionOrdinal === trace.decisionOrdinal) {
+        choice = applyBattleDecisionIntervention(trace, choice, playerId, intervention, interventionState);
+      }
+      decisionTraces.push(trace);
+    }
     if (choice === "wait") continue;
     recordAiChoice(aiContext, playerId, choice, request);
     stream.write(`>${playerId} ${choice}`);
   }
+}
+
+export function applyBattleDecisionIntervention(
+  trace: AiDecisionTrace,
+  incumbent: string,
+  playerId: "p1" | "p2",
+  intervention: BattleDecisionIntervention,
+  state: {applied: boolean},
+): string {
+  if (state.applied) throw new Error("Battle decision intervention was applied more than once");
+  if (trace.decisionOrdinal !== intervention.decisionOrdinal || playerId !== intervention.playerId || trace.turn !== intervention.turn) {
+    throw new Error(`Battle decision intervention target mismatch at ordinal ${intervention.decisionOrdinal}`);
+  }
+  if (incumbent !== intervention.expectedIncumbent) {
+    throw new Error(`Battle decision intervention incumbent mismatch: expected ${intervention.expectedIncumbent}, received ${incumbent}`);
+  }
+  const candidate = trace.whiteBoxShadow?.trace.candidates.find(entry => entry.id === intervention.selected);
+  if (!candidate?.eligible || !candidate.reasonable || candidate.finalScore === null) {
+    throw new Error(`Battle decision intervention selected an ineligible candidate: ${intervention.selected}`);
+  }
+  trace.incumbentSelected = incumbent;
+  trace.selected = intervention.selected;
+  trace.intervention = {selected: intervention.selected, applied: true};
+  state.applied = true;
+  return intervention.selected;
+}
+
+function validateDecisionIntervention(intervention: BattleDecisionIntervention | undefined, ai: AiStrategy, traceAiDecisions: boolean): void {
+  if (!intervention) return;
+  if (ai !== "search" || !traceAiDecisions) throw new Error("Battle decision intervention requires search AI with decision tracing enabled");
+  if (!Number.isInteger(intervention.decisionOrdinal) || intervention.decisionOrdinal < 1) throw new Error("Invalid battle decision intervention ordinal");
+  if (!Number.isInteger(intervention.turn) || intervention.turn < 0 || !intervention.expectedIncumbent || !intervention.selected) throw new Error("Incomplete battle decision intervention target");
 }

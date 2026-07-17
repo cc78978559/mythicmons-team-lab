@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {compareWhiteBoxShadow, evaluateWhiteBoxDecision, summarizeWhiteBoxShadow, type WhiteBoxContribution} from "../ai/whiteBox/decision";
 import {buildLineupWhiteBoxCandidate, evaluateLineupAssistGate, whiteBoxCandidateTotal, type WhiteBoxLineupMember, type WhiteBoxLineupTraits} from "../ai/whiteBox/lineup";
+import {evaluateBattleAssistGate} from "../ai/whiteBox/battle";
 import {buildKeeperPortfolioCandidate, keeperPortfolioId} from "../ai/whiteBox/keeper";
 import {buildAcquisitionWhiteBoxCandidate} from "../ai/whiteBox/acquisition";
 import {evaluateWhiteBoxBid} from "../ai/whiteBox/auction";
@@ -62,6 +63,10 @@ assert.equal(LEARNING_SHADOW_PARAMETERS.snapshot().values["learning.maximumtrait
 assert.equal(EVOLUTION_SHADOW_PARAMETERS.snapshot().values["evolution.crossoverrate"], .12);
 assert.equal(MEMORY_SHADOW_PARAMETERS.snapshot().values["memory.tactical.episodelimit"], 32);
 assert.throws(() => BATTLE_SHADOW_PARAMETERS.snapshot({"battle.stylelimit": 31}), /within 0\.\.30/);
+const battleCandidate = (id:string,rational:number,style:number,downside:number,worst:number) => ({id,eligible:true,reasonable:true,hardRejections:[],rationalScore:rational,rawStyleScore:style,appliedStyleScore:style,finalScore:rational+style,contributions:[{id:"battle.expected",group:"expected",source:"competence" as const,value:rational-downside-worst,reason:"expected"},{id:"battle.downside",group:"risk",source:"risk" as const,value:downside,reason:"downside"},{id:"battle.worst",group:"risk",source:"risk" as const,value:worst,reason:"worst"}]});
+assert.equal(evaluateBattleAssistGate(battleCandidate("old",10,2,-1,-1),battleCandidate("new",11,0,-1,-1)).recommended,true);
+assert.equal(evaluateBattleAssistGate({...battleCandidate("old",10,2,-1,-1),reasonable:false,finalScore:null},battleCandidate("new",11,0,-1,-1)).recommended,true);
+assert.deepEqual(evaluateBattleAssistGate(battleCandidate("old",10,0,-1,-1),battleCandidate("new",11,0,-3,-2)).hardRejections,["risk-regression"]);
 assert.throws(() => new WhiteBoxParameterRegistry([{id: "bad", description: "bad id", scope: "global", defaultValue: 0, minimum: 0, maximum: 1, version: 1}]), /Invalid/);
 
 const cautious: WhiteBoxLineupTraits = {risk: 0, stars: 0, synergy: 0, counter: 0, value: 0, flexibility: 0};

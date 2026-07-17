@@ -47,5 +47,17 @@ Reaching the formal threshold never activates behavior automatically. A hypothes
 
 Battle evidence is scanned only where full `ai-decisions.json` traces were retained. A source with compact-only battle summaries is marked `battleEvidence: not-retained`; an older trace without white-box fields is marked `legacy-without-whitebox`. Neither state is evidence of agreement.
 
+New battles also retain a hash-verified `replay-input.json`. It contains the packed teams, exact four-word Showdown seed, normalized tactical profiles, normalized opponent models, AI version, and battle options. The battle runner can consume that exact seed without deriving it a second time. Decision traces carry a stable global ordinal, so repeated requests in one turn cannot be confused.
+
+The isolated battle command is:
+
+```powershell
+npm run counterfactual:whitebox-battle -- `
+  --source-game <battle-directory> `
+  --out output/battle-counterfactual
+```
+
+It accepts only a white-box disagreement that passes the battle assist gate: a minimum rational gain, bounded final-score regression, and bounded combined downside/worst-case regression. It first proves that the incumbent battle reproduces the complete retained decision trace, then changes exactly one legal, reasonable candidate and proves that the branch prefix is identical. A missing capsule, hash mismatch, AI-version drift, target drift, or gate rejection stops the experiment. Ordinary league behavior remains unchanged.
+
 This is the first unified layer. It does not weaken existing domain-specific gates.
-The unified runner now executes gate-approved lineup replicas through the isolated lineup replay route. After replay it verifies that the same scenario choice and assist gate were reproduced before compacting evidence. Battle, learning, memory, and evolution interventions remain unsupported.
+The unified runner now executes gate-approved lineup replicas through the isolated lineup replay route. After replay it verifies that the same scenario choice and assist gate were reproduced before compacting evidence. Battle intervention now has a standalone exact single-game runner; its result model still needs a battle-specific multi-sample aggregate before it joins automatic unified execution. Learning, memory, and evolution interventions remain unsupported.
