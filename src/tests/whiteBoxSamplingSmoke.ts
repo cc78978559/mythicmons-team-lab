@@ -1,0 +1,12 @@
+import assert from "node:assert/strict";
+import {firstEligibleWhiteBoxCase,whiteBoxExperimentEligibility,whiteBoxProductionEvidenceMinimum,whiteBoxSamplingProgress} from "../ai/whiteBox/sampling";
+assert.deepEqual(whiteBoxSamplingProgress(["a","b"],10,5),{samples:2,seeds:2,targetSamples:10,minimumSeeds:5,complete:false,remainingSamples:8,remainingSeeds:3});
+assert.equal(whiteBoxSamplingProgress(["a","a","b","c","d","e","f","g","h","i"],10,5).complete,true);
+assert.throws(()=>whiteBoxSamplingProgress([],2,3),/minimumSeeds/);
+assert.equal(whiteBoxProductionEvidenceMinimum(3),10);assert.equal(whiteBoxProductionEvidenceMinimum(20),20);
+const blockedTrade={domain:"market",decisionId:"market:trade:1:3:m1:m2",experimentGate:{recommended:false,hardRejections:["insufficient-margin"]}};
+const keeper={domain:"keeper",decisionId:"keeper:m1:1"};
+assert.deepEqual(whiteBoxExperimentEligibility(blockedTrade),{eligible:false,reasons:["insufficient-margin"]});
+assert.equal(firstEligibleWhiteBoxCase([blockedTrade,keeper]),2);
+assert.equal(firstEligibleWhiteBoxCase([{domain:"market",decisionId:"market:trade:1:3:m1:m2"}]),null);
+console.log("White-box automatic sampling smoke test passed");

@@ -72,7 +72,7 @@ console.log("V12 self-programming league smoke test passed");
 function runSeason(resume: boolean, seasons: string, adopt = false): void {
   const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "draftLeagueV12.ts")], {
     cwd: root,
-    env: {...process.env, V12_OUT: output, V12_SEASONS: seasons, V12_RESUME: String(resume), V12_ADOPT_REGISTRY: String(adopt), V12_REGISTRY_SOURCE: registrySource, V12_REGISTRY_REVISION: adopt ? "adopted-smoke" : "initial-smoke", V12_MANAGER_LIMIT: "6", V12_PAIRS: "1", V12_POOL_SIZE: "100", V12_AUCTION_LOTS: "10", V12_REGULAR_ROUNDS: "2", V12_MAX_TURNS: "80", V12_MIN_ROSTER: "6", V12_MAX_ROSTER: "6", V12_SEED: "automated-v12-smoke"},
+    env: {...process.env, V12_OUT: output, V12_SEASONS: seasons, V12_RESUME: String(resume), V12_ADOPT_REGISTRY: String(adopt), V12_REGISTRY_SOURCE: registrySource, V12_REGISTRY_REVISION: adopt ? "adopted-smoke" : "initial-smoke", V12_MANAGER_LIMIT: "6", V12_PAIRS: "1", V12_POOL_SIZE: "100", V12_AUCTION_LOTS: "10", V12_REGULAR_ROUNDS: "2", V12_MAX_TURNS: "80", V12_MIN_ROSTER: "6", V12_MAX_ROSTER: "6", V12_SEED: "automated-v12-smoke", V12_EVOLUTION_MODE: "generational"},
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });

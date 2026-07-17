@@ -1,12 +1,18 @@
 import path from "node:path";
 import {spawnSync} from "node:child_process";
+import {writeCareerCheckpointFromWhiteBoxRelease} from "../ai/whiteBox/release";
 
 const root = process.cwd();
+const output = path.resolve(process.env.V12_OUT || "output/draft-league-v12");
+const aiRelease = process.env.V12_AI_RELEASE ? path.resolve(process.env.V12_AI_RELEASE) : "";
+if (aiRelease && process.env.V12_CAREER_CHECKPOINT) throw new Error("V12_AI_RELEASE cannot be combined with V12_CAREER_CHECKPOINT");
+if (aiRelease && /^(1|true|yes)$/i.test(process.env.V12_RESUME || "false")) throw new Error("V12_AI_RELEASE starts a new journey and cannot be combined with V12_RESUME");
+const importedCheckpoint = aiRelease ? writeCareerCheckpointFromWhiteBoxRelease(aiRelease, path.join(output, ".whitebox-ai-import"), true).manifest : process.env.V12_CAREER_CHECKPOINT || "";
 const env = {
   ...process.env,
   V4_STATE_VERSION: "12", V4_DUAL_LAYER: "true", V4_PROGRAM_EVOLUTION: "true",
   V4_SEED: process.env.V12_SEED || "self-programming-v12",
-  V4_OUT: path.resolve(process.env.V12_OUT || "output/draft-league-v12"),
+  V4_OUT: output,
   V4_SEASONS: process.env.V12_SEASONS || "1",
   V4_MANAGER_LIMIT: process.env.V12_MANAGER_LIMIT || "30",
   V4_PAIRS: process.env.V12_PAIRS || "1",
@@ -17,9 +23,16 @@ const env = {
   V4_RESUME: process.env.V12_RESUME || "false",
   V4_ADOPT_REGISTRY: process.env.V12_ADOPT_REGISTRY || "false",
   V4_ALLOW_CODE_UPGRADE: process.env.V12_ALLOW_CODE_UPGRADE || "false",
-  V4_CAREER_CHECKPOINT: process.env.V12_CAREER_CHECKPOINT || "",
+  V4_CAREER_CHECKPOINT: importedCheckpoint,
   V4_EVIDENCE_RETENTION: process.env.V12_EVIDENCE_RETENTION || "compact",
   V4_EVIDENCE_SAMPLE_RATE: process.env.V12_EVIDENCE_SAMPLE_RATE || "0.02",
+  V4_EVOLUTION_MODE: process.env.V12_EVOLUTION_MODE || process.env.V4_EVOLUTION_MODE || "punctuated",
+  V4_EVOLUTION_SHOCK: process.env.V12_EVOLUTION_SHOCK || process.env.V4_EVOLUTION_SHOCK || "0",
+  V4_EVOLUTION_MAX_BURSTS: process.env.V12_EVOLUTION_MAX_BURSTS || process.env.V4_EVOLUTION_MAX_BURSTS || "2",
+  V4_EVOLUTION_MIN_CANDIDATES: process.env.V12_EVOLUTION_MIN_CANDIDATES || process.env.V4_EVOLUTION_MIN_CANDIDATES || "4",
+  V4_EVOLUTION_MAX_CANDIDATES: process.env.V12_EVOLUTION_MAX_CANDIDATES || process.env.V4_EVOLUTION_MAX_CANDIDATES || "8",
+  V4_EVOLUTION_POLICY: process.env.V12_EVOLUTION_POLICY || process.env.V4_EVOLUTION_POLICY || "shadow",
+  V4_EVOLUTION_POLICY_TARGET: process.env.V12_EVOLUTION_POLICY_TARGET || process.env.V4_EVOLUTION_POLICY_TARGET || "",
   V4_REGISTRY_SOURCE: process.env.V12_REGISTRY_SOURCE || path.resolve("data/draft"),
   V4_REGISTRY_REVISION: process.env.V12_REGISTRY_REVISION || "",
   V4_BASE_BUDGET: process.env.V12_BASE_CASH || "40",

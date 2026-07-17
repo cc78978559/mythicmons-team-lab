@@ -1,0 +1,7 @@
+import fs from "node:fs";
+import path from "node:path";
+import {scanWhiteBoxOpportunities,whiteBoxOpportunityMarkdown} from "../ai/whiteBox/opportunity";
+
+const args=process.argv.slice(2),inputs=required("--inputs").split(",").map(value=>path.resolve(value.trim())).filter(Boolean),out=path.resolve(option("--out","output/whitebox-opportunity-scan"));const scenarios=[{id:"cautious",band:.5,styleLimit:3,styleScale:1.1},{id:"moderate",band:1,styleLimit:4,styleScale:1.25},{id:"expressive",band:2,styleLimit:5,styleScale:1.5}],summary=scanWhiteBoxOpportunities(inputs,scenarios);fs.mkdirSync(out,{recursive:true});fs.writeFileSync(path.join(out,"opportunity-summary.json"),`${JSON.stringify(summary,null,2)}\n`,"utf8");fs.writeFileSync(path.join(out,"opportunity-report.md"),whiteBoxOpportunityMarkdown(summary),"utf8");console.log(JSON.stringify({runs:summary.runs,comparisons:summary.comparisons,completeComparisons:summary.completeComparisons,scenarios:summary.scenarios.map(({id,differences,assistApproved,rate,byDomain})=>({id,differences,assistApproved,rate,byDomain})),report:path.join(out,"opportunity-report.md")},null,2));
+function option(name:string,fallback:string):string{const index=args.indexOf(name);return index>=0?args[index+1]??fallback:fallback;}
+function required(name:string):string{const index=args.indexOf(name),value=index>=0?args[index+1]:undefined;if(!value)throw new Error(`Missing required option: ${name}`);return value;}

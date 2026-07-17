@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import {compareWhiteBoxBranches,compareWhiteBoxTradeBranches,parseBackgroundDecisionTarget,parseTradeDecisionTarget,whiteBoxBranchMarkdown} from "../ai/whiteBox/counterfactual";
+const state=(cash:number,points:number,rank:number,contracts:number)=>({completedSeason:3,managers:[{id:"m1",cash,titles:rank===1?1:0,totalPoints:points,deadMoneyCurrent:0,contracts:Array.from({length:contracts},(_,i)=>({salary:10+i})),seasons:[{season:2,champion:false},{season:3,rank,points:points-5,champion:rank===1}]}]});
+const comparison=compareWhiteBoxBranches("m1",2,state(5,20,3,2),state(15,25,1,1));
+assert.equal(comparison.delta.cash,10);assert.equal(comparison.delta.contracts,-1);assert.equal(comparison.delta.totalPoints,5);assert.equal(comparison.delta.finalRank,-2);assert.match(whiteBoxBranchMarkdown(comparison),/单个固定种子/);
+assert.deepEqual(parseBackgroundDecisionTarget("market:background-action:1:3:manager-03"),{season:1,round:3,managerId:"manager-03"});assert.equal(parseBackgroundDecisionTarget("keeper:m:1"),null);
+assert.deepEqual(parseTradeDecisionTarget("market:trade:2:4:manager-03:manager-07"),{season:2,round:4,leftManagerId:"manager-03",rightManagerId:"manager-07"});
+const pairIncumbent={completedSeason:3,managers:[...state(5,20,3,2).managers,{...state(8,15,4,1).managers[0],id:"m2"}]};
+const pairWhitebox={completedSeason:3,managers:[...state(15,25,1,1).managers,{...state(6,18,5,1).managers[0],id:"m2"}]};
+const pair=compareWhiteBoxTradeBranches(["m1","m2"],2,pairIncumbent,pairWhitebox);assert.equal(pair.delta.totalPoints,8);assert.equal(pair.memberComparisons?.length,2);
+console.log("White-box cross-season counterfactual smoke test passed");

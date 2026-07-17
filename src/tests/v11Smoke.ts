@@ -9,7 +9,7 @@ fs.rmSync(output, {recursive: true, force: true});
 
 const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "draftLeagueV11.ts")], {
   cwd: root,
-  env: {...process.env, V11_OUT: output, V11_SEASONS: "1", V11_MANAGER_LIMIT: "6", V11_PAIRS: "1", V11_POOL_SIZE: "100", V11_AUCTION_LOTS: "10", V11_REGULAR_ROUNDS: "5", V11_MAX_TURNS: "100", V11_MIN_ROSTER: "6", V11_MAX_ROSTER: "6", V11_SEED: "automated-v11-smoke"},
+  env: {...process.env, V11_OUT: output, V11_SEASONS: "1", V11_MANAGER_LIMIT: "6", V11_PAIRS: "1", V11_POOL_SIZE: "100", V11_AUCTION_LOTS: "10", V11_REGULAR_ROUNDS: "5", V11_MAX_TURNS: "100", V11_MIN_ROSTER: "6", V11_MAX_ROSTER: "6", V11_SEED: "automated-v11-smoke", V11_EVOLUTION_MODE: "generational"},
   encoding: "utf8",
 });
 assert.equal(result.status, 0, result.stderr || result.stdout);

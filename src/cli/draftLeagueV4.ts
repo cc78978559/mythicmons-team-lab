@@ -7,7 +7,8 @@ import {DecisionLedger, type DecisionRecord} from "../draft/decisionLedger";
 import {reviewManagerSeason, updateMatchupMemory, type DynastyRosterMember, type DynastyStanding, type KeeperContract, type SeasonReview} from "../draft/dynastyLearning";
 import {classifyEmergentStyle, cloneManagerProfile, createNoviceProfiles, materializeManagerProfile, type ManagerProfile, type ManagerTraits} from "../draft/managerProfiles";
 import {evolveManagerPopulation, founderLineage, type EvolutionCompetitor, type LineageIdentity, type ObservedBehavior} from "../draft/naturalEvolution";
-import {extractTacticalEpisode, updateTacticalMemory, type TacticalEpisode} from "../draft/tacticalMemory";
+import {runPunctuatedEvolution, type ManagerEvolutionState} from "../draft/punctuatedEvolution";
+import {cloneTacticalMemory, extractTacticalEpisode, updateTacticalMemory, type TacticalEpisode} from "../draft/tacticalMemory";
 import {auditLeagueSeason, type LeagueHealthSnapshot} from "../draft/leagueHealth";
 import {updateQualityDiversityArchive, type QualityDiversityCandidate} from "../draft/qualityDiversity";
 import {chooseRfaOffer, matchingContract, releaseDeadMoney, taggedContract, waiverWinner, type ContractOffer, type SportsContract} from "../draft/sportsMarket";
@@ -17,6 +18,7 @@ import {acquireRunLock} from "../draft/runLock";
 import {writeSeasonBrief} from "../draft/seasonBrief";
 import {loadCareerMemoryCheckpoint} from "../draft/careerArchive";
 import {extractKeyBattleDecisions} from "../draft/battleDecisionExtractor";
+import {buildTacticalMemoryTrace, evaluateConfigurationEvidence, evaluateConfigurationPosterior} from "../ai/whiteBox/memory";
 
 interface SeasonResult {
   season: number;
@@ -88,13 +90,14 @@ interface DynastyState {
   version: number;
   seed: string;
   completedSeason: number;
-  settings: {seasonCount: number; managerLimit: number; pairs: number; poolSize: number; auctionLots: number; maxTurns: number; regularRounds: number; baseBudget?: number; keeperCap?: number; auctionMode?: string; minRoster?: number; maxRoster?: number; midseasonGrant?: number; contractModel?: string; dynamicPool?: boolean; learningModel?: string; carryRate?: number; carryCap?: number; maxKeepers?: number; separatePayroll?: boolean; dualLayer?: boolean; programEvolution?: boolean};
+  settings: {seasonCount: number; managerLimit: number; pairs: number; poolSize: number; auctionLots: number; maxTurns: number; regularRounds: number; baseBudget?: number; keeperCap?: number; auctionMode?: string; minRoster?: number; maxRoster?: number; midseasonGrant?: number; contractModel?: string; dynamicPool?: boolean; learningModel?: string; carryRate?: number; carryCap?: number; maxKeepers?: number; separatePayroll?: boolean; dualLayer?: boolean; programEvolution?: boolean; evolutionMode?: "punctuated" | "generational"; evolutionPolicy?: "active" | "shadow"; evolutionMaxBursts?: number; evolutionMinCandidates?: number; evolutionMaxCandidates?: number};
   managers: ManagerCareer[];
   market: Record<string, MarketAggregate>;
   assets: Record<string, AssetLedgerEntry>;
   fingerprint: RuntimeFingerprint;
   decisionRecords: DecisionRecord[];
   evolutionArchive?: Array<QualityDiversityCandidate<EvolutionCompetitor>>;
+  punctuatedEvolution?: Record<string, ManagerEvolutionState>;
   leaguePool?: number;
   moneySupply?: number;
   registry?: {schemaVersion: 1; revision: string; hash: string; namespace: string; snapshot: string};
@@ -155,6 +158,16 @@ const careerCheckpointPath = process.env.V4_CAREER_CHECKPOINT ? path.resolve(pro
 const evidenceRetention = process.env.V4_EVIDENCE_RETENTION || "full";
 if (evidenceRetention !== "full" && evidenceRetention !== "compact") throw new Error("V4_EVIDENCE_RETENTION must be full or compact");
 const evidenceSampleRate = numberSetting("V4_EVIDENCE_SAMPLE_RATE", .02, 0, 1);
+const evolutionMode = process.env.V4_EVOLUTION_MODE === "generational" ? "generational" : "punctuated";
+const evolutionShock = numberSetting("V4_EVOLUTION_SHOCK", 0, 0, 1);
+const evolutionMaxBursts = integerSetting("V4_EVOLUTION_MAX_BURSTS", Math.max(1, Math.min(2, Math.ceil(managerLimit * .2))), 1, managerLimit);
+const evolutionMinCandidates = integerSetting("V4_EVOLUTION_MIN_CANDIDATES", 4, 1, 16);
+const evolutionMaxCandidates = integerSetting("V4_EVOLUTION_MAX_CANDIDATES", 8, evolutionMinCandidates, 24);
+type EvolutionPolicy = "active" | "shadow" | "suppress-experiment";
+const evolutionPolicyValue = process.env.V4_EVOLUTION_POLICY || "shadow";
+const evolutionPolicyTarget = process.env.V4_EVOLUTION_POLICY_TARGET || "";
+if (!["active", "shadow", "suppress-experiment"].includes(evolutionPolicyValue)) throw new Error("V4_EVOLUTION_POLICY must be active, shadow, or suppress-experiment");
+const evolutionPolicy = evolutionPolicyValue as EvolutionPolicy;
 const registrySource = path.resolve(process.env.V4_REGISTRY_SOURCE || path.join(root, "data", "draft"));
 let registrySnapshot: RegistrySnapshot;
 let runtimeFingerprint: RuntimeFingerprint;
@@ -178,6 +191,7 @@ let market = new Map<string, MarketAggregate>();
 let assets = new Map<string, AssetLedgerEntry>();
 let ledger = new DecisionLedger();
 let evolutionArchive: Array<QualityDiversityCandidate<EvolutionCompetitor>> = [];
+let punctuatedEvolution: Record<string, ManagerEvolutionState> = {};
 let leaguePool = 0;
 let moneySupply = stateVersion >= 10 ? managerLimit * 40 : 0;
 
@@ -227,6 +241,7 @@ function initializeFromCareerCheckpoint(): void {
   assets = new Map();
   ledger = new DecisionLedger();
   evolutionArchive = [];
+  punctuatedEvolution = {};
   leaguePool = 0;
   moneySupply = managerLimit * baseBudget;
   ledger.add({stage: "calibration", actor: "system", decision: "从生涯心智检查点开启新旅程", selected: path.basename(careerCheckpointPath), context: {sourceSeed: checkpoint.source.seed, sourceSeason: checkpoint.source.completedSeason, managers: checkpoint.managers.length, reset: ["season", "titles", "points", "contracts", "cash", "assets", "market"]}, alternatives: [{option: "让经理退回完全新手状态"}], rationale: ["保留已学习的人格后验、策略程序、配置经验、对手模型与谱系", "清零竞技成绩和稀缺资源归属，经验必须在新环境重新证明价值"]});
@@ -261,6 +276,7 @@ function restoreCheckpoint(): number {
   ledger = new DecisionLedger(state.decisionRecords);
   if (codeUpgrade) ledger.add({stage: "calibration", actor: "system", decision: "显式采用联盟代码升级", selected: runtimeFingerprint.codeHash, context: {before: state.fingerprint.codeHash, after: runtimeFingerprint.codeHash, registryHash: runtimeFingerprint.registryHash, benchmarkHash: runtimeFingerprint.benchmarkHash, dependencyHash: runtimeFingerprint.dependencyHash}, alternatives: [{option: "继续使用原代码版本"}], rationale: ["仅放宽代码哈希，配置、基准、依赖和Showdown版本仍需通过兼容性校验", "迁移记录进入联盟永久决策账本"]});
   evolutionArchive = state.evolutionArchive ?? [];
+  punctuatedEvolution = state.punctuatedEvolution ?? {};
   leaguePool = state.leaguePool ?? 0;
   moneySupply = state.moneySupply ?? (stateVersion >= 10 ? state.managers.reduce((sum, manager) => sum + manager.cash, 0) + leaguePool : 0);
   if (adoptRegistry && state.registry?.hash !== registrySnapshot.hash) ledger.add({stage: "calibration", actor: "system", decision: legacyRegistryMigration ? "迁移旧联盟并冻结魔改配置" : "采用新的魔改配置版本", selected: registrySnapshot.revision, context: {before: state.registry?.hash, after: registrySnapshot.hash}, alternatives: [{option: "继续沿用联盟冻结快照"}], rationale: ["配置升级由联盟启动参数显式触发", "历史赛季仍保留原配置哈希"]});
@@ -278,6 +294,7 @@ function migrateNaturalEvolutionState(state: LegacyV6State): number {
   assets = new Map(Object.entries(state.assets));
   ledger = new DecisionLedger(state.decisionRecords);
   evolutionArchive = [];
+  punctuatedEvolution = {};
   ledger.add({stage: "calibration", actor: "system", decision: "迁移到自然进化经理种群", selected: `${managers.length}条创始谱系`, context: {season: state.completedSeason}, alternatives: [{option: "继续固定人格后验"}], rationale: ["球队席位保留合同和历史", "策略谱系从当前经理状态建立创始种群", "后续赛季通过繁殖、变异和生态位保护更替"]});
   checkpoint(state.completedSeason);
   return state.completedSeason;
@@ -311,6 +328,7 @@ function migrateExpansionState(state: LegacyDynastyState): number {
   market = new Map(Object.entries(state.market));
   ledger = new DecisionLedger(state.decisionRecords);
   evolutionArchive = [];
+  punctuatedEvolution = {};
   assets = new Map();
   syncAssetLedger(state.completedSeason, path.join(outDir, `season-${String(state.completedSeason).padStart(2, "0")}`));
   const protectedAssets = new Set(managers.flatMap(manager => manager.contracts.map(contract => contract.assetId).filter((assetId): assetId is string => Boolean(assetId))));
@@ -362,7 +380,7 @@ function runDynastySeason(season: number): void {
     const rosterFile = readJson<RosterFile>(path.join(seasonDir, "rosters", career.id, "roster.json"));
     const roster = rosterFile.members;
     const previousContracts = career.contracts;
-    const review = reviewManagerSeason(career.baseProfile, career.currentProfile, standing, seasonResult.standings, [...roster, ...(rosterFile.departedMembers ?? [])], seasonLedger, previousContracts, roster);
+    const review = reviewManagerSeason(career.baseProfile, career.currentProfile, standing, seasonResult.standings, [...roster, ...(rosterFile.departedMembers ?? [])], seasonLedger, previousContracts, roster, season);
     const rank = seasonResult.standings.findIndex(entry => entry.id === career.id) + 1;
     const champion = seasonResult.champion.id === career.id;
     career.titles += champion ? 1 : 0;
@@ -372,7 +390,7 @@ function runDynastySeason(season: number): void {
     if (stateVersion >= 10) for (const released of previousContracts.filter(contract => !career.contracts.some(keeper => keeper.assetId === contract.assetId) && (contract.yearsRemaining ?? 0) > 0)) waiverQueue.push({formerManager: career, contract: released});
     career.cash = rosterFile.budget;
     career.currentProfile = materializeManagerProfile({...career.currentProfile, traits: {...review.after}, development: review.developmentAfter});
-    learnConfigurationPreferences(career, roster, standing, seasonResult.standings);
+    learnConfigurationPreferences(career, roster, standing, seasonResult.standings, season);
     learnOpponentMatchups(career, roster, seasonResult, seasonLedger);
     learnTacticalEpisodes(career, roster, seasonResult, seasonDir);
     updateMarket(roster);
@@ -401,7 +419,7 @@ function runDynastySeason(season: number): void {
   checkpoint(season);
 }
 
-function learnConfigurationPreferences(career: ManagerCareer, roster: DynastyRosterMember[], standing: DynastyStanding, standings: DynastyStanding[]): void {
+function learnConfigurationPreferences(career: ManagerCareer, roster: DynastyRosterMember[], standing: DynastyStanding, standings: DynastyStanding[], season: number): void {
   const memory = career.currentProfile.configurationMemory ?? {moves: {}, items: {}};
   const maxPoints = Math.max(1, ...standings.map(entry => entry.points));
   const teamResult = standing.points / maxPoints;
@@ -412,28 +430,25 @@ function learnConfigurationPreferences(career: ManagerCareer, roster: DynastyRos
       const id = normalizeConfigurationId(move), observed = member.configurationEvidence?.moves[id];
       if (!observed?.uses) continue;
       const events = observed.damageEvents + observed.statusEvents + observed.healEvents + observed.boostEvents;
-      let evidence = clamp01(teamResult * .15 + Math.min(1, events / observed.uses) * .45 + Math.min(1, observed.kos / observed.uses * 2) * .25 + production * .15);
-      if (stateVersion >= 12) evidence = clamp01(evidence + evaluateStrategyProgram(career.currentProfile.strategyProgram, "learn", {baseline: evidence, usage: Math.min(1, observed.uses / 20), production, teamResult}).value * .08);
-      updates.push({kind: "move", id, pokemon: member.pokemon, evidence: observed, ...updateConfigurationPosterior(memory.moves, id, evidence, Math.min(4, observed.uses))});
+      const baseEvidence = evaluateConfigurationEvidence({kind: "move", teamResult, production, eventRate: events / observed.uses, koRate: observed.kos / observed.uses});
+      const programValue = stateVersion >= 12 ? evaluateStrategyProgram(career.currentProfile.strategyProgram, "learn", {baseline: baseEvidence.baseEvidence, usage: Math.min(1, observed.uses / 20), production, teamResult}).value : 0;
+      const evidenceTrace = evaluateConfigurationEvidence({kind: "move", teamResult, production, eventRate: events / observed.uses, koRate: observed.kos / observed.uses, programValue});
+      const posteriorTrace = evaluateConfigurationPosterior(id, memory.moves[id], evidenceTrace.evidence, Math.min(4, observed.uses));
+      memory.moves[id] = {...posteriorTrace.after};
+      updates.push({kind: "move", id, pokemon: member.pokemon, evidence: observed, before: posteriorTrace.before, after: posteriorTrace.after, whiteBoxEvidence: evidenceTrace, whiteBoxPosterior: posteriorTrace});
     }
     if (member.configuredSet?.item) {
       const id = normalizeConfigurationId(member.configuredSet.item), observed = member.configurationEvidence?.items[id];
       if (observed?.triggers) {
-        const evidence = clamp01(teamResult * .2 + production * .55 + Math.min(1, observed.triggers / Math.max(1, member.regularSeasonAppearances)) * .25);
-        updates.push({kind: "item", id, pokemon: member.pokemon, evidence: observed, ...updateConfigurationPosterior(memory.items, id, evidence, Math.min(3, observed.triggers))});
+        const evidenceTrace = evaluateConfigurationEvidence({kind: "item", teamResult, production, triggerRate: observed.triggers / Math.max(1, member.regularSeasonAppearances)});
+        const posteriorTrace = evaluateConfigurationPosterior(id, memory.items[id], evidenceTrace.evidence, Math.min(3, observed.triggers));
+        memory.items[id] = {...posteriorTrace.after};
+        updates.push({kind: "item", id, pokemon: member.pokemon, evidence: observed, before: posteriorTrace.before, after: posteriorTrace.after, whiteBoxEvidence: evidenceTrace, whiteBoxPosterior: posteriorTrace});
       }
     }
   }
   career.currentProfile.configurationMemory = memory;
-  ledger.add({stage: "review", actor: career.id, decision: `第${career.currentProfile.development.seasons}季配置证据更新`, selected: `${updates.length}项后验`, context: {programHash: strategyProgramHash(career.currentProfile.strategyProgram!), updates}, alternatives: [], rationale: updates.length ? ["仅使用实际出招或道具触发事件", "每项记录更新前后后验与有效样本"] : ["本季没有可归因的配置事件，后验保持不变"]});
-}
-
-function updateConfigurationPosterior(memory: Record<string, {mean: number; confidence: number; effectiveSamples: number}>, id: string, evidence: number, weight = 1): {before: {mean: number; confidence: number; effectiveSamples: number}; after: {mean: number; confidence: number; effectiveSamples: number}} {
-  const prior = memory[id] ?? {mean: .5, confidence: 0, effectiveSamples: 2};
-  const retained = Math.max(2, prior.effectiveSamples * .94);
-  const effectiveSamples = Math.min(24, retained + weight);
-  memory[id] = {mean: (prior.mean * retained + evidence * weight) / effectiveSamples, confidence: Math.min(1, Math.max(0, (effectiveSamples - 2) / 10)), effectiveSamples};
-  return {before: {...prior}, after: {...memory[id]}};
+  ledger.add({stage: "review", actor: career.id, decision: `第${season}季配置证据更新`, selected: `${updates.length}项后验`, context: {season, programHash: strategyProgramHash(career.currentProfile.strategyProgram!), updates}, alternatives: [], rationale: updates.length ? ["仅使用实际出招或道具触发事件", "每项记录更新前后后验与有效样本"] : ["本季没有可归因的配置事件，后验保持不变"]});
 }
 
 function normalizeConfigurationId(value: string): string { return value.toLowerCase().replace(/[^a-z0-9]+/g, ""); }
@@ -441,6 +456,13 @@ function normalizeConfigurationId(value: string): string { return value.toLowerC
 function activatePendingGeneration(season: number): void {
   for (const career of managers) {
     if (!career.pendingProfile || !career.pendingLineage) continue;
+    if (evolutionPolicy === "suppress-experiment" && evolutionPolicyTarget === `${career.id}@${season}`) {
+      const suppressedLineage = career.pendingLineage;
+      career.pendingProfile = undefined;
+      career.pendingLineage = undefined;
+      ledger.add({stage: "calibration", actor: career.id, decision: `第${season}季隔离反事实抑制新生谱系`, selected: career.lineage.lineageId, context: {season, target: evolutionPolicyTarget, suppressedLineage: suppressedLineage.lineageId}, alternatives: [{option: suppressedLineage.lineageId}], rationale: ["仅用于单次突变因果验证", "保留亲代人格并让其参加同一赛季"]});
+      continue;
+    }
     career.currentProfile = career.pendingProfile;
     career.lineage = career.pendingLineage;
     career.lineageHistory.push(career.pendingLineage);
@@ -464,16 +486,31 @@ function evolvePopulation(season: number, result: SeasonResult, seasonDir: strin
     season,
     payload: {...entry, slotId: `archive:${entry.lineage.lineageId}`},
   })), 300);
-  const descendants = evolveManagerPopulation(competitors, season, seed, evolutionArchive.map(entry => entry.payload));
+  const punctuated = evolutionMode === "punctuated" ? runPunctuatedEvolution({
+    competitors,
+    season,
+    seed,
+    historical: evolutionArchive.map(entry => entry.payload),
+    previousState: punctuatedEvolution,
+    config: {environmentalShock: evolutionShock, maxBurstManagers: evolutionMaxBursts, minimumCandidates: evolutionMinCandidates, maximumCandidates: evolutionMaxCandidates},
+  }) : undefined;
+  const descendants = punctuated?.descendants ?? evolveManagerPopulation(competitors, season, seed, evolutionArchive.map(entry => entry.payload));
+  if (punctuated) punctuatedEvolution = punctuated.state;
   const report = descendants.map(descendant => {
     const slot = managers.find(manager => manager.id === descendant.slotId)!;
     const previous = slot.lineage;
-    slot.pendingProfile = descendant.profile;
-    slot.pendingLineage = descendant.lineage;
-    ledger.add({stage: "review", actor: slot.id, decision: `第${season}季谱系繁殖`, selected: descendant.lineage.lineageId, context: {season, parentSlot: descendant.parentSlotId, secondParentSlot: descendant.secondParentSlotId, previousLineage: previous.lineageId, niche: descendant.lineage.niche, mutations: descendant.lineage.mutations, ecologicalFitness: descendant.ecologicalFitness, protectedCopy: descendant.protectedCopy}, alternatives: [{option: "保留原策略谱系"}], rationale: ["物种由本季实际行为向量动态聚类", descendant.protectedCopy ? "该后代是未经交叉和突变的物种精英副本" : "该后代通过遗传、重组或突变产生", "后代将在下一正式赛季开始时接受验证"]});
+    const shadowOnly = evolutionMode === "punctuated" && evolutionPolicy === "shadow";
+    if (!shadowOnly) {
+      slot.pendingProfile = descendant.profile;
+      slot.pendingLineage = descendant.lineage;
+    }
+    ledger.add({stage: "review", actor: slot.id, decision: shadowOnly ? `第${season}季影子谱系候选` : `第${season}季谱系繁殖`, selected: descendant.lineage.lineageId, context: {season, evolutionPolicy, applied: !shadowOnly, parentSlot: descendant.parentSlotId, secondParentSlot: descendant.secondParentSlotId, previousLineage: previous.lineageId, niche: descendant.lineage.niche, mutations: descendant.lineage.mutations, ecologicalFitness: descendant.ecologicalFitness, protectedCopy: descendant.protectedCopy, whiteBoxEvolutionTrace: descendant.whiteBoxEvolutionTrace}, alternatives: [{option: "保留原策略谱系"}], rationale: ["物种由本季实际行为向量动态聚类", descendant.protectedCopy ? "该后代是未经交叉和突变的物种精英副本" : "该后代通过遗传、重组或突变产生", shadowOnly ? "因隔离反事实证据未通过，候选仅记录而不进入待启用状态" : "后代将在下一正式赛季开始时接受验证"]});
     return {previousLineage: previous.lineageId, ...descendant, program: {hash: strategyProgramHash(descendant.profile.strategyProgram!), nodes: countProgramNodes(descendant.profile.strategyProgram!)}, profile: undefined};
   });
-  writeJson(path.join(seasonDir, "evolution.json"), {schemaVersion: 1, season, descendants: report});
+  if (punctuated) {
+    ledger.add({stage: "review", actor: "system", decision: `第${season}季间断式进化预算`, selected: `${punctuated.budget.retainedDescendants}名经理进入爆发期`, context: {season, mode: evolutionMode, budget: punctuated.budget, managers: punctuated.decisions.map(entry => ({managerId: entry.managerId, phase: entry.after.phase, pressure: entry.instantaneousPressure, reservoir: entry.after.pressureReservoir, triggerScore: entry.triggerScore, eligible: entry.eligible, selected: entry.selected, reasons: entry.reasons}))}, alternatives: [{option: "逐季全员繁殖"}], rationale: ["稳定期只积累可审计压力，不生成后代", "动态预算仅为达到阈值且不在巩固期的经理生成候选", "候选使用廉价白箱评分，完整存档只保留胜者"]});
+  }
+  writeJson(path.join(seasonDir, "evolution.json"), punctuated ? {schemaVersion: 2, season, mode: evolutionMode, policy: evolutionPolicy, applied: evolutionPolicy !== "shadow", budget: punctuated.budget, managers: punctuated.decisions.map(entry => ({...entry, before: entry.before, after: entry.after})), descendants: report} : {schemaVersion: 1, season, mode: evolutionMode, policy: "active", applied: true, descendants: report});
 }
 
 function behaviorVector(value: ObservedBehavior): number[] {
@@ -561,8 +598,11 @@ function learnTacticalEpisodes(career: ManagerCareer, roster: DynastyRosterMembe
       }
     }
   }
-  career.currentProfile.tacticalMemory = updateTacticalMemory(career.currentProfile.tacticalMemory, episodes, season.season, career.currentProfile.learning.memoryDecay);
-  ledger.add({stage: "review", actor: career.id, decision: `Season ${season.season} tactical memory update`, selected: `${episodes.length} battle episodes`, context: {season: season.season, episodes: episodes.length, opponents: [...new Set(episodes.map(episode => episode.opponentId))], decisiveEvents: episodes.reduce((sum, episode) => sum + episode.decisiveEvents.length, 0)}, alternatives: [], rationale: ["Credit is assigned from observed knockouts, survival, fainting, moves, leads, and switches", "Event evidence persists into future lineup and strategy-program decisions"]});
+  const before = cloneTacticalMemory(career.currentProfile.tacticalMemory);
+  const updated = updateTacticalMemory(before, episodes, season.season, career.currentProfile.learning.memoryDecay);
+  const whiteBoxMemoryTrace = buildTacticalMemoryTrace(before, episodes, season.season, career.currentProfile.learning.memoryDecay, updated);
+  career.currentProfile.tacticalMemory = updated;
+  ledger.add({stage: "review", actor: career.id, decision: `Season ${season.season} tactical memory update`, selected: `${episodes.length} battle episodes`, context: {season: season.season, episodes: episodes.length, opponents: [...new Set(episodes.map(episode => episode.opponentId))], decisiveEvents: episodes.reduce((sum, episode) => sum + episode.decisiveEvents.length, 0), whiteBoxMemoryTrace}, alternatives: [], rationale: ["Credit is assigned from observed knockouts, survival, fainting, moves, leads, and switches", "Event evidence persists into future lineup and strategy-program decisions"]});
 }
 
 function runV3Season(season: number, seasonDir: string, profilePath: string, keeperPath: string, marketPath: string, budgetPath: string, assetPath: string): void {
@@ -864,7 +904,7 @@ function marketSnapshot(): Record<string, {averagePrice: number; appearances: nu
 
 function recordReviewDecision(season: number, career: ManagerCareer, review: SeasonReview, champion: boolean): void {
   const strongest = [...review.signals].sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0];
-  ledger.add({stage: "review", actor: career.id, decision: `第${season}季复盘并调整策略后验`, selected: review.emergentStyle.label, context: {season, champion, performance: review.performance, before: review.before, after: review.after, development: review.developmentAfter, signals: review.signals}, alternatives: [{option: "完全不学习"}, {option: "把重复对局全部视为独立样本"}], rationale: strongest ? [strongest.reason, "每季每条策略最多增加一个有效样本", `当前探索率${review.developmentAfter.exploration.toFixed(3)}`, "风格标签只描述后验，不控制行为"] : ["本季证据不足以改变模型"]});
+  ledger.add({stage: "review", actor: career.id, decision: `第${season}季复盘并调整策略后验`, selected: review.emergentStyle.label, context: {season, champion, performance: review.performance, before: review.before, after: review.after, development: review.developmentAfter, signals: review.signals, keeperPolicy: review.keeperPolicy, keeperWhiteBoxShadow: review.keeperWhiteBoxShadow, keeperWhiteBoxCounterfactual: review.keeperWhiteBoxCounterfactual, learningWhiteBoxTrace: review.learningWhiteBoxTrace}, alternatives: [{option: "完全不学习"}, {option: "把重复对局全部视为独立样本"}], rationale: strongest ? [strongest.reason, "每季每条策略最多增加一个有效样本", `当前探索率${review.developmentAfter.exploration.toFixed(3)}`, "风格标签只描述后验，不控制行为"] : ["本季证据不足以改变模型"]});
   for (const keeper of review.keepers) ledger.add({stage: "waiver", actor: career.id, decision: `为第${season + 1}季保留成员`, selected: keeper.pokemon, context: {family: keeper.family, salary: keeper.salary, years: keeper.years, appearances: keeper.lastSeasonAppearances, kos: keeper.lastSeasonKos}, alternatives: review.released.slice(0, 3).map(member => ({option: member.pokemon})), rationale: [`上季出场${keeper.lastSeasonAppearances}次、击倒${keeper.lastSeasonKos}次`, `续约薪资${keeper.salary}`, "保留名单最多三人且承诺资金不超过70"]});
 }
 
@@ -886,7 +926,11 @@ function seasonReviewMarkdown(season: number, result: SeasonResult): string {
     const changed = [...seasonEntry.review.signals].sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, 2);
     const rosterByAsset = new Map(seasonEntry.roster.map(member => [member.assetId ?? member.family, member]));
     const rosterByFamily = new Map(seasonEntry.roster.map(member => [member.family, member]));
-    lines.push(`### ${career.name}`, "", `- 主要修正：${changed.map(signal => `${traitName(signal.trait)}${signed(signal.delta)}（${signal.reason}）`).join("；")}`, `- 保留：${seasonEntry.review.keepers.length ? seasonEntry.review.keepers.map(keeper => `${assetLabel(rosterByAsset.get(keeper.assetId ?? "") ?? rosterByFamily.get(keeper.family), keeper.pokemon)}，下季薪资${keeper.salary}`).join("；") : "无"}`, `- 释放：${seasonEntry.review.released.map(member => assetLabel(rosterByFamily.get(member.family), member.pokemon)).join("、") || "无"}`, "");
+    const learningTrace = seasonEntry.review.learningWhiteBoxTrace;
+    const learningAudit = learningTrace
+      ? `学习审计：${learningTrace.traits.length}条独立证据，最大单季变化${Math.max(0, ...learningTrace.traits.map(entry => Math.abs(entry.appliedDelta))).toFixed(4)}，限幅触发${learningTrace.traits.filter(entry => entry.capped).length}次`
+      : "学习审计：旧存档未包含白箱追踪";
+    lines.push(`### ${career.name}`, "", `- 主要修正：${changed.map(signal => `${traitName(signal.trait)}${signed(signal.delta)}（${signal.reason}）`).join("；")}`, `- ${learningAudit}`, `- 保留：${seasonEntry.review.keepers.length ? seasonEntry.review.keepers.map(keeper => `${assetLabel(rosterByAsset.get(keeper.assetId ?? "") ?? rosterByFamily.get(keeper.family), keeper.pokemon)}，下季薪资${keeper.salary}`).join("；") : "无"}`, `- 释放：${seasonEntry.review.released.map(member => assetLabel(rosterByFamily.get(member.family), member.pokemon)).join("、") || "无"}`, "");
   }
   appendCustomPerformance(lines, season);
   return `${lines.join("\n")}\n`;
@@ -919,7 +963,7 @@ function assetLabel(member: Pick<DynastyRosterMember, "scarcity"> | undefined, p
 }
 
 function checkpoint(completedSeason: number): void {
-  const snapshot: DynastyState = {version: stateVersion, seed, completedSeason, settings: currentSettings(), managers, market: Object.fromEntries(market), assets: Object.fromEntries(assets), fingerprint: runtimeFingerprint, registry: registryState(), decisionRecords: [...ledger.all()], evolutionArchive, leaguePool, moneySupply};
+  const snapshot: DynastyState = {version: stateVersion, seed, completedSeason, settings: currentSettings(), managers, market: Object.fromEntries(market), assets: Object.fromEntries(assets), fingerprint: runtimeFingerprint, registry: registryState(), decisionRecords: [...ledger.all()], evolutionArchive, punctuatedEvolution, leaguePool, moneySupply};
   validateDynastyState(snapshot);
   writeJson(path.join(outDir, "dynasty-state.json"), snapshot);
   writeEvolutionSummary(completedSeason);
@@ -928,8 +972,11 @@ function checkpoint(completedSeason: number): void {
 
 function writeEvolutionSummary(completedSeason: number): void {
   writeJson(path.join(outDir, "evolution-summary.json"), {
-    schemaVersion: 1,
+    schemaVersion: 2,
     completedSeason,
+    evolutionMode,
+    evolutionPolicy,
+    punctuatedEvolution,
     managers: managers.map(manager => {
       const style = classifyEmergentStyle(manager.currentProfile);
       return {
@@ -1048,7 +1095,7 @@ function signed(value: number): string {
 }
 
 function currentSettings(): DynastyState["settings"] {
-  return {seasonCount, managerLimit, pairs, poolSize, auctionLots, maxTurns, regularRounds, baseBudget, keeperCap, auctionMode, minRoster, maxRoster, midseasonGrant, contractModel, dynamicPool, learningModel, carryRate, carryCap, maxKeepers, separatePayroll, dualLayer, programEvolution};
+  return {seasonCount, managerLimit, pairs, poolSize, auctionLots, maxTurns, regularRounds, baseBudget, keeperCap, auctionMode, minRoster, maxRoster, midseasonGrant, contractModel, dynamicPool, learningModel, carryRate, carryCap, maxKeepers, separatePayroll, dualLayer, programEvolution, evolutionMode, evolutionPolicy: evolutionPolicy === "suppress-experiment" ? "active" : evolutionPolicy, evolutionMaxBursts, evolutionMinCandidates, evolutionMaxCandidates};
 }
 
 function settingsMatch(saved: DynastyState["settings"]): boolean {
@@ -1073,6 +1120,11 @@ function settingsMatch(saved: DynastyState["settings"]): boolean {
     && (saved.maxKeepers ?? 3) === current.maxKeepers
     && (saved.dualLayer ?? false) === current.dualLayer
     && (saved.programEvolution ?? false) === current.programEvolution
+    && (saved.evolutionMode ?? evolutionMode) === current.evolutionMode
+    && (saved.evolutionPolicy ?? current.evolutionPolicy) === current.evolutionPolicy
+    && (saved.evolutionMaxBursts ?? evolutionMaxBursts) === current.evolutionMaxBursts
+    && (saved.evolutionMinCandidates ?? evolutionMinCandidates) === current.evolutionMinCandidates
+    && (saved.evolutionMaxCandidates ?? evolutionMaxCandidates) === current.evolutionMaxCandidates
     && (saved.separatePayroll ?? false) === current.separatePayroll;
 }
 
@@ -1249,6 +1301,16 @@ function validateDynastyState(state: DynastyState): void {
   }
   for (const [assetId, managerId] of retainedAssets) if (state.assets[assetId]?.ownerId !== managerId) throw new Error(`Saved dynasty contract owner ${managerId} disagrees with asset ledger for ${assetId}`);
   if (!Array.isArray(state.decisionRecords)) throw new Error("Saved dynasty has no decision ledger snapshot");
+  if (state.punctuatedEvolution !== undefined) {
+    if (!state.punctuatedEvolution || typeof state.punctuatedEvolution !== "object") throw new Error("Saved dynasty has invalid punctuated evolution state");
+    for (const [managerId, evolution] of Object.entries(state.punctuatedEvolution)) {
+      if (!expectedIds.includes(managerId) || evolution.managerId !== managerId) throw new Error(`Saved dynasty has invalid punctuated evolution manager ${managerId}`);
+      if (!["stable", "pressure", "burst", "consolidating"].includes(evolution.phase)) throw new Error(`Saved dynasty has invalid punctuated evolution phase for ${managerId}`);
+      if (![evolution.pressure, evolution.pressureReservoir].every(value => Number.isFinite(value) && value >= 0 && value <= 1)) throw new Error(`Saved dynasty has invalid punctuated evolution pressure for ${managerId}`);
+      if (![evolution.stableSeasons, evolution.cooldownUntilSeason, evolution.burstCount].every(value => Number.isInteger(value) && value >= 0)) throw new Error(`Saved dynasty has invalid punctuated evolution counters for ${managerId}`);
+      if (!Array.isArray(evolution.lastTriggerReasons)) throw new Error(`Saved dynasty has invalid punctuated evolution reasons for ${managerId}`);
+    }
+  }
   if (stateVersion >= 10) {
     if (!Number.isInteger(state.leaguePool) || (state.leaguePool ?? -1) < 0 || !Number.isInteger(state.moneySupply) || (state.moneySupply ?? 0) <= 0) throw new Error("Saved V10 dynasty has invalid closed-economy state");
     const conserved = (state.leaguePool ?? 0) + state.managers.reduce((sum, manager) => sum + manager.cash, 0);

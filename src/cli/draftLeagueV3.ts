@@ -22,6 +22,13 @@ import {evaluateStrategyProgram, strategyProgramHash} from "../draft/strategyPro
 import {analyzeConfigurationTelemetry, emptyConfigurationEvidence, mergeConfigurationEvidence, type MemberConfigurationEvidence} from "../draft/configurationTelemetry";
 import {acquireRunLock} from "../draft/runLock";
 import {tacticalFamilyValue, tacticalOpponentModel, tacticalSignals} from "../draft/tacticalMemory";
+import {evaluateWhiteBoxDecision, summarizeWhiteBoxShadow, type WhiteBoxCandidate} from "../ai/whiteBox/decision";
+import {buildLineupWhiteBoxCandidate, evaluateLineupAssistGate, whiteBoxCandidateTotal, type WhiteBoxLineupInput} from "../ai/whiteBox/lineup";
+import {LINEUP_SHADOW_PARAMETERS} from "../ai/whiteBox/parameters";
+import {buildAcquisitionWhiteBoxCandidate, whiteBoxAcquisitionTotal} from "../ai/whiteBox/acquisition";
+import {ACQUISITION_SHADOW_PARAMETERS, BID_SHADOW_PARAMETERS, MARKET_FLOW_SHADOW_PARAMETERS, REGISTRATION_SHADOW_PARAMETERS} from "../ai/whiteBox/parameters";
+import {evaluateWhiteBoxBid} from "../ai/whiteBox/auction";
+import {buildTradeWhiteBoxCandidate, evaluateMarketReplacement, evaluateTradeAssistGate, evaluateWaiverPriority, type TradeCandidateInput} from "../ai/whiteBox/marketFlow";
 
 type Side = "p1" | "p2";
 type Role = DraftRole;
@@ -106,6 +113,11 @@ const priorAssets = loadPriorAssets();
 const ledger = new DecisionLedger();
 const configuredCandidateCache = new Map<string, Candidate>();
 const legalMoveIdsCache = new Map<string, string[]>();
+const lineupShadowValues = LINEUP_SHADOW_PARAMETERS.snapshot().values;
+const acquisitionShadowValues = ACQUISITION_SHADOW_PARAMETERS.snapshot().values;
+const registrationShadowValues = REGISTRATION_SHADOW_PARAMETERS.snapshot().values;
+const bidShadowValues = BID_SHADOW_PARAMETERS.snapshot().values;
+const marketFlowShadowValues = MARKET_FLOW_SHADOW_PARAMETERS.snapshot().values;
 
 const customSources = DRAFT_GENERATIONS.map(generation => process.env.V3_REGISTRY_DIR ? path.join(registryDirectory, path.basename(draftGenerationSource(generation))) : draftGenerationSource(generation));
 
@@ -603,7 +615,7 @@ function runAuction(available: Map<string, Candidate>, dex: ReturnType<typeof De
     const nominated = nominationRanked[0].candidate;
     const bids = managers.map(manager => bidFor(manager, nominated, dex, lot)).sort((a, b) => b.bid - a.bid || tie(a.manager.id, lot) - tie(b.manager.id, lot));
     const winner = bids[0].bid > 0 ? bids[0] : null;
-    const decision = ledger.add({stage: "auction", actor: nominator.id, decision: `提名并竞价 ${nominated.name}`, selected: winner ? `${winner.manager.name} ${winner.bid}` : "流拍", context: {lot: lot + 1, family: nominated.family, assetId: nominated.assetId, nominator: nominator.name, referencePrice: nominated.market, budgets: Object.fromEntries(managers.map(manager => [manager.id, manager.budget])), bids: bids.map(bid => ({manager: bid.manager.id, bid: bid.bid, ceiling: bid.ceiling, rationale: bid.rationale}))}, alternatives: nominationRanked.slice(1, 5).map(entry => ({option: entry.candidate.name, score: entry.value})), rationale: winner ? [`${winner.manager.name}最高出价${winner.bid}`, `次高价${bids[1]?.bid ?? 0}`] : ["所有经理选择保留预算"]});
+    const decision = ledger.add({stage: "auction", actor: nominator.id, decision: `提名并竞价 ${nominated.name}`, selected: winner ? `${winner.manager.name} ${winner.bid}` : "流拍", context: {lot: lot + 1, family: nominated.family, assetId: nominated.assetId, nominator: nominator.name, referencePrice: nominated.market, budgets: Object.fromEntries(managers.map(manager => [manager.id, manager.budget])), bids: bids.map(bid => ({manager: bid.manager.id, bid: bid.bid, ceiling: bid.ceiling, rationale: bid.rationale, whiteBox: bid.whiteBoxTrace}))}, alternatives: nominationRanked.slice(1, 5).map(entry => ({option: entry.candidate.name, score: entry.value})), rationale: winner ? [`${winner.manager.name}最高出价${winner.bid}`, `次高价${bids[1]?.bid ?? 0}`] : ["所有经理选择保留预算"]});
     if (!winner) { available.delete(nominated.id); continue; }
     winner.manager.budget -= winner.bid;
     winner.manager.roster.push(newRosterEntry(configureCandidateForManager(winner.manager, nominated, dex), "auction", winner.bid, decision.id));
@@ -635,7 +647,8 @@ function runPortfolioAuction(available: Map<string, Candidate>, dex: ReturnType<
     const award = awardByAsset.get(candidate.id);
     const winner = award ? managers.find(manager => manager.id === award.managerId)! : null;
     const rankedBids = bids.filter(bid => bid.assetId === candidate.id && bid.bid > 0).sort((a, b) => b.bid - a.bid || b.utility - a.utility);
-    const decision = ledger.add({stage: "auction", actor: "portfolio-market", decision: `组合市场分配 ${candidate.name}`, selected: winner ? `${winner.name} ${award!.payment}` : "未成交", context: {lot: index + 1, family: candidate.family, assetId: candidate.assetId, mode: "portfolio", pricing: "critical-bid-approximation", referencePrice: candidate.market, submittedBids: rankedBids.length, winningBid: award?.bid ?? 0, criticalBidPrice: award?.payment ?? 0, runnerUpBid: award?.runnerUpBid ?? 0, bids: rankedBids}, alternatives: rankedBids.slice(0, 5).map(bid => ({option: bid.managerId, score: bid.utility, cost: bid.bid})), rationale: winner ? ["全体高级资产同时求解", "在预算、名单和唯一性约束下最大化组合效用", `使用透明临界报价近似支付${award!.payment}`] : ["没有可行的正报价分配"]});
+    const auditedBids = rankedBids.map(bid => ({...bid, whiteBox: bidDetails.get(`${bid.managerId}:${candidate.id}`)?.whiteBoxTrace}));
+    const decision = ledger.add({stage: "auction", actor: "portfolio-market", decision: `组合市场分配 ${candidate.name}`, selected: winner ? `${winner.name} ${award!.payment}` : "未成交", context: {lot: index + 1, family: candidate.family, assetId: candidate.assetId, mode: "portfolio", pricing: "critical-bid-approximation", referencePrice: candidate.market, submittedBids: rankedBids.length, winningBid: award?.bid ?? 0, criticalBidPrice: award?.payment ?? 0, runnerUpBid: award?.runnerUpBid ?? 0, bids: auditedBids}, alternatives: rankedBids.slice(0, 5).map(bid => ({option: bid.managerId, score: bid.utility, cost: bid.bid})), rationale: winner ? ["全体高级资产同时求解", "在预算、名单和唯一性约束下最大化组合效用", `使用透明临界报价近似支付${award!.payment}`] : ["没有可行的正报价分配"]});
     if (winner) {
       winner.budget -= award!.payment;
       winner.roster.push(newRosterEntry(configureCandidateForManager(winner, candidate, dex), "auction", award!.payment, decision.id));
@@ -645,10 +658,14 @@ function runPortfolioAuction(available: Map<string, Candidate>, dex: ReturnType<
 }
 
 function bidFor(manager: Manager, candidate: Candidate, dex: ReturnType<typeof Dex.mod>, lot: number) {
-  if (manager.roster.length >= maximumRosterSize) return {manager, bid: 0, ceiling: 0, rationale: ["名单容量已满"]};
-  if (manager.roster.filter(entry => entry.method === "auction").length >= maximumAuctionWins) return {manager, bid: 0, ceiling: 0, rationale: [`已达到${maximumAuctionWins}名拍卖成员上限`]};
-  if (manager.roster.some(entry => entry.candidate.family === candidate.family)) return {manager, bid: 0, ceiling: 0, rationale: ["同一经理不重复持有相同基础品种"]};
   const reserve = Math.max(0, minimumRosterSize - manager.roster.length - 1);
+  const hardRejections = manager.roster.length >= maximumRosterSize ? ["名单容量已满"]
+    : manager.roster.filter(entry => entry.method === "auction").length >= maximumAuctionWins ? [`已达到${maximumAuctionWins}名拍卖成员上限`]
+      : manager.roster.some(entry => entry.candidate.family === candidate.family) ? ["同一经理不重复持有相同基础品种"] : [];
+  if (hardRejections.length) {
+    const whiteBoxTrace = evaluateWhiteBoxBid({decisionId: `bid:${seasonNumber}:${lot + 1}:${manager.id}:${candidate.id}`, managerId: manager.id, candidateId: candidate.id, mode: sportsMarket ? "sports-market" : "standard", budget: manager.budget, reserve, market: candidate.market, fit: 0, fundamental: 0, starPremium: manager.economics.starPremium, bidAggression: manager.economics.bidAggression, cashUtility: manager.economics.cashUtility, remainingNeed: Math.max(1, 4 - manager.roster.length), scarceMultiplier: 1, shade: 0, hardRejections});
+    return {manager, bid: 0, ceiling: 0, rationale: hardRejections, whiteBoxTrace};
+  }
   const fit = managerValue(manager, candidate, dex);
   const economics = manager.economics;
   const fundamental = candidate.strength / 18 + rosterSynergy(manager.roster.map(entry => entry.candidate), candidate, dex) * 2 + roleTargetValue(manager, countRoles(manager.roster.map(entry => entry.candidate)), candidate.roles, manager.roster.length) * 2;
@@ -657,9 +674,11 @@ function bidFor(manager: Manager, candidate: Candidate, dex: ReturnType<typeof D
     : candidate.market * (.65 + economics.starPremium * .3) + fit * (2.5 + economics.bidAggression * 2) - economics.cashUtility * Math.max(1, 4 - manager.roster.length);
   const scarcePreference = dualLayer ? 1 + (manager.genome?.organization?.scarceConcentration ?? 0) * .35 : 1;
   const ceiling = Math.max(0, Math.min(manager.budget - reserve, Math.round(demand * scarcePreference)));
-  const shade = Math.floor(boundedDraftJitter(seed, `${manager.id}:${candidate.id}`, lot) * 700);
+  const shade = Math.floor(boundedDraftJitter(seed, `${manager.id}:${candidate.id}`, lot) * bidShadowValues["bid.shadescale"]);
   const bid = Math.max(0, ceiling - shade);
-  return {manager, bid, ceiling, rationale: [`通用实力与适配估值${fit.toFixed(2)}`, sportsMarket ? `独立基本面估值${fundamental.toFixed(2)}，旧市场价仅作弱锚` : `参考市场价${candidate.market}`, `保留至少${reserve}资金完成名单`, shade ? `策略性压价${shade}` : "按上限竞价"]};
+  const whiteBoxTrace = evaluateWhiteBoxBid({decisionId: `bid:${seasonNumber}:${lot + 1}:${manager.id}:${candidate.id}`, managerId: manager.id, candidateId: candidate.id, mode: sportsMarket ? "sports-market" : "standard", budget: manager.budget, reserve, market: candidate.market, fit, fundamental, starPremium: economics.starPremium, bidAggression: economics.bidAggression, cashUtility: economics.cashUtility, remainingNeed: Math.max(1, 4 - manager.roster.length), scarceMultiplier: scarcePreference, shade, parameters: bidShadowValues});
+  if (whiteBoxTrace.ceiling !== ceiling || whiteBoxTrace.bid !== bid) throw new Error(`White-box bid decomposition drifted for ${manager.id}:${candidate.id}`);
+  return {manager, bid, ceiling, rationale: [`通用实力与适配估值${fit.toFixed(2)}`, sportsMarket ? `独立基本面估值${fundamental.toFixed(2)}，旧市场价仅作弱锚` : `参考市场价${candidate.market}`, `保留至少${reserve}资金完成名单`, shade ? `策略性压价${shade}` : "按上限竞价"], whiteBoxTrace};
 }
 
 function runSupplementalDraft(available: Map<string, Candidate>, dex: ReturnType<typeof Dex.mod>): void {
@@ -678,14 +697,21 @@ function runSupplementalDraft(available: Map<string, Candidate>, dex: ReturnType
         .map(candidate => ({candidate, baseValue: managerValue(manager, candidate, dex)}))
         .sort((a, b) => b.baseValue - a.baseValue || tie(a.candidate.id, overall) - tie(b.candidate.id, overall))
         .slice(0, 24);
-      const ranked = shortlist.map(({candidate, baseValue}) => ({
-        candidate,
-        value: baseValue + completionValue(manager, candidate, available, dex)
-          + boundedDraftJitter(seed, `${manager.id}:explore:${candidate.id}`, overall) * manager.learning.exploration,
-      })).sort((a, b) => b.value - a.value || tie(a.candidate.id, overall) - tie(b.candidate.id, overall));
+      const ranked = shortlist.map(({candidate, baseValue}) => {
+        const completion = completionValue(manager, candidate, available, dex);
+        const exploration = boundedDraftJitter(seed, `${manager.id}:explore:${candidate.id}`, overall) * manager.learning.exploration;
+        return {candidate, completion, exploration, value: baseValue + completion + exploration};
+      }).sort((a, b) => b.value - a.value || tie(a.candidate.id, overall) - tie(b.candidate.id, overall));
       const selected = ranked[0];
+      const whiteBoxCandidates = ranked.map(entry => {
+        const candidate = acquisitionWhiteBoxCandidate(manager, entry.candidate, dex, {completionValue: entry.completion, exploration: entry.exploration});
+        const difference = Math.abs(whiteBoxAcquisitionTotal(candidate) - entry.value);
+        if (difference > 1e-8) throw new Error(`White-box acquisition decomposition drifted by ${difference} for ${candidate.id}`);
+        return candidate;
+      });
+      const whiteBoxTrace = evaluateWhiteBoxDecision({decisionId: `acquire:supplemental:${seasonNumber}:${overall + 1}:${manager.id}`, candidates: whiteBoxCandidates, reasonableBand: acquisitionShadowValues["acquire.reasonableband"], styleContributionLimit: acquisitionShadowValues["acquire.stylelimit"]});
       overall += 1;
-      const decision = ledger.add({stage: "draft", actor: manager.id, decision: `补强第${manager.roster.length + 1}人`, selected: selected.candidate.name, context: {overallPick: overall, remainingBudget: manager.budget, roster: manager.roster.map(entry => entry.candidate.name), scarcity: missingRoles(manager)}, alternatives: ranked.slice(1, 5).map(entry => ({option: entry.candidate.name, score: entry.value, rejectedBecause: explainRejection(manager, entry.candidate)})), rationale: explainFit(manager, selected.candidate), expectedValue: selected.value, confidence: confidence(ranked[0].value, ranked[1]?.value)});
+      const decision = ledger.add({stage: "draft", actor: manager.id, decision: `补强第${manager.roster.length + 1}人`, selected: selected.candidate.name, context: {overallPick: overall, remainingBudget: manager.budget, roster: manager.roster.map(entry => entry.candidate.name), scarcity: missingRoles(manager), whiteBoxShadow: summarizeWhiteBoxShadow(whiteBoxTrace, selected.candidate.id, 3)}, alternatives: ranked.slice(1, 5).map(entry => ({option: entry.candidate.name, score: entry.value, rejectedBecause: explainRejection(manager, entry.candidate)})), rationale: explainFit(manager, selected.candidate), expectedValue: selected.value, confidence: confidence(ranked[0].value, ranked[1]?.value)});
       manager.roster.push(newRosterEntry(selected.candidate, "supplemental", 1, decision.id));
       manager.budget -= 1;
       available.delete(selected.candidate.id);
@@ -705,11 +731,19 @@ function runBackgroundRegistration(pool: Candidate[], dex: ReturnType<typeof Dex
         const configured = configureCandidateForManager(manager, candidate, dex);
         const exploration = boundedDraftJitter(seed, `${manager.id}:registration:${candidate.family}`, pick) * manager.learning.exploration * (1 + (manager.genome?.organization?.experimentation ?? 0));
         const publicPreference = manager.genome?.organization?.backgroundReliance ?? 0;
-        return {candidate: configured, value: managerValue(manager, configured, dex) + exploration + publicPreference * .2};
+        const publicAdjustment = publicPreference * .2;
+        return {candidate: configured, exploration, publicAdjustment, value: managerValue(manager, configured, dex) + exploration + publicAdjustment};
       }).sort((a, b) => b.value - a.value || a.candidate.family.localeCompare(b.candidate.family));
       const selected = ranked[0];
       if (!selected) throw new Error(`${manager.id} cannot complete a public registration roster`);
-      const decision = ledger.add({stage: "draft", actor: manager.id, decision: `自由注册第${manager.roster.length + 1}名成员`, selected: selected.candidate.name, context: {economicClass: "background", cost: 0, sharedPool: true, unlockGeneration, configuredSet: selected.candidate.set}, alternatives: ranked.slice(1, 5).map(entry => ({option: entry.candidate.name, score: entry.value})), rationale: [...explainFit(manager, selected.candidate), "普通品种不占合同、工资或交易资产空间"], expectedValue: selected.value, confidence: confidence(selected.value, ranked[1]?.value)});
+      const whiteBoxCandidates = ranked.map(entry => {
+        const candidate = acquisitionWhiteBoxCandidate(manager, entry.candidate, dex, {exploration: entry.exploration, publicPreference: entry.publicAdjustment});
+        const difference = Math.abs(whiteBoxAcquisitionTotal(candidate) - entry.value);
+        if (difference > 1e-8) throw new Error(`White-box registration decomposition drifted by ${difference} for ${candidate.id}`);
+        return candidate;
+      });
+      const whiteBoxTrace = evaluateWhiteBoxDecision({decisionId: `acquire:registration:${seasonNumber}:${manager.id}:${pick + 1}`, candidates: whiteBoxCandidates, reasonableBand: registrationShadowValues["registration.reasonableband"], styleContributionLimit: registrationShadowValues["registration.stylelimit"]});
+      const decision = ledger.add({stage: "draft", actor: manager.id, decision: `自由注册第${manager.roster.length + 1}名成员`, selected: selected.candidate.name, context: {economicClass: "background", cost: 0, sharedPool: true, unlockGeneration, configuredSet: selected.candidate.set, whiteBoxShadow: summarizeWhiteBoxShadow(whiteBoxTrace, selected.candidate.id, 3)}, alternatives: ranked.slice(1, 5).map(entry => ({option: entry.candidate.name, score: entry.value})), rationale: [...explainFit(manager, selected.candidate), "普通品种不占合同、工资或交易资产空间"], expectedValue: selected.value, confidence: confidence(selected.value, ranked[1]?.value)});
       manager.roster.push(newRosterEntry(selected.candidate, "registration", 0, decision.id));
       pick += 1;
     }
@@ -723,12 +757,29 @@ function runBackgroundAdjustment(round: number, pool: Candidate[], dex: ReturnTy
   for (const manager of managers) {
     const current = manager.roster.filter(entry => entry.candidate.economicClass === "background").sort((a, b) => managerValue(manager, a.candidate, dex) - managerValue(manager, b.candidate, dex))[0];
     if (!current) continue;
-    const replacement = backgroundShortlist(manager, background, dex).map(candidate => {
+    const ranked = backgroundShortlist(manager, background, dex).map(candidate => {
       const configured = configureCandidateForManager(manager, candidate, dex);
       return {candidate: configured, value: managerValue(manager, configured, dex)};
-    }).sort((a, b) => b.value - a.value)[0];
-    if (!replacement || replacement.value < managerValue(manager, current.candidate, dex) * 1.035) continue;
-    const decision = ledger.add({stage: "waiver", actor: manager.id, decision: `第${round}轮调整公共名单`, selected: replacement.candidate.name, context: {released: current.candidate.name, cost: 0, economicClass: "background"}, alternatives: [], rationale: ["根据赛季样本修正体系适配", "公共成员可自由更换且不发生资产转移"]});
+    }).sort((a, b) => b.value - a.value || a.candidate.family.localeCompare(b.candidate.family));
+    const replacement = ranked[0];
+    if (!replacement) continue;
+    const currentValue = managerValue(manager, current.candidate, dex);
+    if (replacement.value < currentValue * marketFlowShadowValues["background.minimumupgrade"]) continue;
+    const whiteBoxCandidates = ranked.map(entry => {
+      const candidate = acquisitionWhiteBoxCandidate(manager, entry.candidate, dex, {});
+      const difference = Math.abs(whiteBoxAcquisitionTotal(candidate) - entry.value);
+      if (difference > 1e-8) throw new Error(`White-box background adjustment decomposition drifted by ${difference} for ${candidate.id}`);
+      return candidate;
+    });
+    const targetTrace = evaluateWhiteBoxDecision({decisionId: `market:background-target:${seasonNumber}:${round}:${manager.id}`, candidates: whiteBoxCandidates, reasonableBand: registrationShadowValues["registration.reasonableband"], styleContributionLimit: registrationShadowValues["registration.stylelimit"]});
+    const replacementTrace = evaluateMarketReplacement({decisionId: `market:background-replacement:${seasonNumber}:${round}:${manager.id}:${replacement.candidate.id}`, mode: "background", budget: manager.budget, rosterLegal: manager.roster.length >= minimumRosterSize, duplicateFamily: manager.roster.some(entry => entry !== current && entry.candidate.family === replacement.candidate.family), currentValue, targetValue: replacement.value, currentStrength: current.candidate.strength, targetStrength: replacement.candidate.strength, fillsNeed: false, cost: 0, continuityEvidence: Math.min(1, current.appearances / Math.max(1, round)), parameters: marketFlowShadowValues});
+    const actionTrace = evaluateWhiteBoxDecision({decisionId: `market:background-action:${seasonNumber}:${round}:${manager.id}`, reasonableBand: 0, styleContributionLimit: 0, candidates: [{id: "replace", hardRejections: replacementTrace.accepted ? [] : replacementTrace.hardRejections, rational: [{id: "background.targetvalue", group: "roster", source: "goal", value: replacement.value, reason: "Expected value after replacement"}]}, {id: "hold", rational: [{id: "background.currentvalue", group: "roster", source: "risk", value: currentValue, reason: "Current value plus protected continuity"}, {id: "background.continuity", group: "roster", source: "risk", value: replacementTrace.switchCost, reason: "Observed-use continuity protection"}]}]});
+    if (backgroundHoldExperimentEnabled(manager.id, round) && actionTrace.selected === "hold") {
+      ledger.add({stage: "waiver", actor: manager.id, decision: `第${round}轮白箱实验保持公共名单`, selected: current.candidate.name, context: {round, proposed: replacement.candidate.name, cost: 0, economicClass: "background", policy: "whitebox-experiment", whiteBoxTarget: summarizeWhiteBoxShadow(targetTrace, replacement.candidate.id, 3), whiteBoxAction: summarizeWhiteBoxShadow(actionTrace, "replace", 2), whiteBoxReplacement: replacementTrace}, alternatives: [{option: replacement.candidate.name, score: replacement.value}], rationale: ["边际升级未覆盖已使用成员的连续性成本", "实验仅作用于指定经理、赛季和轮次"]});
+      results.push({type: "background-hold", round, manager: manager.id, retained: current.candidate.name, proposed: replacement.candidate.name, cost: 0});
+      continue;
+    }
+    const decision = ledger.add({stage: "waiver", actor: manager.id, decision: `第${round}轮调整公共名单`, selected: replacement.candidate.name, context: {released: current.candidate.name, cost: 0, economicClass: "background", whiteBoxTarget: summarizeWhiteBoxShadow(targetTrace, replacement.candidate.id, 3), whiteBoxAction: summarizeWhiteBoxShadow(actionTrace, "replace", 2), whiteBoxReplacement: replacementTrace}, alternatives: ranked.slice(1, 5).map(entry => ({option: entry.candidate.name, score: entry.value})), rationale: ["根据赛季样本修正体系适配", "公共成员可自由更换且不发生资产转移"]});
     manager.roster[manager.roster.indexOf(current)] = newRosterEntry(replacement.candidate, "registration", 0, decision.id);
     manager.departed.push(current);
     results.push({type: "background-registration", round, manager: manager.id, signed: replacement.candidate.name, released: current.candidate.name, cost: 0});
@@ -770,6 +821,32 @@ function managerValue(manager: Manager, candidate: Candidate, dex: ReturnType<ty
   return baseline + programAdjustment;
 }
 
+function backgroundHoldExperimentEnabled(managerId: string, round: number): boolean {
+  return process.env.V4_BACKGROUND_POLICY === "whitebox-experiment" && process.env.V4_BACKGROUND_POLICY_TARGET === `${managerId}@${seasonNumber}@${round}`;
+}
+
+function acquisitionWhiteBoxCandidate(
+  manager: Manager,
+  candidate: Candidate,
+  dex: ReturnType<typeof Dex.mod>,
+  extras: {completionValue?: number; exploration?: number; publicPreference?: number} = {},
+): WhiteBoxCandidate {
+  const commonStrength = candidate.strength / 180;
+  const synergy = rosterSynergy(manager.roster.map(entry => entry.candidate), candidate, dex);
+  const counter = opponentCounterValue(manager, candidate, dex);
+  const flexibility = candidate.roles.size / 6;
+  const value = candidate.strength / Math.max(3, candidate.market) / 20;
+  const star = candidate.market / 30;
+  const risk = riskValue(candidate, dex);
+  const traitWeights = normalizedTraitWeights(manager.traits);
+  const roleFit = roleTargetValue(manager, countRoles(manager.roster.map(entry => entry.candidate)), candidate.roles, manager.roster.length);
+  const systems = systemFit(manager, candidate);
+  const personal = synergy * traitWeights.synergy + counter * traitWeights.counter + flexibility * traitWeights.flexibility + value * traitWeights.value + star * traitWeights.stars + risk * traitWeights.risk;
+  const baseline = commonStrength * .7 + personal * 1.8 + roleFit * .35 + systems * .3;
+  const programAdjustment = programEvolution ? evaluateStrategyProgram(manager.strategyProgram, "acquire", {baseline, strength: candidate.strength / 300, price: candidate.market / 30, roleBreadth: candidate.roles.size / 10, speed: candidate.stats.spe / 200, bulk: (candidate.stats.hp + candidate.stats.def + candidate.stats.spd) / 500, rosterSize: manager.roster.length / maximumRosterSize}).value * .15 : 0;
+  return buildAcquisitionWhiteBoxCandidate({id: candidate.id, commonStrength, roleFit, synergy, counter, flexibility, value, star, risk, traitWeights, systemFit: systems, programAdjustment, ...extras});
+}
+
 function systemFit(manager: Manager, candidate: Candidate): number {
   const systems = manager.genome?.systems ?? {};
   let score = (systems.balance ?? 0) * candidate.roles.size / 8;
@@ -796,12 +873,32 @@ function completionValue(manager: Manager, candidate: Candidate, available: Map<
 
 function chooseLineup(manager: Manager, opponent: Manager, dex: ReturnType<typeof Dex.mod>, seriesId: string): RosterEntry[] {
   const combinations = chooseSix(manager.roster).map(lineup => ({lineup, value: lineupValue(manager, lineup.map(entry => entry.candidate), opponent, dex)})).sort((a, b) => b.value - a.value);
-  const selected = combinations[0];
-  if (!selected) throw new Error(`${manager.id} has no legal six-member lineup`);
-  assertBattleLineup(selected.lineup, manager.id);
-  ledger.add({stage: "lineup", actor: manager.id, decision: `对阵${opponent.name}的8选6`, selected: selected.lineup.map(entry => entry.candidate.name), context: {seriesId, roles: [...new Set(selected.lineup.flatMap(entry => [...entry.candidate.roles]))], opponentRoster: opponent.roster.map(entry => entry.candidate.name), benched: manager.roster.filter(entry => !selected.lineup.includes(entry)).map(entry => entry.candidate.name)}, alternatives: combinations.slice(1, 4).map(option => ({option: option.lineup.map(entry => entry.candidate.name).join("/"), score: option.value})), rationale: lineupReasons(selected.lineup, opponent, dex), expectedValue: selected.value, confidence: confidence(combinations[0].value, combinations[1]?.value)});
+  const incumbent = combinations[0];
+  if (!incumbent) throw new Error(`${manager.id} has no legal six-member lineup`);
+  assertBattleLineup(incumbent.lineup, manager.id);
+  const whiteBoxCandidates = combinations.map(option => {
+    const candidate = lineupWhiteBoxCandidate(manager, option.lineup.map(entry => entry.candidate), opponent, dex);
+    const difference = Math.abs(whiteBoxCandidateTotal(candidate) - option.value);
+    if (difference > 1e-8) throw new Error(`White-box lineup decomposition drifted by ${difference} for ${candidate.id}`);
+    return candidate;
+  });
+  const incumbentId = lineupCandidateId(incumbent.lineup.map(entry => entry.candidate));
+  const decisionId = `lineup:${seriesId}:${manager.id}`;
+  const whiteBoxTrace = evaluateWhiteBoxDecision({
+    decisionId,
+    candidates: whiteBoxCandidates,
+    reasonableBand: lineupShadowValues["lineup.reasonableband"],
+    styleContributionLimit: lineupShadowValues["lineup.stylelimit"],
+  });
+  const experiment=process.env.V4_LINEUP_POLICY==="whitebox-experiment"&&process.env.V4_LINEUP_POLICY_TARGET===decisionId;
+  const experimentBand=experiment?boundedExperimentValue("V4_LINEUP_BAND",.5,0,5):whiteBoxTrace.reasonableBand,experimentStyleLimit=experiment?boundedExperimentValue("V4_LINEUP_STYLE_LIMIT",3,0,5):whiteBoxTrace.styleContributionLimit,experimentStyleScale=experiment?boundedExperimentValue("V4_LINEUP_STYLE_SCALE",1.1,0,2):1;
+  const experimentTrace=experiment?evaluateWhiteBoxDecision({decisionId,candidates:whiteBoxCandidates.map(candidate=>({...candidate,style:candidate.style?.map(entry=>({...entry,value:entry.value*experimentStyleScale}))})),reasonableBand:experimentBand,styleContributionLimit:experimentStyleLimit}):null;
+  const experimental=experimentTrace?.selected?combinations.find(option=>lineupCandidateId(option.lineup.map(entry=>entry.candidate))===experimentTrace.selected):undefined,selected=experimental??incumbent,experimentGate=experimentTrace?evaluateLineupAssistGate(experimentTrace.candidates.find(candidate=>candidate.id===incumbentId),experimentTrace.candidates.find(candidate=>candidate.id===experimentTrace.selected)):null;
+  ledger.add({stage: "lineup", actor: manager.id, decision: `对阵${opponent.name}的8选6`, selected: selected.lineup.map(entry => entry.candidate.name), context: {seriesId, roles: [...new Set(selected.lineup.flatMap(entry => [...entry.candidate.roles]))], opponentRoster: opponent.roster.map(entry => entry.candidate.name), benched: manager.roster.filter(entry => !selected.lineup.includes(entry)).map(entry => entry.candidate.name), policy:experiment?"whitebox-experiment":"incumbent",whiteBoxShadow: summarizeWhiteBoxShadow(whiteBoxTrace, incumbentId, process.env.V4_WHITEBOX_FULL_LINEUP_TRACE==="true"?whiteBoxTrace.candidates.length:3),...(experimentTrace?{whiteBoxLineupExperiment:{band:experimentBand,styleLimit:experimentStyleLimit,styleScale:experimentStyleScale,gate:experimentGate,trace:summarizeWhiteBoxShadow(experimentTrace,incumbentId,experimentTrace.candidates.length)}}:{})}, alternatives: combinations.slice(1, 4).map(option => ({option: option.lineup.map(entry => entry.candidate.name).join("/"), score: option.value})), rationale: lineupReasons(selected.lineup, opponent, dex), expectedValue: selected.value, confidence: confidence(combinations[0].value, combinations[1]?.value)});
   return selected.lineup;
 }
+
+function boundedExperimentValue(name:string,fallback:number,minimum:number,maximum:number):number{const value=Number(process.env[name]??fallback);if(!Number.isFinite(value)||value<minimum||value>maximum)throw new Error(`${name} must be within ${minimum}..${maximum}`);return value;}
 
 async function runSeason(format: string, dex: ReturnType<typeof Dex.mod>, available: Map<string, Candidate>) {
   const series = [];
@@ -910,24 +1007,49 @@ function runTradeWindow(round: number, dex: ReturnType<typeof Dex.mod>): Array<R
     const left = ordered[leftIndex], right = ordered[rightIndex];
     if ((tradeCounts.get(left.id) ?? 0) >= maximumTradesPerWindow || (tradeCounts.get(right.id) ?? 0) >= maximumTradesPerWindow) continue;
     const leftContender = contenderProbability(left), rightContender = contenderProbability(right);
-    let best: {leftAsset: RosterEntry; rightAsset: RosterEntry; leftBefore: number; leftAfter: number; rightBefore: number; rightAfter: number; total: number} | undefined;
+    const leftStructureBefore = tradeRosterStructure(left, left.roster.map(entry => entry.candidate));
+    const rightStructureBefore = tradeRosterStructure(right, right.roster.map(entry => entry.candidate));
+    const leftTypePressureBefore = tradeTypePressure(left.roster.map(entry => entry.candidate), dex);
+    const rightTypePressureBefore = tradeTypePressure(right.roster.map(entry => entry.candidate), dex);
+    type TradeOption = {id: string; leftAsset: RosterEntry; rightAsset: RosterEntry; leftBefore: number; leftAfter: number; rightBefore: number; rightAfter: number; total: number};
+    let best: TradeOption | undefined;
+    const tradeOptions = new Map<string, TradeOption>();
+    const tradeInputs = new Map<string, TradeCandidateInput>();
+    const tradeCandidates: WhiteBoxCandidate[] = [];
+    let candidateIndex = 0;
     for (const leftAsset of left.roster.filter(entry => !dualLayer || entry.candidate.economicClass !== "background")) for (const rightAsset of right.roster.filter(entry => !dualLayer || entry.candidate.economicClass !== "background")) {
-      if (left.roster.some(entry => entry !== leftAsset && entry.candidate.family === rightAsset.candidate.family)) continue;
-      if (right.roster.some(entry => entry !== rightAsset && entry.candidate.family === leftAsset.candidate.family)) continue;
+      const id = `${String(candidateIndex).padStart(3, "0")}:${leftAsset.candidate.id}->${rightAsset.candidate.id}`;
+      candidateIndex += 1;
+      const duplicateFamily = left.roster.some(entry => entry !== leftAsset && entry.candidate.family === rightAsset.candidate.family)
+        || right.roster.some(entry => entry !== rightAsset && entry.candidate.family === leftAsset.candidate.family);
       const leftBefore = longTermAssetUtility(left, leftAsset, dex, leftContender), leftAfter = longTermAssetUtility(left, rightAsset, dex, leftContender);
       const rightBefore = longTermAssetUtility(right, rightAsset, dex, rightContender), rightAfter = longTermAssetUtility(right, leftAsset, dex, rightContender);
+      const leftStructureAfter = tradeRosterStructure(left, left.roster.map(entry => entry === leftAsset ? rightAsset.candidate : entry.candidate));
+      const rightStructureAfter = tradeRosterStructure(right, right.roster.map(entry => entry === rightAsset ? leftAsset.candidate : entry.candidate));
+      const leftTypePressureAfter = tradeTypePressure(left.roster.map(entry => entry === leftAsset ? rightAsset.candidate : entry.candidate), dex);
+      const rightTypePressureAfter = tradeTypePressure(right.roster.map(entry => entry === rightAsset ? leftAsset.candidate : entry.candidate), dex);
       const total = leftAfter + rightAfter - leftBefore - rightBefore;
+      tradeOptions.set(id, {id, leftAsset, rightAsset, leftBefore, leftAfter, rightBefore, rightAfter, total});
+      const tradeInput: TradeCandidateInput = {id, leftBefore, leftAfter, rightBefore, rightAfter, leftContender, rightContender, duplicateFamily, leftMinimumCoverageChange: leftStructureAfter.minimumCoverage - leftStructureBefore.minimumCoverage, rightMinimumCoverageChange: rightStructureAfter.minimumCoverage - rightStructureBefore.minimumCoverage, leftTargetDepthChange: leftStructureAfter.targetDepth - leftStructureBefore.targetDepth, rightTargetDepthChange: rightStructureAfter.targetDepth - rightStructureBefore.targetDepth, leftTypePressureImprovement: leftTypePressureBefore - leftTypePressureAfter, rightTypePressureImprovement: rightTypePressureBefore - rightTypePressureAfter, parameters: marketFlowShadowValues};
+      tradeInputs.set(id, tradeInput);
+      tradeCandidates.push(buildTradeWhiteBoxCandidate(tradeInput));
+      if (duplicateFamily) continue;
       if (!tradeAcceptable(leftBefore, leftAfter, leftContender) || !tradeAcceptable(rightBefore, rightAfter, rightContender) || total < .1 || total <= (best?.total ?? 0)) continue;
-      best = {leftAsset, rightAsset, leftBefore, leftAfter, rightBefore, rightAfter, total};
+      best = tradeOptions.get(id)!;
     }
     if (!best) continue;
-    const leftSlot = left.roster.indexOf(best.leftAsset), rightSlot = right.roster.indexOf(best.rightAsset);
-    const decision = ledger.add({stage: "waiver", actor: `${left.id}+${right.id}`, decision: `第${round}轮一换一交易`, selected: `${best.leftAsset.candidate.name}<->${best.rightAsset.candidate.name}`, context: {round, left: left.id, right: right.id, leftBefore: best.leftBefore, leftAfter: best.leftAfter, rightBefore: best.rightBefore, rightAfter: best.rightAfter, leftContender, rightContender}, alternatives: [], rationale: ["双方按当季竞争力、合同剩余控制期和工资剩余价值评估", "允许争冠或重建经理接受合理的短期不对称", "合同和资产身份随交易转移"]});
-    left.roster[leftSlot] = {...best.rightAsset, candidate: configureCandidateForManager(left, best.rightAsset.candidate, dex), method: "trade", decisionId: decision.id};
-    right.roster[rightSlot] = {...best.leftAsset, candidate: configureCandidateForManager(right, best.leftAsset.candidate, dex), method: "trade", decisionId: decision.id};
+    const whiteBoxTrace = evaluateWhiteBoxDecision({decisionId: `market:trade:${seasonNumber}:${round}:${left.id}:${right.id}`, candidates: tradeCandidates, reasonableBand: 0, styleContributionLimit: 0});
+    const whiteBoxShadow = {...summarizeWhiteBoxShadow(whiteBoxTrace, best.id, 3), policyVersion: "trade-structure-v3", parameters: {...marketFlowShadowValues}};
+    const whiteBoxTradeAssist = evaluateTradeAssistGate(whiteBoxTrace.decisionId, tradeInputs.get(best.id)!, whiteBoxTrace.selected ? tradeInputs.get(whiteBoxTrace.selected) : undefined, marketFlowShadowValues);
+    const experiment = tradeExperimentEnabled(whiteBoxTrace.decisionId);
+    const selectedTrade = experiment && whiteBoxTrace.selected ? tradeOptions.get(whiteBoxTrace.selected) ?? best : best;
+    const leftSlot = left.roster.indexOf(selectedTrade.leftAsset), rightSlot = right.roster.indexOf(selectedTrade.rightAsset);
+    const decision = ledger.add({stage: "waiver", actor: `${left.id}+${right.id}`, decision: `第${round}轮一换一交易`, selected: `${selectedTrade.leftAsset.candidate.name}<->${selectedTrade.rightAsset.candidate.name}`, context: {round, left: left.id, right: right.id, leftBefore: selectedTrade.leftBefore, leftAfter: selectedTrade.leftAfter, rightBefore: selectedTrade.rightBefore, rightAfter: selectedTrade.rightAfter, leftContender, rightContender, policy: experiment ? "whitebox-experiment" : "incumbent", whiteBoxShadow, whiteBoxTradeAssist}, alternatives: [], rationale: ["双方按当季竞争力、合同剩余控制期和工资剩余价值评估", "白箱影子另行比较交易后的最低角色覆盖、功能深度与属性压力", "辅助触发门要求充分优势、双方保护和多项独立证据", "合同和资产身份随交易转移"]});
+    left.roster[leftSlot] = {...selectedTrade.rightAsset, candidate: configureCandidateForManager(left, selectedTrade.rightAsset.candidate, dex), method: "trade", decisionId: decision.id};
+    right.roster[rightSlot] = {...selectedTrade.leftAsset, candidate: configureCandidateForManager(right, selectedTrade.leftAsset.candidate, dex), method: "trade", decisionId: decision.id};
     tradeCounts.set(left.id, (tradeCounts.get(left.id) ?? 0) + 1);
     tradeCounts.set(right.id, (tradeCounts.get(right.id) ?? 0) + 1);
-    results.push({type: "trade", round, left: left.id, right: right.id, sent: best.leftAsset.candidate.name, received: best.rightAsset.candidate.name});
+    results.push({type: "trade", round, left: left.id, right: right.id, sent: selectedTrade.leftAsset.candidate.name, received: selectedTrade.rightAsset.candidate.name, ...(experiment ? {policy: "whitebox-experiment"} : {})});
   }
   return results;
 }
@@ -950,23 +1072,32 @@ function longTermAssetUtility(manager: Manager, entry: RosterEntry, dex: ReturnT
 }
 
 function runWaiverWindow(round: number, available: Map<string, Candidate>, dex: ReturnType<typeof Dex.mod>): Array<Record<string, unknown>> {
-  const claims: Array<{manager: Manager; candidate: Candidate; worst: RosterEntry; cost: number}> = [];
+  const claims: Array<{manager: Manager; candidate: Candidate; worst: RosterEntry; cost: number; targetShadow: ReturnType<typeof summarizeWhiteBoxShadow>}> = [];
   for (const manager of managers) {
     if (manager.budget < 2 || manager.roster.length < minimumRosterSize) continue;
     const candidates = [...available.values()].filter(candidate => candidate.tier === "standard" && !manager.roster.some(entry => entry.candidate.family === candidate.family));
     if (!candidates.length) continue;
-    const best = candidates.map(candidate => ({candidate, value: managerValue(manager, candidate, dex)})).sort((a, b) => b.value - a.value)[0];
+    const ranked = candidates.map(candidate => ({candidate, value: managerValue(manager, candidate, dex)})).sort((a, b) => b.value - a.value);
+    const best = ranked[0];
     const worst = [...manager.roster].sort((a, b) => managerValue(manager, a.candidate, dex) - managerValue(manager, b.candidate, dex))[0];
     if (best.value < managerValue(manager, worst.candidate, dex) * 1.04) continue;
-    claims.push({manager, candidate: best.candidate, worst, cost: Math.max(2, Math.min(manager.budget, Math.round(best.candidate.market * .35)))});
+    const acquisitionTrace = evaluateWhiteBoxDecision({decisionId: `market:waiver-target:${seasonNumber}:${round}:${manager.id}`, candidates: candidates.map(candidate => acquisitionWhiteBoxCandidate(manager, candidate, dex, {})), reasonableBand: acquisitionShadowValues["acquire.reasonableband"], styleContributionLimit: acquisitionShadowValues["acquire.stylelimit"]});
+    claims.push({manager, candidate: best.candidate, worst, cost: Math.max(2, Math.min(manager.budget, Math.round(best.candidate.market * .35))), targetShadow: summarizeWhiteBoxShadow(acquisitionTrace, best.candidate.id, 3)});
   }
   const results: Array<Record<string, unknown>> = [];
   for (const candidateId of new Set(claims.map(claim => claim.candidate.id))) {
     const grouped = claims.filter(claim => claim.candidate.id === candidateId);
-    const winnerId = waiverWinner(grouped.map(claim => ({teamId: claim.manager.id, winPct: claim.manager.record.seriesWins / Math.max(1, claim.manager.record.seriesWins + claim.manager.record.seriesLosses + claim.manager.record.seriesDraws), roundsSinceClaim: round - (lastWaiverRound.get(claim.manager.id) ?? 0)})));
+    const priorityInputs = grouped.map(claim => ({teamId: claim.manager.id, winPct: claim.manager.record.seriesWins / Math.max(1, claim.manager.record.seriesWins + claim.manager.record.seriesLosses + claim.manager.record.seriesDraws), roundsSinceClaim: round - (lastWaiverRound.get(claim.manager.id) ?? 0)}));
+    const winnerId = waiverWinner(priorityInputs);
     const claim = grouped.find(entry => entry.manager.id === winnerId);
     if (!claim || !available.has(candidateId)) continue;
-    const decision = ledger.add({stage: "waiver", actor: claim.manager.id, decision: `第${round}轮waiver认领`, selected: claim.candidate.name, context: {round, cost: claim.cost, released: claim.worst.candidate.name, claimants: grouped.map(entry => entry.manager.id)}, alternatives: grouped.filter(entry => entry !== claim).map(entry => ({option: entry.manager.id})), rationale: ["所有认领同时提交", "按战绩与距离上次成功认领时间滚动排序"]});
+    const priorityTrace = evaluateWaiverPriority(`market:waiver-priority:${seasonNumber}:${round}:${candidateId}`, priorityInputs, marketFlowShadowValues);
+    if (priorityTrace.selected !== winnerId) throw new Error(`White-box waiver priority drifted for ${candidateId}`);
+    const currentValue = managerValue(claim.manager, claim.worst.candidate, dex);
+    const targetValue = managerValue(claim.manager, claim.candidate, dex);
+    const replacementTrace = evaluateMarketReplacement({decisionId: `market:waiver-replacement:${seasonNumber}:${round}:${claim.manager.id}:${candidateId}`, mode: "waiver", budget: claim.manager.budget, rosterLegal: claim.manager.roster.length >= minimumRosterSize, duplicateFamily: claim.manager.roster.some(entry => entry.candidate.family === claim.candidate.family), currentValue, targetValue, currentStrength: claim.worst.candidate.strength, targetStrength: claim.candidate.strength, fillsNeed: false, cost: claim.cost, parameters: marketFlowShadowValues});
+    if (!replacementTrace.accepted) throw new Error(`White-box waiver replacement drifted for ${claim.manager.id}:${candidateId}`);
+    const decision = ledger.add({stage: "waiver", actor: claim.manager.id, decision: `第${round}轮waiver认领`, selected: claim.candidate.name, context: {round, cost: claim.cost, released: claim.worst.candidate.name, claimants: grouped.map(entry => entry.manager.id), whiteBoxPriority: summarizeWhiteBoxShadow(priorityTrace, winnerId, 3), whiteBoxTarget: claim.targetShadow, whiteBoxReplacement: replacementTrace}, alternatives: grouped.filter(entry => entry !== claim).map(entry => ({option: entry.manager.id})), rationale: ["所有认领同时提交", "按战绩与距离上次成功认领时间滚动排序"]});
     claim.manager.roster.splice(claim.manager.roster.indexOf(claim.worst), 1);
     claim.manager.departed.push(claim.worst);
     available.set(claim.worst.candidate.id, claim.worst.candidate);
@@ -991,11 +1122,14 @@ function runFreeAgentWindow(round: number, available: Map<string, Candidate>, de
     const fillsNeed = missingRoles(manager).some(role => best.candidate.roles.has(role) && !worst.candidate.roles.has(role));
     if (!fillsNeed && best.candidate.strength < worst.candidate.strength * 1.06) continue;
     const cost = Math.max(2, Math.min(manager.budget, Math.round(best.candidate.market * .35)));
+    const replacementTrace = evaluateMarketReplacement({decisionId: `market:free-agent-replacement:${seasonNumber}:${round}:${manager.id}:${best.candidate.id}`, mode: "free-agent", budget: manager.budget, rosterLegal: manager.roster.length >= minimumRosterSize, duplicateFamily: manager.roster.some(entry => entry.candidate.family === best.candidate.family), currentValue: managerValue(manager, worst.candidate, dex), targetValue: best.value, currentStrength: worst.candidate.strength, targetStrength: best.candidate.strength, fillsNeed, cost, parameters: marketFlowShadowValues});
+    if (!replacementTrace.accepted) throw new Error(`White-box free-agent replacement drifted for ${manager.id}:${best.candidate.id}`);
+    const acquisitionTrace = evaluateWhiteBoxDecision({decisionId: `market:free-agent-target:${seasonNumber}:${round}:${manager.id}`, candidates: candidates.map(candidate => acquisitionWhiteBoxCandidate(manager, candidate, dex, {})), reasonableBand: acquisitionShadowValues["acquire.reasonableband"], styleContributionLimit: acquisitionShadowValues["acquire.stylelimit"]});
     manager.roster.splice(manager.roster.indexOf(worst), 1);
     manager.departed.push(worst);
     available.set(worst.candidate.id, worst.candidate);
     available.delete(best.candidate.id);
-    const decision = ledger.add({stage: "waiver", actor: manager.id, decision: `第${round}轮自由市场补强`, selected: best.candidate.name, context: {round, cost, budgetBefore: manager.budget, released: worst.candidate.name}, alternatives: [{option: worst.candidate.name, score: worst.candidate.strength}], rationale: fillsNeed ? ["填补当前角色缺口"] : ["自由球员带来明确实力升级"]});
+    const decision = ledger.add({stage: "waiver", actor: manager.id, decision: `第${round}轮自由市场补强`, selected: best.candidate.name, context: {round, cost, budgetBefore: manager.budget, released: worst.candidate.name, whiteBoxTarget: summarizeWhiteBoxShadow(acquisitionTrace, best.candidate.id, 3), whiteBoxReplacement: replacementTrace}, alternatives: [{option: worst.candidate.name, score: worst.candidate.strength}], rationale: fillsNeed ? ["填补当前角色缺口"] : ["自由球员带来明确实力升级"]});
     manager.budget -= cost;
     manager.roster.push(newRosterEntry(best.candidate, "free-agent", cost, decision.id));
     results.push({round, manager: manager.id, signed: best.candidate.name, released: worst.candidate.name, cost});
@@ -1215,6 +1349,66 @@ function lineupValue(manager: Manager, lineup: Candidate[], opponentManager: Man
   }
   if (programEvolution) score += evaluateStrategyProgram(manager.strategyProgram, "lineup", {baseline: score / 10, strength: lineup.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800, roleBreadth: roles.size / 10, rosterSize: manager.roster.length / maximumRosterSize, opponentPressure: opponent.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800}).value * .2;
   return score;
+}
+
+function tradeExperimentEnabled(decisionId: string): boolean {
+  return process.env.V4_TRADE_POLICY === "whitebox-experiment" && process.env.V4_TRADE_POLICY_TARGET === decisionId;
+}
+
+function tradeRosterStructure(manager: Manager, roster: Candidate[]): {minimumCoverage: number; targetDepth: number} {
+  const counts = countRoles(roster);
+  let minimumCoverage = 0;
+  let targetDepth = 0;
+  for (const [role, target] of Object.entries(manager.roleTargets) as Array<[Role, {minimum: number; target: number; weight: number}]>) {
+    const count = counts[role] ?? 0;
+    minimumCoverage += Math.min(count, target.minimum) * target.weight;
+    targetDepth += Math.max(0, Math.min(count, target.target) - target.minimum) * target.weight;
+  }
+  return {minimumCoverage, targetDepth};
+}
+
+function tradeTypePressure(roster: Candidate[], dex: ReturnType<typeof Dex.mod>): number {
+  let pressure = 0;
+  for (const attackType of dex.types.names()) {
+    const weaknesses = roster.filter(candidate => dex.getImmunity(attackType, candidate.types) && dex.getEffectiveness(attackType, candidate.types) > 0).length;
+    const buffers = roster.filter(candidate => !dex.getImmunity(attackType, candidate.types) || dex.getEffectiveness(attackType, candidate.types) < 0).length;
+    pressure += Math.max(0, weaknesses - buffers - 1);
+  }
+  return pressure;
+}
+
+function lineupWhiteBoxCandidate(manager: Manager, lineup: Candidate[], opponentManager: Manager, dex: ReturnType<typeof Dex.mod>): WhiteBoxCandidate {
+  const opponent = opponentManager.roster.map(entry => entry.candidate);
+  const matchup = manager.matchupMemory[opponentManager.id];
+  const members = lineup.map(candidate => {
+    const moveTypes = candidate.set.moves.map(move => dex.moves.get(move)).filter(move => move.category !== "Status").map(move => move.type);
+    return {
+      id: candidate.id,
+      strength: candidate.strength,
+      market: candidate.market,
+      roles: [...candidate.roles],
+      risk: riskValue(candidate, dex),
+      opponentCoverage: opponent.filter(target => moveTypes.some(type => dex.getEffectiveness(type, target.types) > 0)).length,
+      historicalMatchup: matchup?.familyScores[candidate.family] ?? 0,
+      tacticalMemory: tacticalFamilyValue(manager.tacticalMemory, opponentManager.id, candidate.family),
+    };
+  });
+  const input: WhiteBoxLineupInput = {
+    id: lineupCandidateId(lineup),
+    members,
+    traits: manager.traits,
+    roleTargets: manager.roleTargets,
+  };
+  const base = buildLineupWhiteBoxCandidate(input);
+  const baseline = whiteBoxCandidateTotal(base);
+  const programAdjustment = programEvolution
+    ? evaluateStrategyProgram(manager.strategyProgram, "lineup", {baseline: baseline / 10, strength: lineup.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800, roleBreadth: new Set(lineup.flatMap(candidate => [...candidate.roles])).size / 10, rosterSize: manager.roster.length / maximumRosterSize, opponentPressure: opponent.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800}).value * .2
+    : 0;
+  return buildLineupWhiteBoxCandidate({...input, programAdjustment});
+}
+
+function lineupCandidateId(lineup: Candidate[]): string {
+  return lineup.map(candidate => candidate.id).sort().join("+");
 }
 
 function programTactics(manager: Manager, opponent: Manager): Manager["tactics"] {
