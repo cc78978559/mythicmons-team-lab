@@ -28,11 +28,18 @@ async function main(): Promise<void> {
       p1: {confidence: .4, switchRate: .2, moveUsage: {earthquake: 4}, moveUsageBySpecies: {greattusk: {earthquake: 3}}},
       p2: {confidence: .3, switchRate: .4, moveUsage: {shadowball: 5}, moveUsageBySpecies: {}},
     },
+    aiOpponentModelShadows: {
+      "seasonal-decay": {
+        p1: {confidence: .35, switchRate: .15, moveUsage: {earthquake: 2}, moveUsageBySpecies: {greattusk: {earthquake: 2}}},
+        p2: {confidence: .25, switchRate: .3, moveUsage: {shadowball: 3}, moveUsageBySpecies: {}},
+      },
+    },
   });
   const capsule = loadBattleReplayCapsule(first.replayInputPath);
   assert.equal(capsule.sha256, first.replayInputSha256);
   assert.equal(capsule.input.aiProfiles.p1.id, "replay-p1");
   assert.equal(capsule.input.aiOpponentModels.p1.moveUsageBySpecies.greattusk.earthquake, 3);
+  assert.equal(capsule.input.aiOpponentModelShadows?.["seasonal-decay"].p1.moveUsageBySpecies.greattusk.earthquake, 2);
 
   const replay = await runBattle({
     ...capsule.input,

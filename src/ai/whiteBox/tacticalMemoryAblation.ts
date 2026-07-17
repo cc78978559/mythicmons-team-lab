@@ -7,6 +7,7 @@ export interface TacticalMemoryAblationSample {
   caseId: string;
   playerId: "p1" | "p2";
   confidence: number;
+  candidatePolicy?: string;
   sourceVerified: boolean;
   firstDivergenceOrdinal: number | null;
   learned: BattleOutcomeEvidence;
@@ -41,7 +42,9 @@ export function aggregateTacticalMemoryAblations(samples: readonly TacticalMemor
 
 export function tacticalMemoryAblationMarkdown(value:TacticalMemoryAblationAggregate):string {
   const m=value.metrics;
-  return ["# Tactical memory ablation","",`- Conclusion: ${value.conclusion}`,`- Samples/seeds: ${m.samples}/${m.seeds}`,`- Learned better/neutral/worse: ${m.better}/${m.neutral}/${m.worse}`,`- Decision divergences: ${m.decisionDivergences} (${(m.divergenceRate*100).toFixed(1)}%)`,`- Mean learned score delta: ${signed(m.meanScoreDelta)}`,`- Directional seed clusters: ${m.decisiveSeeds}`,`- Improvement/regression p: ${m.oneSidedImprovementP.toFixed(4)}/${m.oneSidedRegressionP.toFixed(4)}`,"","| Confidence | Samples | Divergences | Better | Neutral | Worse | Mean delta |","|---|---:|---:|---:|---:|---:|---:|",...m.confidenceBands.map(band=>`| ${band.band} | ${band.samples} | ${band.decisionDivergences} | ${band.better} | ${band.neutral} | ${band.worse} | ${signed(band.meanScoreDelta)} |`),"","Only one side's opponent model is removed in each paired replay. Teams, tactical profile, opponent behavior, exact Showdown seed, and all battle rules remain fixed. Turn count is audit context and is not rewarded.",""].join("\n");
+  const candidatePolicy=value.samples.find(sample=>sample.candidatePolicy)?.candidatePolicy,label=candidatePolicy??"Learned";
+  const method=candidatePolicy?`Only one side's opponent model is replaced with the ${candidatePolicy} shadow in each paired replay.`:"Only one side's opponent model is removed in each paired replay.";
+  return ["# Tactical memory ablation","",`- Conclusion: ${value.conclusion}`,`- Samples/seeds: ${m.samples}/${m.seeds}`,`- ${label} better/neutral/worse: ${m.better}/${m.neutral}/${m.worse}`,`- Decision divergences: ${m.decisionDivergences} (${(m.divergenceRate*100).toFixed(1)}%)`,`- Mean candidate score delta: ${signed(m.meanScoreDelta)}`,`- Directional seed clusters: ${m.decisiveSeeds}`,`- Improvement/regression p: ${m.oneSidedImprovementP.toFixed(4)}/${m.oneSidedRegressionP.toFixed(4)}`,"","| Confidence | Samples | Divergences | Better | Neutral | Worse | Mean delta |","|---|---:|---:|---:|---:|---:|---:|",...m.confidenceBands.map(band=>`| ${band.band} | ${band.samples} | ${band.decisionDivergences} | ${band.better} | ${band.neutral} | ${band.worse} | ${signed(band.meanScoreDelta)} |`),"",`${method} Teams, tactical profile, opponent behavior, exact Showdown seed, and all battle rules remain fixed. Turn count is audit context and is not rewarded.`,""].join("\n");
 }
 
 function round(value:number):number{return Math.round((value+Number.EPSILON)*1e6)/1e6;}

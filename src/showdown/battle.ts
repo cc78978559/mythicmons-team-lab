@@ -14,6 +14,7 @@ import {
   type AiOpponentModel,
   type BattleAiContext,
   type ChoiceRequest,
+  normalizeOpponentModel,
 } from "./choice";
 import {seedToShowdownSeed} from "./seed";
 import {evaluateBattleAssistGate} from "../ai/whiteBox/battle";
@@ -34,6 +35,8 @@ export interface BattleInput {
   traceAiDecisions?: boolean;
   aiProfiles?: Partial<Record<"p1" | "p2", Partial<AiTacticalProfile>>>;
   aiOpponentModels?: Partial<Record<"p1" | "p2", Partial<AiOpponentModel>>>;
+  aiOpponentModelShadows?: Record<string, Partial<Record<"p1" | "p2", Partial<AiOpponentModel>>>>;
+  aiOpponentModelPolicy?: string;
   explicitSeed?: [number, number, number, number];
   decisionIntervention?: BattleDecisionIntervention;
   battleAssistScopes?: string[];
@@ -63,6 +66,8 @@ export interface BattleReplayInput {
   traceAiDecisions: boolean;
   aiProfiles: Record<"p1" | "p2", AiTacticalProfile>;
   aiOpponentModels: Record<"p1" | "p2", AiOpponentModel>;
+  aiOpponentModelShadows?: Record<string, Record<"p1" | "p2", AiOpponentModel>>;
+  aiOpponentModelPolicy?: string;
   battleAssistScopes?: string[];
   battleAssistApprovalSha256?: string;
 }
@@ -162,6 +167,8 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
     traceAiDecisions,
     aiProfiles: {p1: aiContexts.p1.tacticalProfile, p2: aiContexts.p2.tacticalProfile},
     aiOpponentModels: {p1: aiContexts.p1.opponentModel, p2: aiContexts.p2.opponentModel},
+    aiOpponentModelShadows: normalizeOpponentModelShadows(input.aiOpponentModelShadows),
+    aiOpponentModelPolicy: input.aiOpponentModelPolicy,
     battleAssistScopes,
     battleAssistApprovalSha256,
   });
@@ -347,6 +354,15 @@ function validateBattleReplayInput(input: BattleReplayInput): void {
   if (!Number.isInteger(input.maxTurns) || input.maxTurns < 1) throw new Error("Invalid replay maxTurns");
   if (!Number.isFinite(input.idleTimeoutMs) || input.idleTimeoutMs <= 0 || !Number.isFinite(input.wallClockTimeoutMs) || input.wallClockTimeoutMs <= 0) throw new Error("Invalid replay timeout");
   if (!input.aiProfiles?.p1 || !input.aiProfiles?.p2 || !input.aiOpponentModels?.p1 || !input.aiOpponentModels?.p2) throw new Error("Incomplete replay AI state");
+  for (const [policy, models] of Object.entries(input.aiOpponentModelShadows ?? {})) {
+    if (!policy || !models?.p1 || !models?.p2) throw new Error("Incomplete replay shadow opponent model");
+  }
+  if (input.aiOpponentModelPolicy !== undefined && !input.aiOpponentModelPolicy.trim()) throw new Error("Invalid replay opponent-model policy");
+}
+
+function normalizeOpponentModelShadows(value: BattleInput["aiOpponentModelShadows"]): BattleReplayInput["aiOpponentModelShadows"] {
+  if (!value || !Object.keys(value).length) return undefined;
+  return Object.fromEntries(Object.entries(value).map(([policy, models]) => [policy, {p1: normalizeOpponentModel(models.p1), p2: normalizeOpponentModel(models.p2)}]));
 }
 
 function validateShowdownSeed(seed: [number, number, number, number]): [number, number, number, number] {

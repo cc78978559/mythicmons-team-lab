@@ -62,6 +62,14 @@ export interface ManagerProfile {
   strategyProgram?: StrategyProgram;
   matchupMemory?: Record<string, MatchupMemory>;
   tacticalMemory?: TacticalMemory;
+  tacticalMemoryExperiment?: TacticalMemoryExperimentState;
+}
+
+export interface TacticalMemoryExperimentState {
+  schemaVersion: 1;
+  startedSeason: number;
+  cumulative: TacticalMemory;
+  seasonalDecay: TacticalMemory;
 }
 
 export interface MatchupMemory { series: number; wins: number; losses: number; familyScores: Record<string, number> }
@@ -145,6 +153,7 @@ export function materializeManagerProfile(profile: ManagerProfile): ManagerProfi
     configurationMemory: profile.configurationMemory ?? {moves: {}, items: {}},
     strategyProgram: cloneStrategyProgram(profile.strategyProgram),
     tacticalMemory: cloneTacticalMemory(profile.tacticalMemory),
+    tacticalMemoryExperiment: cloneTacticalMemoryExperiment(profile.tacticalMemoryExperiment),
   };
 }
 
@@ -221,7 +230,12 @@ export function cloneManagerProfile(value: ManagerProfile): ManagerProfile {
     strategyProgram: cloneStrategyProgram(value.strategyProgram),
     matchupMemory: value.matchupMemory ? Object.fromEntries(Object.entries(value.matchupMemory).map(([opponent, memory]) => [opponent, {...memory, familyScores: {...memory.familyScores}}])) : {},
     tacticalMemory: cloneTacticalMemory(value.tacticalMemory),
+    tacticalMemoryExperiment: cloneTacticalMemoryExperiment(value.tacticalMemoryExperiment),
   };
+}
+
+function cloneTacticalMemoryExperiment(value: TacticalMemoryExperimentState | undefined): TacticalMemoryExperimentState | undefined {
+  return value ? {schemaVersion: 1, startedSeason: value.startedSeason, cumulative: cloneTacticalMemory(value.cumulative), seasonalDecay: cloneTacticalMemory(value.seasonalDecay)} : undefined;
 }
 
 export function clampTrait(value: number): number { return Math.max(.1, Math.min(.9, value)); }

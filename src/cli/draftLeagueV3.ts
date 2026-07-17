@@ -104,6 +104,7 @@ const dualLayer = /^(1|true|yes)$/i.test(process.env.V3_DUAL_LAYER || "false");
 const programEvolution = /^(1|true|yes)$/i.test(process.env.V3_PROGRAM_EVOLUTION || "false");
 const compactOutput = /^(1|true|yes)$/i.test(process.env.V3_COMPACT_OUTPUT || "false");
 const tacticalMemoryConfidenceFloor = Number(process.env.V3_TACTICAL_MEMORY_CONFIDENCE_FLOOR || .15);
+const tacticalMemoryBehaviorPolicy = process.env.V3_TACTICAL_MEMORY_BEHAVIOR_POLICY || "cumulative";
 const registryDirectory = path.resolve(process.env.V3_REGISTRY_DIR || path.join("data", "draft"));
 const registryHash = process.env.V3_REGISTRY_HASH || "live";
 const registryNamespace = process.env.V3_REGISTRY_NAMESPACE || (registryHash === "live" ? "" : registryHash.slice(0, 12));
@@ -191,6 +192,7 @@ function validateSettings(): void {
   if (!Number.isInteger(minimumRosterSize) || !Number.isInteger(maximumRosterSize) || minimumRosterSize < 6 || maximumRosterSize < minimumRosterSize || maximumRosterSize > 10) throw new Error("V3 roster limits must satisfy 6 <= min <= max <= 10");
   if (!Number.isInteger(midseasonGrant) || midseasonGrant < 0 || midseasonGrant > 20) throw new Error("V3_MIDSEASON_GRANT must be 0..20");
   if (!Number.isFinite(tacticalMemoryConfidenceFloor) || tacticalMemoryConfidenceFloor < 0 || tacticalMemoryConfidenceFloor > 1) throw new Error("V3_TACTICAL_MEMORY_CONFIDENCE_FLOOR must be within 0..1");
+  if (!["cumulative", "seasonal-decay"].includes(tacticalMemoryBehaviorPolicy)) throw new Error("V3_TACTICAL_MEMORY_BEHAVIOR_POLICY must be cumulative or seasonal-decay");
 }
 
 function loadManagerProfiles(): ManagerProfile[] {
@@ -1152,7 +1154,8 @@ async function playSeries(format: string, left: Manager, right: Manager, dex: Re
     let leftGameWins = 0, rightGameWins = 0;
     for (const orientation of ["left-p1", "right-p1"] as const) {
       const leftSide: Side = orientation === "left-p1" ? "p1" : "p2";
-      const result = await runBattle({format, teamA: Teams.pack((orientation === "left-p1" ? leftLineup : rightLineup).map(entry => entry.candidate.set)), teamB: Teams.pack((orientation === "left-p1" ? rightLineup : leftLineup).map(entry => entry.candidate.set)), seed: `${seed}:${seriesId}:pair:${pair}`, gameIndex: pair, outDir: path.join(outDir, "battles", seriesId, orientation), maxTurns, ai: "search", aiProfiles: orientation === "left-p1" ? {p1: programTactics(left, right), p2: programTactics(right, left)} : {p1: programTactics(right, left), p2: programTactics(left, right)}, aiOpponentModels: orientation === "left-p1" ? {p1: tacticalOpponentModel(left.tacticalMemory, right.id,{minimumConfidence:tacticalMemoryConfidenceFloor}), p2: tacticalOpponentModel(right.tacticalMemory, left.id,{minimumConfidence:tacticalMemoryConfidenceFloor})} : {p1: tacticalOpponentModel(right.tacticalMemory, left.id,{minimumConfidence:tacticalMemoryConfidenceFloor}), p2: tacticalOpponentModel(left.tacticalMemory, right.id,{minimumConfidence:tacticalMemoryConfidenceFloor})}, openTeamSheets: true, traceAiDecisions: true,battleAssistScopes,battleAssistApprovalSha256:battleAssistApproval?.sha256});
+      const p1Manager = orientation === "left-p1" ? left : right, p2Manager = orientation === "left-p1" ? right : left;
+      const result = await runBattle({format, teamA: Teams.pack((orientation === "left-p1" ? leftLineup : rightLineup).map(entry => entry.candidate.set)), teamB: Teams.pack((orientation === "left-p1" ? rightLineup : leftLineup).map(entry => entry.candidate.set)), seed: `${seed}:${seriesId}:pair:${pair}`, gameIndex: pair, outDir: path.join(outDir, "battles", seriesId, orientation), maxTurns, ai: "search", aiProfiles: {p1: programTactics(p1Manager, p2Manager), p2: programTactics(p2Manager, p1Manager)}, aiOpponentModels: {p1: tacticalOpponentModel(p1Manager.tacticalMemory, p2Manager.id, {minimumConfidence: tacticalMemoryConfidenceFloor}), p2: tacticalOpponentModel(p2Manager.tacticalMemory, p1Manager.id, {minimumConfidence: tacticalMemoryConfidenceFloor})}, aiOpponentModelShadows: tacticalMemoryModelShadows(p1Manager, p2Manager), aiOpponentModelPolicy: tacticalMemoryBehaviorPolicy, openTeamSheets: true, traceAiDecisions: true, battleAssistScopes, battleAssistApprovalSha256: battleAssistApproval?.sha256});
       const leftWon = result.winner === (leftSide === "p1" ? "Team A" : "Team B");
       const rightWon = result.winner === (leftSide === "p1" ? "Team B" : "Team A");
       if (leftWon) leftGameWins += 1;
@@ -1168,6 +1171,21 @@ async function playSeries(format: string, left: Manager, right: Manager, dex: Re
   }
   if (stage === "league") applySeriesPoints(left, right, leftPairs, rightPairs);
   return {id: seriesId, stage, left: left.id, right: right.id, leftPairs, rightPairs, splitPairs, games};
+}
+
+function tacticalMemoryModelShadows(p1: Manager, p2: Manager) {
+  const p1Experiment = p1.tacticalMemoryExperiment, p2Experiment = p2.tacticalMemoryExperiment;
+  if (!p1Experiment || !p2Experiment) return undefined;
+  return {
+    cumulative: {
+      p1: tacticalOpponentModel(p1Experiment.cumulative, p2.id, {minimumConfidence: tacticalMemoryConfidenceFloor}),
+      p2: tacticalOpponentModel(p2Experiment.cumulative, p1.id, {minimumConfidence: tacticalMemoryConfidenceFloor}),
+    },
+    "seasonal-decay": {
+      p1: tacticalOpponentModel(p1Experiment.seasonalDecay, p2.id, {minimumConfidence: tacticalMemoryConfidenceFloor}),
+      p2: tacticalOpponentModel(p2Experiment.seasonalDecay, p1.id, {minimumConfidence: tacticalMemoryConfidenceFloor}),
+    },
+  };
 }
 
 function applySeriesPoints(left: Manager, right: Manager, leftPairs: number, rightPairs: number): void {

@@ -400,7 +400,7 @@ function runDynastySeason(season: number): void {
     updateMarket(roster);
     recordReviewDecision(season, career, review, champion);
   }
-  writeJson(path.join(seasonDir, "tactical-learning.json"), {schemaVersion: 1, season, managers: managers.map(manager => ({id: manager.id, tacticalMemory: manager.currentProfile.tacticalMemory}))});
+  writeJson(path.join(seasonDir, "tactical-learning.json"), {schemaVersion: 1, season, managers: managers.map(manager => ({id: manager.id, tacticalMemory: manager.currentProfile.tacticalMemory, tacticalMemoryExperiment: manager.currentProfile.tacticalMemoryExperiment}))});
   if (stateVersion >= 10) {
     runContractWaivers(season, seasonResult, waiverQueue);
     runOffseasonContractMarket(season);
@@ -605,8 +605,14 @@ function learnTacticalEpisodes(career: ManagerCareer, roster: DynastyRosterMembe
   const before = cloneTacticalMemory(career.currentProfile.tacticalMemory);
   const updated = updateTacticalMemory(before, episodes, season.season, career.currentProfile.learning.memoryDecay, tacticalMemoryBehaviorPolicy);
   const whiteBoxMemoryTrace = buildTacticalMemoryTrace(before, episodes, season.season, career.currentProfile.learning.memoryDecay, updated, tacticalMemoryBehaviorPolicy);
+  const experimentBefore = career.currentProfile.tacticalMemoryExperiment;
+  const cumulative = updateTacticalMemory(experimentBefore?.cumulative ?? before, episodes, season.season, career.currentProfile.learning.memoryDecay, "cumulative");
+  const seasonalDecay = updateTacticalMemory(experimentBefore?.seasonalDecay ?? before, episodes, season.season, career.currentProfile.learning.memoryDecay, "seasonal-decay");
+  if (tacticalMemoryBehaviorPolicy === "cumulative" && JSON.stringify(updated) !== JSON.stringify(cumulative)) throw new Error(`Cumulative tactical-memory shadow drifted for ${career.id}`);
+  if (tacticalMemoryBehaviorPolicy === "seasonal-decay" && JSON.stringify(updated) !== JSON.stringify(seasonalDecay)) throw new Error(`Seasonal-decay tactical-memory shadow drifted for ${career.id}`);
   career.currentProfile.tacticalMemory = updated;
-  ledger.add({stage: "review", actor: career.id, decision: `Season ${season.season} tactical memory update`, selected: `${episodes.length} battle episodes`, context: {season: season.season, episodes: episodes.length, opponents: [...new Set(episodes.map(episode => episode.opponentId))], decisiveEvents: episodes.reduce((sum, episode) => sum + episode.decisiveEvents.length, 0), whiteBoxMemoryTrace}, alternatives: [], rationale: ["Credit is assigned from observed knockouts, survival, fainting, moves, leads, and switches", "Event evidence persists into future lineup and strategy-program decisions"]});
+  career.currentProfile.tacticalMemoryExperiment = {schemaVersion: 1, startedSeason: experimentBefore?.startedSeason ?? season.season, cumulative, seasonalDecay};
+  ledger.add({stage: "review", actor: career.id, decision: `Season ${season.season} tactical memory update`, selected: `${episodes.length} battle episodes`, context: {season: season.season, episodes: episodes.length, opponents: [...new Set(episodes.map(episode => episode.opponentId))], decisiveEvents: episodes.reduce((sum, episode) => sum + episode.decisiveEvents.length, 0), whiteBoxMemoryTrace, experiment: {startedSeason: career.currentProfile.tacticalMemoryExperiment.startedSeason, policies: ["cumulative", "seasonal-decay"]}}, alternatives: [], rationale: ["Credit is assigned from observed knockouts, survival, fainting, moves, leads, and switches", "Event evidence persists into future lineup and strategy-program decisions", "Cumulative and seasonal-decay behavior models update in parallel without changing the active policy"]});
 }
 
 function runV3Season(season: number, seasonDir: string, profilePath: string, keeperPath: string, marketPath: string, budgetPath: string, assetPath: string): void {
@@ -642,6 +648,7 @@ function runV3Season(season: number, seasonDir: string, profilePath: string, kee
       V3_PROGRAM_EVOLUTION: String(programEvolution),
       V3_COMPACT_OUTPUT: String(evidenceRetention === "compact"),
       V3_TACTICAL_MEMORY_CONFIDENCE_FLOOR: String(tacticalMemoryConfidenceFloor),
+      V3_TACTICAL_MEMORY_BEHAVIOR_POLICY: tacticalMemoryBehaviorPolicy,
       V4_DUAL_LAYER: String(dualLayer),
       V3_UNLOCK_GENERATION: String(Math.min(9, season)),
       V4_CURRENT_SEASON: String(season),
@@ -1340,6 +1347,8 @@ function validateProfileState(profile: ManagerProfile): void {
     if (!profile.strategyProgram) throw new Error(`Saved V12 dynasty has no strategy program for ${profile.id}`);
     validateStrategyProgram(profile.strategyProgram);
   }
+  const tacticalExperiment = profile.tacticalMemoryExperiment;
+  if (tacticalExperiment && (tacticalExperiment.schemaVersion !== 1 || !Number.isInteger(tacticalExperiment.startedSeason) || tacticalExperiment.startedSeason < 1 || tacticalExperiment.cumulative.version !== 1 || tacticalExperiment.seasonalDecay.version !== 1)) throw new Error(`Saved dynasty has invalid tactical-memory experiment for ${profile.id}`);
   if (genome) {
     for (const value of Object.values(genome.economics ?? {})) if (!Number.isFinite(value) || value! < -.35 || value! > .35) throw new Error(`Saved dynasty has invalid economics genome for ${profile.id}`);
     for (const value of Object.values(genome.tactics ?? {})) if (!Number.isFinite(value) || value! < -.5 || value! > .5) throw new Error(`Saved dynasty has invalid tactics genome for ${profile.id}`);

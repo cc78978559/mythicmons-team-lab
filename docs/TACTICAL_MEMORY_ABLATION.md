@@ -90,3 +90,24 @@ Sequential review stopped as soon as the predeclared competitive gate was reache
 The reviewed policy change is to retain all observations but set the battle opponent-model confidence to zero until its computed confidence reaches `.15`. Counts, episodes, posterior learning, lineup memory, and later confidence growth are not deleted or delayed. New V3/V4/V12 journeys default to this floor; `V12_TACTICAL_MEMORY_CONFIDENCE_FLOOR=0` reproduces the prior behavior. Saved journeys bind the setting and cannot silently resume under another floor.
 
 Seasonal behavior-count decay is implemented only as an isolated experiment setting (`V12_TACTICAL_MEMORY_BEHAVIOR_POLICY=seasonal-decay`). It remains inactive by default because the confidence-floor holdout does not test recency weighting.
+
+## Seasonal-decay shadow experiment
+
+New journeys maintain two tactical behavior memories from the same observed episodes: `cumulative` and `seasonal-decay`. The active policy remains manifest-bound in the dynasty settings. Both shadow memories are deep-cloned with the manager profile, audited against the active memory when their policies match, and saved in the dynasty checkpoint. Existing journeys can begin shadow collection on resume, but their `startedSeason` marks them as warm-start evidence rather than full-history evidence.
+
+From the second season onward, each battle replay capsule may contain compact, named opponent-model shadows for the two participating managers. These models are evidence only; `runBattle` still constructs both live AI contexts exclusively from `aiOpponentModels`. The capsule also records `aiOpponentModelPolicy`, so a sampler cannot mistake a seasonal-decay source for a cumulative incumbent.
+
+Plan or run an exact one-side comparison:
+
+```powershell
+npm run sample:tactical-memory-ablation -- `
+  --inputs output/holdout-a,output/holdout-b `
+  --out output/seasonal-decay-holdout `
+  --shadow-policy seasonal-decay `
+  --minimum-confidence 0 `
+  --run
+```
+
+The sampler excludes capsules without the requested shadow, non-cumulative incumbents, unchanged acting-side models, incomplete traces, active battle assists, or incompatible AI versions. The incumbent must reproduce the retained decision trace exactly. The candidate branch then replaces only the acting side's model; teams, opposing AI, active opponent model on the other side, tactical profiles, battle rules, and Showdown seed remain fixed. Candidate identity includes the shadow policy, and manifests lock that policy across resume.
+
+The four-season workflow probe produced four distinct candidates across two seeds. Three bounded paired replays completed with exact source verification and no failures. They had no decision or outcome divergence, which validates plumbing only and is not competitive evidence. Formal review still requires independently seeded journeys and the normal decisive-pair gate.

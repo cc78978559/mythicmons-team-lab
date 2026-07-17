@@ -21,6 +21,11 @@ assert.equal(state.settings.tacticalMemoryConfidenceFloor, .15);
 assertResumeRejectsChangedMemoryPolicy();
 assert.equal(state.leaguePool + state.managers.reduce((sum: number, manager: any) => sum + manager.cash, 0), state.moneySupply);
 for (const manager of state.managers) validateStrategyProgram(manager.currentProfile.strategyProgram);
+for (const manager of state.managers) {
+  assert.equal(manager.currentProfile.tacticalMemoryExperiment.schemaVersion, 1);
+  assert.equal(manager.currentProfile.tacticalMemoryExperiment.startedSeason, 1);
+  assert.deepEqual(manager.currentProfile.tacticalMemoryExperiment.cumulative, manager.currentProfile.tacticalMemory);
+}
 assert(new Set(state.managers.map((manager: any) => strategyProgramHash(manager.pendingProfile.strategyProgram))).size > 1);
 assert(state.decisionRecords.some((record: any) => record.decision.includes("配置证据更新") && record.context?.updates?.length));
 
