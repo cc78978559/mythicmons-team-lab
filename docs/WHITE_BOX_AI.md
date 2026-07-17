@@ -1,6 +1,6 @@
 # White-box AI rollout
 
-Tactical opponent-memory benefit is now evaluated by an exact single-side ablation sampler. The first V14 nine-season calibration found that memory changed roughly half of sampled decisions but did not establish a competitive benefit; low-confidence memory had a non-significant negative direction. Runtime behavior remains unchanged pending an independently seeded holdout. See `docs/TACTICAL_MEMORY_ABLATION.md`.
+Tactical opponent-memory benefit is evaluated by an exact single-side ablation sampler. The first V14 calibration selected a `.15` confidence-floor hypothesis without activating it. A separate three-journey holdout then found that low-confidence memory produced 1 improvement and 9 regressions across 10 decisive exact-seed clusters (`p=0.0107` for regression). New journeys therefore retain low-confidence evidence but do not let it influence battle choices until confidence reaches `.15`. Seasonal behavior decay remains experimental. See `docs/TACTICAL_MEMORY_ABLATION.md`.
 
 The white-box route is introduced as an observable layer around the stable V13 AI. It must not silently change league behavior before fixed-seed and long-run validation.
 

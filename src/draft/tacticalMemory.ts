@@ -43,6 +43,8 @@ export interface TacticalMemory {
   opponents: Record<string, OpponentTacticalMemory>;
 }
 
+export type TacticalMemoryBehaviorPolicy = "cumulative" | "seasonal-decay";
+
 export interface TacticalEpisodeInput {
   id: string;
   opponentId: string;
@@ -168,13 +170,14 @@ export function extractTacticalEpisode(input: TacticalEpisodeInput): TacticalEpi
   };
 }
 
-export function updateTacticalMemory(previous: TacticalMemory | undefined, episodes: TacticalEpisode[], season: number, decay = .85): TacticalMemory {
+export function updateTacticalMemory(previous: TacticalMemory | undefined, episodes: TacticalEpisode[], season: number, decay = .85, behaviorPolicy: TacticalMemoryBehaviorPolicy = "cumulative"): TacticalMemory {
   const memory = cloneTacticalMemory(previous);
   for (const episode of episodes) {
     const current = memory.opponents[episode.opponentId] ?? emptyOpponentMemory(season);
     if (current.games > 0 && current.lastSeason < season) {
       decayPosteriors(current.familyImpact, decay);
       decayPosteriors(current.moveImpact, decay);
+      if (behaviorPolicy === "seasonal-decay") decayBehavior(current, decay);
     }
     current.games += 1;
     current.wins += episode.result === "win" ? 1 : 0;
@@ -217,11 +220,13 @@ export function tacticalSignals(memory: TacticalMemory | undefined, opponentId: 
   };
 }
 
-export function tacticalOpponentModel(memory: TacticalMemory | undefined, opponentId: string): AiOpponentModel {
+export function tacticalOpponentModel(memory: TacticalMemory | undefined, opponentId: string, options: {minimumConfidence?: number} = {}): AiOpponentModel {
   const signals = tacticalSignals(memory, opponentId);
+  const minimumConfidence = options.minimumConfidence ?? 0;
+  if (!Number.isFinite(minimumConfidence) || minimumConfidence < 0 || minimumConfidence > 1) throw new Error("minimumConfidence must be within 0..1");
   const opponent = memory?.opponents[opponentId];
   return {
-    confidence: signals.confidence,
+    confidence: signals.confidence + 1e-12 >= minimumConfidence ? signals.confidence : 0,
     switchRate: signals.opponentSwitchRate,
     moveUsage: {...(opponent?.opponentMoveCounts ?? {})},
     moveUsageBySpecies: JSON.parse(JSON.stringify(opponent?.opponentMoveCountsByFamily ?? {})) as Record<string, Record<string, number>>,
@@ -250,6 +255,15 @@ function decayPosteriors(values: Record<string, TacticalPosterior>, decay: numbe
     posterior.confidence = Math.min(1, posterior.effectiveSamples / 8);
   }
 }
+
+function decayBehavior(memory: OpponentTacticalMemory, decay: number): void {
+  memory.games *= decay; memory.wins *= decay; memory.losses *= decay; memory.draws *= decay;
+  scaleCounts(memory.leadCounts, decay); scaleCounts(memory.opponentMoveCounts, decay);
+  for (const counts of Object.values(memory.opponentMoveCountsByFamily ?? {})) scaleCounts(counts, decay);
+  memory.opponentSwitches *= decay; memory.observedTurns *= decay;
+}
+
+function scaleCounts(values: Record<string, number>, scale: number): void { for (const key of Object.keys(values)) values[key] *= scale; }
 
 function ownFamily(name: string, familyByName: ReadonlyMap<string, string>): string {
   return familyByName.get(normalize(name)) ?? normalize(name);

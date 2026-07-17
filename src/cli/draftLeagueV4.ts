@@ -8,7 +8,7 @@ import {reviewManagerSeason, updateMatchupMemory, type DynastyRosterMember, type
 import {classifyEmergentStyle, cloneManagerProfile, createNoviceProfiles, materializeManagerProfile, type ManagerProfile, type ManagerTraits} from "../draft/managerProfiles";
 import {evolveManagerPopulation, founderLineage, type EvolutionCompetitor, type LineageIdentity, type ObservedBehavior} from "../draft/naturalEvolution";
 import {runPunctuatedEvolution, type ManagerEvolutionState} from "../draft/punctuatedEvolution";
-import {cloneTacticalMemory, extractTacticalEpisode, updateTacticalMemory, type TacticalEpisode} from "../draft/tacticalMemory";
+import {cloneTacticalMemory, extractTacticalEpisode, updateTacticalMemory, type TacticalEpisode, type TacticalMemoryBehaviorPolicy} from "../draft/tacticalMemory";
 import {auditLeagueSeason, type LeagueHealthSnapshot} from "../draft/leagueHealth";
 import {updateQualityDiversityArchive, type QualityDiversityCandidate} from "../draft/qualityDiversity";
 import {chooseRfaOffer, matchingContract, releaseDeadMoney, taggedContract, waiverWinner, type ContractOffer, type SportsContract} from "../draft/sportsMarket";
@@ -90,7 +90,7 @@ interface DynastyState {
   version: number;
   seed: string;
   completedSeason: number;
-  settings: {seasonCount: number; managerLimit: number; pairs: number; poolSize: number; auctionLots: number; maxTurns: number; regularRounds: number; baseBudget?: number; keeperCap?: number; auctionMode?: string; minRoster?: number; maxRoster?: number; midseasonGrant?: number; contractModel?: string; dynamicPool?: boolean; learningModel?: string; carryRate?: number; carryCap?: number; maxKeepers?: number; separatePayroll?: boolean; dualLayer?: boolean; programEvolution?: boolean; evolutionMode?: "punctuated" | "generational"; evolutionPolicy?: "active" | "shadow"; evolutionMaxBursts?: number; evolutionMinCandidates?: number; evolutionMaxCandidates?: number};
+  settings: {seasonCount: number; managerLimit: number; pairs: number; poolSize: number; auctionLots: number; maxTurns: number; regularRounds: number; baseBudget?: number; keeperCap?: number; auctionMode?: string; minRoster?: number; maxRoster?: number; midseasonGrant?: number; contractModel?: string; dynamicPool?: boolean; learningModel?: string; carryRate?: number; carryCap?: number; maxKeepers?: number; separatePayroll?: boolean; dualLayer?: boolean; programEvolution?: boolean; evolutionMode?: "punctuated" | "generational"; evolutionPolicy?: "active" | "shadow"; evolutionMaxBursts?: number; evolutionMinCandidates?: number; evolutionMaxCandidates?: number; tacticalMemoryBehaviorPolicy?: TacticalMemoryBehaviorPolicy; tacticalMemoryConfidenceFloor?: number};
   managers: ManagerCareer[];
   market: Record<string, MarketAggregate>;
   assets: Record<string, AssetLedgerEntry>;
@@ -158,6 +158,10 @@ const careerCheckpointPath = process.env.V4_CAREER_CHECKPOINT ? path.resolve(pro
 const evidenceRetention = process.env.V4_EVIDENCE_RETENTION || "full";
 if (evidenceRetention !== "full" && evidenceRetention !== "compact") throw new Error("V4_EVIDENCE_RETENTION must be full or compact");
 const evidenceSampleRate = numberSetting("V4_EVIDENCE_SAMPLE_RATE", .02, 0, 1);
+const tacticalMemoryBehaviorPolicyValue = process.env.V4_TACTICAL_MEMORY_BEHAVIOR_POLICY || "cumulative";
+if (!["cumulative", "seasonal-decay"].includes(tacticalMemoryBehaviorPolicyValue)) throw new Error("V4_TACTICAL_MEMORY_BEHAVIOR_POLICY must be cumulative or seasonal-decay");
+const tacticalMemoryBehaviorPolicy = tacticalMemoryBehaviorPolicyValue as TacticalMemoryBehaviorPolicy;
+const tacticalMemoryConfidenceFloor = numberSetting("V4_TACTICAL_MEMORY_CONFIDENCE_FLOOR", .15, 0, 1);
 const evolutionMode = process.env.V4_EVOLUTION_MODE === "generational" ? "generational" : "punctuated";
 const evolutionShock = numberSetting("V4_EVOLUTION_SHOCK", 0, 0, 1);
 const evolutionMaxBursts = integerSetting("V4_EVOLUTION_MAX_BURSTS", Math.max(1, Math.min(2, Math.ceil(managerLimit * .2))), 1, managerLimit);
@@ -599,8 +603,8 @@ function learnTacticalEpisodes(career: ManagerCareer, roster: DynastyRosterMembe
     }
   }
   const before = cloneTacticalMemory(career.currentProfile.tacticalMemory);
-  const updated = updateTacticalMemory(before, episodes, season.season, career.currentProfile.learning.memoryDecay);
-  const whiteBoxMemoryTrace = buildTacticalMemoryTrace(before, episodes, season.season, career.currentProfile.learning.memoryDecay, updated);
+  const updated = updateTacticalMemory(before, episodes, season.season, career.currentProfile.learning.memoryDecay, tacticalMemoryBehaviorPolicy);
+  const whiteBoxMemoryTrace = buildTacticalMemoryTrace(before, episodes, season.season, career.currentProfile.learning.memoryDecay, updated, tacticalMemoryBehaviorPolicy);
   career.currentProfile.tacticalMemory = updated;
   ledger.add({stage: "review", actor: career.id, decision: `Season ${season.season} tactical memory update`, selected: `${episodes.length} battle episodes`, context: {season: season.season, episodes: episodes.length, opponents: [...new Set(episodes.map(episode => episode.opponentId))], decisiveEvents: episodes.reduce((sum, episode) => sum + episode.decisiveEvents.length, 0), whiteBoxMemoryTrace}, alternatives: [], rationale: ["Credit is assigned from observed knockouts, survival, fainting, moves, leads, and switches", "Event evidence persists into future lineup and strategy-program decisions"]});
 }
@@ -637,6 +641,7 @@ function runV3Season(season: number, seasonDir: string, profilePath: string, kee
       V3_DUAL_LAYER: String(dualLayer),
       V3_PROGRAM_EVOLUTION: String(programEvolution),
       V3_COMPACT_OUTPUT: String(evidenceRetention === "compact"),
+      V3_TACTICAL_MEMORY_CONFIDENCE_FLOOR: String(tacticalMemoryConfidenceFloor),
       V4_DUAL_LAYER: String(dualLayer),
       V3_UNLOCK_GENERATION: String(Math.min(9, season)),
       V4_CURRENT_SEASON: String(season),
@@ -1095,7 +1100,7 @@ function signed(value: number): string {
 }
 
 function currentSettings(): DynastyState["settings"] {
-  return {seasonCount, managerLimit, pairs, poolSize, auctionLots, maxTurns, regularRounds, baseBudget, keeperCap, auctionMode, minRoster, maxRoster, midseasonGrant, contractModel, dynamicPool, learningModel, carryRate, carryCap, maxKeepers, separatePayroll, dualLayer, programEvolution, evolutionMode, evolutionPolicy: evolutionPolicy === "suppress-experiment" ? "active" : evolutionPolicy, evolutionMaxBursts, evolutionMinCandidates, evolutionMaxCandidates};
+  return {seasonCount, managerLimit, pairs, poolSize, auctionLots, maxTurns, regularRounds, baseBudget, keeperCap, auctionMode, minRoster, maxRoster, midseasonGrant, contractModel, dynamicPool, learningModel, carryRate, carryCap, maxKeepers, separatePayroll, dualLayer, programEvolution, evolutionMode, evolutionPolicy: evolutionPolicy === "suppress-experiment" ? "active" : evolutionPolicy, evolutionMaxBursts, evolutionMinCandidates, evolutionMaxCandidates, tacticalMemoryBehaviorPolicy, tacticalMemoryConfidenceFloor};
 }
 
 function settingsMatch(saved: DynastyState["settings"]): boolean {
@@ -1125,6 +1130,8 @@ function settingsMatch(saved: DynastyState["settings"]): boolean {
     && (saved.evolutionMaxBursts ?? evolutionMaxBursts) === current.evolutionMaxBursts
     && (saved.evolutionMinCandidates ?? evolutionMinCandidates) === current.evolutionMinCandidates
     && (saved.evolutionMaxCandidates ?? evolutionMaxCandidates) === current.evolutionMaxCandidates
+    && (saved.tacticalMemoryBehaviorPolicy ?? "cumulative") === current.tacticalMemoryBehaviorPolicy
+    && (saved.tacticalMemoryConfidenceFloor ?? 0) === current.tacticalMemoryConfidenceFloor
     && (saved.separatePayroll ?? false) === current.separatePayroll;
 }
 

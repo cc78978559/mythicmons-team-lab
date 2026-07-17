@@ -16,6 +16,9 @@ runSeason(false, "1");
 const state = read<any>(path.join(output, "dynasty-state.json"));
 assert.equal(state.version, 12);
 assert.equal(state.completedSeason, 1);
+assert.equal(state.settings.tacticalMemoryBehaviorPolicy, "cumulative");
+assert.equal(state.settings.tacticalMemoryConfidenceFloor, .15);
+assertResumeRejectsChangedMemoryPolicy();
 assert.equal(state.leaguePool + state.managers.reduce((sum: number, manager: any) => sum + manager.cash, 0), state.moneySupply);
 for (const manager of state.managers) validateStrategyProgram(manager.currentProfile.strategyProgram);
 assert(new Set(state.managers.map((manager: any) => strategyProgramHash(manager.pendingProfile.strategyProgram))).size > 1);
@@ -82,6 +85,16 @@ function runSeason(resume: boolean, seasons: string, adopt = false): void {
     maxBuffer: 64 * 1024 * 1024,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
+}
+function assertResumeRejectsChangedMemoryPolicy(): void {
+  const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "draftLeagueV12.ts")], {
+    cwd: root,
+    env: {...process.env, V12_OUT: output, V12_SEASONS: "1", V12_RESUME: "true", V12_REGISTRY_SOURCE: registrySource, V12_REGISTRY_REVISION: "initial-smoke", V12_MANAGER_LIMIT: "6", V12_PAIRS: "1", V12_POOL_SIZE: "100", V12_AUCTION_LOTS: "10", V12_REGULAR_ROUNDS: "2", V12_MAX_TURNS: "80", V12_MIN_ROSTER: "6", V12_MAX_ROSTER: "6", V12_SEED: "automated-v12-smoke", V12_EVOLUTION_MODE: "generational", V12_TACTICAL_MEMORY_CONFIDENCE_FLOOR: "0"},
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  assert.notEqual(result.status, 0, "a saved journey must reject a different tactical-memory policy");
+  assert.match(result.stderr || result.stdout, /settings do not match/);
 }
 function findFiles(directory: string, suffix: string, matchSuffix = false): string[] {
   const files: string[] = [];

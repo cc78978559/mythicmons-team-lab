@@ -71,4 +71,22 @@ The complete confidence `>= 0.15` pool reused 24 samples and executed 6:
 - mean learned score delta: +0.0333;
 - conclusion: `insufficient-evidence` because only one pair changed the outcome.
 
-The current opponent model is therefore active and behaviorally material, but it is not yet competitively validated. Low-confidence memory has a negative observed direction without statistically sufficient regression evidence. Runtime remains unchanged. A confidence floor, recency weighting, or other memory-policy change requires an independently seeded holdout journey and must be tested as a new hypothesis rather than selected on this calibration set.
+The calibration established that the opponent model is behaviorally material, but it did not justify changing runtime behavior. It selected `.15` as a prospective confidence-floor hypothesis for a separately seeded holdout; no calibration result was reused as confirmatory evidence.
+
+## Independent confidence-floor holdout
+
+Three new nine-season, six-manager journeys used seeds `holdout-memory-a`, `holdout-memory-b`, and `holdout-memory-c`. They ran the unchanged cumulative-memory policy with no confidence floor and produced 240 eligible low-confidence side-pairs across 108 exact Showdown seeds. The manifest and all thresholds were locked before replay.
+
+Sequential review stopped as soon as the predeclared competitive gate was reached:
+
+- samples/seeds: 138/108;
+- decision divergences: 56/138;
+- learned better/neutral/worse: 1/128/9;
+- decisive pairs and seed clusters: 10/10;
+- mean learned score delta: -0.0580;
+- seed-cluster improvement/regression p: 0.9990/0.0107;
+- conclusion: `harmful-review`.
+
+The reviewed policy change is to retain all observations but set the battle opponent-model confidence to zero until its computed confidence reaches `.15`. Counts, episodes, posterior learning, lineup memory, and later confidence growth are not deleted or delayed. New V3/V4/V12 journeys default to this floor; `V12_TACTICAL_MEMORY_CONFIDENCE_FLOOR=0` reproduces the prior behavior. Saved journeys bind the setting and cannot silently resume under another floor.
+
+Seasonal behavior-count decay is implemented only as an isolated experiment setting (`V12_TACTICAL_MEMORY_BEHAVIOR_POLICY=seasonal-decay`). It remains inactive by default because the confidence-floor holdout does not test recency weighting.

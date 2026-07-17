@@ -74,12 +74,26 @@ try {
   assert.ok(model.moveUsageBySpecies.redpikachu.focusblast > 0);
   assert.ok(learnedMoveMultiplier("focusblast", ["focusblast", "protect"], model, "redpikachu") > learnedMoveMultiplier("protect", ["focusblast", "protect"], model, "redpikachu"));
   assert.ok(learnedSwitchMultiplier(model) >= .35 && learnedSwitchMultiplier(model) <= 3);
+  const gatedModel = tacticalOpponentModel(memory, "g1-red", {minimumConfidence: Math.min(1, signals.confidence + .01)});
+  assert.equal(gatedModel.confidence, 0, "low-confidence memory should not influence battle choices");
+  assert.deepEqual(gatedModel.moveUsage, model.moveUsage, "confidence gating must retain observed evidence");
+  assert.throws(() => tacticalOpponentModel(memory, "g1-red", {minimumConfidence: 1.01}), /0\.\.1/);
   assert.deepEqual(cloneTacticalMemory(memory), memory);
 
   const nextMemory = updateTacticalMemory(memory, [{...episode, id: "next-season"}], 2, .5);
   const nextTrace = buildTacticalMemoryTrace(memory, [{...episode, id: "next-season"}], 2, .5, nextMemory);
   assert.equal(nextTrace.decayEvents.length, 1);
   assert.equal(nextTrace.decay, .5);
+  assert.equal(nextMemory.opponents["g1-red"].games, 9, "cumulative remains the default behavior policy");
+  assert.equal(nextTrace.behaviorPolicy, "cumulative");
+  assert.equal(nextTrace.behaviorDecayEvents.length, 0);
+
+  const decayedMemory = updateTacticalMemory(memory, [{...episode, id: "decayed-next-season"}], 2, .5, "seasonal-decay");
+  const decayedTrace = buildTacticalMemoryTrace(memory, [{...episode, id: "decayed-next-season"}], 2, .5, decayedMemory, "seasonal-decay");
+  assert.equal(decayedMemory.opponents["g1-red"].games, 5);
+  assert.equal(decayedMemory.opponents["g1-red"].opponentMoveCounts.focusblast, 5);
+  assert.equal(decayedTrace.behaviorPolicy, "seasonal-decay");
+  assert.deepEqual(decayedTrace.behaviorDecayEvents, [{opponentId: "g1-red", episodeId: "decayed-next-season", gamesBefore: 8, gamesAfter: 4}]);
 
   const moveEvidence = evaluateConfigurationEvidence({kind: "move", teamResult: 1, production: .5, eventRate: .5, koRate: .25, programValue: .5});
   assert.equal(moveEvidence.baseEvidence, .575);
