@@ -129,3 +129,18 @@ The complete source-pool census produced:
 - conclusion: `insufficient-evidence` because only four pairs and two seed clusters changed outcomes.
 
 The observed direction is negative, including two regressions among 16 high-confidence samples, but it does not meet the predeclared directional evidence gate. Seasonal decay is therefore not activated, and `cumulative` remains the production behavior policy. The dual shadow is retained for future independent evidence; repeating these same capsules or relaxing the gate would not constitute confirmation.
+
+## Post-floor active-memory holdout
+
+The same new journeys also addressed the previously documented, independent question of whether active memory at or above the `.15` floor beats removing the acting side's opponent model. This used the standard ablation branch, not the seasonal-decay outcomes. Sequential review stopped at the predeclared decisive-pair gate:
+
+- samples/seeds: 97/53;
+- decision divergences: 62/97;
+- active memory better/neutral/worse: 4/87/6;
+- decisive pairs and seed clusters: 10/6;
+- better/neutral/worse seed clusters: 3/47/3;
+- mean active-memory score delta: -0.0206;
+- seed-cluster improvement/regression p: 0.6563/0.6563;
+- conclusion: `no-clear-benefit`.
+
+Active memory is behaviorally substantial but has no established aggregate competitive advantage or regression at the current strength. The result does not authorize removing it, increasing its weight, or lowering its confidence floor. Production therefore remains cumulative memory with the validated `.15` gate while later AI stages proceed.
