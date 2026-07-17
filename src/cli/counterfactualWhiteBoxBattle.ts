@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
 import {evaluateBattleAssistGate} from "../ai/whiteBox/battle";
 import {loadBattleReplayCapsule, runBattle, type BattleDecisionIntervention, type BattleResult} from "../showdown/battle";
 import {AI_VERSION, type AiDecisionTrace} from "../showdown/choice";
@@ -12,7 +13,7 @@ async function main(): Promise<void> {
   if (fs.existsSync(out)) throw new Error(`Output directory already exists: ${out}`);
   const capsule = loadBattleReplayCapsule(path.join(source, "replay-input.json"));
   if (capsule.input.aiVersion !== AI_VERSION) throw new Error(`Replay AI version ${capsule.input.aiVersion} differs from current ${AI_VERSION}`);
-  const sourceTraces = read<AiDecisionTrace[]>(path.join(source, "ai-decisions.json"));
+  const sourceTraces = readEvidence<AiDecisionTrace[]>(source, "ai-decisions.json");
   const requestedOrdinal = optionalInteger(args, "--decision-ordinal");
   const candidates = sourceTraces.map(trace => battleCase(trace)).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
   const target = requestedOrdinal === null ? candidates.find(entry => entry.gate.recommended) : candidates.find(entry => entry.trace.decisionOrdinal === requestedOrdinal);
@@ -73,6 +74,7 @@ function outcome(result: BattleResult) {
 function option(args: string[], name: string, fallback: string): string { const index = args.indexOf(name); return index >= 0 ? args[index + 1] ?? fallback : fallback; }
 function optionalInteger(args: string[], name: string): number | null { const raw = option(args, name, ""); if (!raw) return null; const value = Number(raw); if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer`); return value; }
 function read<T>(file: string): T { if (!fs.existsSync(file)) throw new Error(`Missing battle evidence: ${file}`); return JSON.parse(fs.readFileSync(file, "utf8")) as T; }
+function readEvidence<T>(directory:string,name:string):T { const plain=path.join(directory,name),compressed=`${plain}.gz`;if(fs.existsSync(plain))return read<T>(plain);if(fs.existsSync(compressed))return JSON.parse(zlib.gunzipSync(fs.readFileSync(compressed)).toString("utf8")) as T;throw new Error(`Missing battle evidence: ${plain}[.gz]`); }
 function write(file: string, value: unknown): void { fs.mkdirSync(path.dirname(file), {recursive: true}); fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, "utf8"); }
 
 main().catch(error => { console.error(error instanceof Error ? error.message : error); process.exitCode = 1; });
