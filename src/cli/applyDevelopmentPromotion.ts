@@ -4,6 +4,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import {cloneManagerProfile, type ManagerProfile} from "../draft/managerProfiles";
 import type {LineageIdentity} from "../draft/naturalEvolution";
+import {auditV12Output, auditV12Signature, v12AuditMarkdown} from "../draft/v12Audit";
 
 interface SeasonRecord {season: number; rank: number; points: number; champion: boolean}
 interface MajorManager {
@@ -25,8 +26,9 @@ interface PromotionCandidate {
   rightsHolderId: string; optionYearsRemaining: number; currentProfile: ManagerProfile;
   lineage: LineageIdentity; lineageHistory: LineageIdentity[]; career: SeasonRecord[];
 }
-interface PromotionPayload {schemaVersion: 1; source: Record<string, unknown>; candidates: PromotionCandidate[]}
-interface AuditSummary {completedSeasons: number; fatalCount: number; warningCount: number; metrics: {moneyConserved: boolean; invalidLineups: number; missingBattleEvidence: number; unendedBattles: number; protocolErrors: number}}
+interface PromotionSource {majorLeague: string; developmentLeague: string; birthSeason: number; developmentSeasons: number; cycle: number; seed: string; completedSeason: number; stateSha256: string; fingerprint: Record<string, string>; registryHash?: string; auditInputSignature?: string}
+interface PromotionPayload {schemaVersion: 2; source: PromotionSource; candidates: PromotionCandidate[]}
+interface AuditSummary {inputSignature: string; completedSeasons: number; fatalCount: number; warningCount: number; metrics: {moneyConserved: boolean; invalidLineups: number; missingBattleEvidence: number; unendedBattles: number; protocolErrors: number}}
 
 const args = process.argv.slice(2);
 const root = process.cwd();
@@ -38,10 +40,14 @@ function applyPromotion(): void {
   const statePath = path.join(majorRoot, "dynasty-state.json");
   if (fs.existsSync(path.join(majorRoot, ".run.lock"))) throw new Error(`League is currently running: ${majorRoot}`);
   const beforeBytes = fs.readFileSync(statePath), state = JSON.parse(beforeBytes.toString("utf8")) as MajorState;
+  const recoveredCommitted = recoverPreparedTransactions(majorRoot, beforeBytes);
+  if (recoveredCommitted) throw new Error(`Recovered ${recoveredCommitted} committed promotion transaction; inspect it before starting another promotion`);
   if (state.version !== 12) throw new Error(`In-place promotion requires a V12 dynasty, received V${state.version}`);
-  validateAudit(majorRoot, state.completedSeason);
+  const audit = validateAudit(majorRoot, state.completedSeason);
 
   const loaded = loadPromotionPackage(path.resolve(requiredOption("--promotion")));
+  validatePromotionSource(majorRoot, state, beforeBytes, audit, loaded.payload.source);
+  if (state.decisionRecords.some(record => (record.context as Record<string, unknown> | undefined)?.promotionPackageSha256 === loaded.sha256)) throw new Error("Promotion package has already been consumed by this dynasty");
   const autoBottom = optionalInteger("--auto-bottom", 0, 0, state.managers.length);
   const explicit = csvOption("--replacements");
   if (autoBottom && explicit.length) throw new Error("Use either --auto-bottom or --replacements, not both");
@@ -59,8 +65,16 @@ function applyPromotion(): void {
     if (!outgoing) throw new Error(`Major league has no vacancy target ${replacementId}`);
     if (!candidate) throw new Error(`Promotion package has no candidate ${candidateIndices[index] + 1}`);
     if (candidate.optionYearsRemaining < 0) throw new Error(`Candidate ${candidate.childName} has invalid option years`);
+    if (!candidate.lineage?.lineageId || candidate.lineageHistory?.at(-1)?.lineageId !== candidate.lineage.lineageId) throw new Error(`Candidate ${candidate.childName} has invalid lineage history`);
     return {replacementId, candidateIndex: candidateIndices[index], outgoing, candidate};
   });
+  const incomingLineages = assignments.map(value => value.candidate.lineage.lineageId), incomingChildren = assignments.map(value => value.candidate.childId);
+  if (new Set(incomingLineages).size !== incomingLineages.length || new Set(incomingChildren).size !== incomingChildren.length) throw new Error("Promotion candidates must have unique child and lineage identities");
+  const activeLineages = new Set(state.managers.map(manager => manager.lineage.lineageId));
+  for (const lineageId of incomingLineages) if (activeLineages.has(lineageId)) throw new Error(`Promotion lineage is already active in the major league: ${lineageId}`);
+  const historicalLineages = historicalPromotionLineages(majorRoot);
+  for (const lineageId of incomingLineages) if (historicalLineages.has(lineageId)) throw new Error(`Promotion lineage was already admitted by this dynasty: ${lineageId}`);
+  for (const record of state.decisionRecords) for (const lineageId of ((record.context as Record<string, unknown> | undefined)?.incomingLineageIds as string[] | undefined) ?? []) if (incomingLineages.includes(lineageId)) throw new Error(`Promotion lineage was already admitted by this dynasty: ${lineageId}`);
 
   const transactionId = option("--transaction-id", `after-s${String(state.completedSeason).padStart(2, "0")}-${new Date().toISOString().replace(/[:.]/g, "-")}`);
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/.test(transactionId)) throw new Error("Invalid --transaction-id");
@@ -83,14 +97,12 @@ function applyPromotion(): void {
     schemaVersion: 1, transactionId, status: "prepared", atomic: true, inPlace: true, reason,
     selectionPolicy: autoBottom ? {type: "automatic-bottom-standings", count: autoBottom} : {type: "explicit-vacancies"},
     boundary: {completedSeason: state.completedSeason, seed: state.seed, version: state.version},
-    source: {root: majorRoot, beforeSha256: beforeHash, backup: "dynasty-state.before.json.gz", backupSha256: hash(backup), audit: "audit-summary.before.json"},
-    promotion: {manifest: path.resolve(requiredOption("--promotion")), payloadSha256: loaded.sha256},
+    source: {root: majorRoot, beforeSha256: beforeHash, stateMtimeMs: fs.statSync(statePath).mtimeMs, backup: "dynasty-state.before.json.gz", backupSha256: hash(backup), audit: "audit-summary.before.json"},
+    promotion: {manifest: path.resolve(requiredOption("--promotion")), payloadSha256: loaded.sha256, source: loaded.payload.source},
     transactions: rows,
     preserves: ["season numbering", "all season evidence", "league assets", "market history", "contracts", "cash", "dead money", "money supply", "non-replaced managers", "quality-diversity archive"],
     resets: ["incoming major-league titles", "incoming major-league points", "incoming major-league season record", "vacancy punctuated-evolution pressure", "pending vacancy mutation"],
   };
-  writeJson(manifestPath, baseManifest);
-
   const replacementIds = new Set(replacements);
   state.managers = state.managers.map(manager => {
     const assignment = assignments.find(value => value.replacementId === manager.id);
@@ -114,14 +126,16 @@ function applyPromotion(): void {
   state.decisionRecords.push({
     id: `decision-${String(sequence).padStart(5, "0")}`, sequence, stage: "review", actor: "system",
     decision: `第${state.completedSeason}季原位升降级`, selected: assignments.map(value => `${value.outgoing.name} -> ${value.candidate.childName}`),
-    context: {transactionId, reason, vacancies: replacements, promotionPackageSha256: loaded.sha256, continuity: "same-dynasty"},
+    context: {transactionId, reason, vacancies: replacements, promotionPackageSha256: loaded.sha256, incomingLineageIds: incomingLineages, incomingChildIds: incomingChildren, continuity: "same-dynasty"},
     alternatives: [{option: "开启新竞技时代", rejectedBecause: ["会重置联赛资产与连续赛季编号"]}],
     rationale: ["保留俱乐部资产和经济责任", "替换经理人格与个人职业记录", "以单一原子事务执行全部席位"], links: [path.relative(majorRoot, manifestPath).replace(/\\/g, "/")],
   });
 
   const afterBytes = Buffer.from(`${JSON.stringify(state, null, 2)}\n`, "utf8"), afterHash = hash(afterBytes);
+  const preparedManifest = {...baseManifest, recovery: {beforeSha256: beforeHash, plannedAfterSha256: afterHash}};
+  writeJson(manifestPath, preparedManifest);
   atomicWrite(statePath, afterBytes);
-  writeJson(manifestPath, {...baseManifest, status: "committed", committedAt: new Date().toISOString(), result: {afterSha256: afterHash, completedSeason: state.completedSeason, managers: state.managers.length}});
+  writeJson(manifestPath, {...preparedManifest, status: "committed", committedAt: new Date().toISOString(), result: {afterSha256: afterHash, completedSeason: state.completedSeason, managers: state.managers.length}});
   console.log(JSON.stringify({transaction: manifestPath, status: "committed", completedSeason: state.completedSeason, vacancies: rows.map(row => ({id: row.vacancy, outgoing: row.outgoing.name, incoming: row.incoming.name})), beforeSha256: beforeHash, afterSha256: afterHash}, null, 2));
 }
 
@@ -138,15 +152,63 @@ function rollback(): never {
   const restored = zlib.gunzipSync(compressed);
   if (hash(restored) !== manifest.source.beforeSha256) throw new Error("Rollback state hash mismatch");
   atomicWrite(statePath, restored);
+  if (Number.isFinite(manifest.source.stateMtimeMs)) fs.utimesSync(statePath, new Date(), new Date(manifest.source.stateMtimeMs));
+  const auditBackup = path.resolve(path.dirname(manifestPath), manifest.source.audit), restoredAuditPath = path.join(majorRoot, "audit-summary.json");
+  if (fs.existsSync(auditBackup)) fs.copyFileSync(auditBackup, restoredAuditPath);
+  const restoredAudit = fs.existsSync(restoredAuditPath) ? read<AuditSummary>(restoredAuditPath) : undefined;
+  if (!restoredAudit || restoredAudit.inputSignature !== auditV12Signature(majorRoot, restoredAudit.completedSeasons)) {
+    const refreshedAudit = auditV12Output(majorRoot);
+    fs.writeFileSync(restoredAuditPath, `${JSON.stringify(refreshedAudit, null, 2)}\n`, "utf8");
+    fs.writeFileSync(path.join(majorRoot, "audit-report.md"), v12AuditMarkdown(refreshedAudit), "utf8");
+  }
   writeJson(manifestPath, {...manifest, status: "rolled-back", rolledBackAt: new Date().toISOString(), rollback: {restoredSha256: hash(restored)}});
   console.log(JSON.stringify({transaction: manifestPath, status: "rolled-back", restoredSha256: hash(restored)}, null, 2));
   process.exit(0);
 }
 
-function validateAudit(majorRoot: string, completedSeason: number): void {
+function recoverPreparedTransactions(majorRoot: string, currentState: Buffer): number {
+  const transactionsRoot = path.join(majorRoot, "promotion-transactions");
+  if (!fs.existsSync(transactionsRoot)) return 0;
+  const currentHash = hash(currentState), currentManagers = (JSON.parse(currentState.toString("utf8")) as MajorState).managers.length; let committed = 0;
+  for (const entry of fs.readdirSync(transactionsRoot, {withFileTypes: true}).filter(value => value.isDirectory())) {
+    const manifestPath = path.join(transactionsRoot, entry.name, "transaction.json");
+    if (!fs.existsSync(manifestPath)) continue;
+    const manifest = read<any>(manifestPath);
+    if (manifest.status !== "prepared") continue;
+    if (path.resolve(manifest.source?.root ?? "") !== majorRoot) throw new Error(`Prepared transaction has the wrong league root: ${manifestPath}`);
+    if (currentHash === manifest.recovery?.plannedAfterSha256) {
+      writeJson(manifestPath, {...manifest, status: "committed", recoveredAt: new Date().toISOString(), result: {afterSha256: currentHash, completedSeason: manifest.boundary?.completedSeason, managers: currentManagers}});
+      committed += 1;
+    } else if (currentHash === manifest.source?.beforeSha256) {
+      writeJson(manifestPath, {...manifest, status: "aborted", recoveredAt: new Date().toISOString(), recoveryResult: "state-was-not-replaced"});
+    } else throw new Error(`Prepared promotion transaction is ambiguous and requires manual inspection: ${manifestPath}`);
+  }
+  return committed;
+}
+function historicalPromotionLineages(majorRoot: string): Set<string> {
+  const result = new Set<string>(), directory = path.join(majorRoot, "promotion-transactions");
+  if (!fs.existsSync(directory)) return result;
+  for (const entry of fs.readdirSync(directory, {withFileTypes: true}).filter(value => value.isDirectory())) {
+    const file = path.join(directory, entry.name, "transaction.json"); if (!fs.existsSync(file)) continue;
+    const transaction = read<any>(file); if (!["committed", "rolled-back"].includes(transaction.status)) continue;
+    if (transaction.status === "rolled-back") continue;
+    for (const row of transaction.transactions ?? []) if (row.incoming?.lineage?.lineageId) result.add(row.incoming.lineage.lineageId);
+  }
+  return result;
+}
+
+function validateAudit(majorRoot: string, completedSeason: number): AuditSummary {
   const audit = read<AuditSummary>(path.join(majorRoot, "audit-summary.json"));
-  const invalid = audit.completedSeasons !== completedSeason || audit.fatalCount !== 0 || audit.warningCount !== 0 || !audit.metrics?.moneyConserved || audit.metrics.invalidLineups !== 0 || audit.metrics.missingBattleEvidence !== 0 || audit.metrics.unendedBattles !== 0 || audit.metrics.protocolErrors !== 0;
+  const currentSignature = auditV12Signature(majorRoot, completedSeason);
+  const invalid = audit.inputSignature !== currentSignature || audit.completedSeasons !== completedSeason || audit.fatalCount !== 0 || audit.warningCount !== 0 || !audit.metrics?.moneyConserved || audit.metrics.invalidLineups !== 0 || audit.metrics.missingBattleEvidence !== 0 || audit.metrics.unendedBattles !== 0 || audit.metrics.protocolErrors !== 0;
   if (invalid) throw new Error("Latest major-league audit is not clean or does not match the season boundary");
+  return audit;
+}
+function validatePromotionSource(majorRoot: string, state: MajorState, stateBytes: Buffer, audit: AuditSummary, source: PromotionSource): void {
+  if (path.resolve(source.majorLeague) !== majorRoot) throw new Error("Promotion package belongs to a different major-league root");
+  if (source.seed !== state.seed || source.completedSeason !== state.completedSeason || source.stateSha256 !== hash(stateBytes)) throw new Error("Promotion package does not match the current major-league checkpoint");
+  if (JSON.stringify(source.fingerprint) !== JSON.stringify(state.fingerprint) || source.registryHash !== state.registry?.hash) throw new Error("Promotion package fingerprint does not match the current major league");
+  if (!source.auditInputSignature || source.auditInputSignature !== audit.inputSignature) throw new Error("Promotion package was not built from the current audited boundary");
 }
 function bottomManagers(state: MajorState, count: number): string[] {
   return state.managers.map(manager => ({manager, latest: manager.seasons.at(-1)})).map(entry => {
@@ -160,7 +222,7 @@ function loadPromotionPackage(manifestPath: string): {payload: PromotionPayload;
   const sha256 = hash(bytes);
   if (sha256 !== manifest.sha256) throw new Error(`Promotion package hash mismatch: ${sha256} != ${manifest.sha256}`);
   const payload = JSON.parse(bytes.toString("utf8")) as PromotionPayload;
-  if (payload.schemaVersion !== 1 || !Array.isArray(payload.candidates) || payload.candidates.length !== manifest.candidates) throw new Error("Invalid promotion package");
+  if (payload.schemaVersion !== 2 || !payload.source?.stateSha256 || !Array.isArray(payload.candidates) || payload.candidates.length !== manifest.candidates) throw new Error("In-place promotion requires a source-bound schemaVersion 2 package");
   return {payload, sha256};
 }
 function atomicWrite(file: string, bytes: Buffer): void { const temporary = `${file}.${process.pid}.${crypto.randomBytes(6).toString("hex")}.tmp`; fs.writeFileSync(temporary, bytes); fs.renameSync(temporary, file); }

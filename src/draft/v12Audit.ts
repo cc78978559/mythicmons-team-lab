@@ -117,8 +117,9 @@ export function auditV12Output(rootDirectory: string): V12AuditSummary {
 export function auditV12Signature(root: string, seasons: number): string {
   const hash = crypto.createHash("sha256");
   for (const file of auditFiles(root, seasons)) {
-    const stat = fs.statSync(file);
-    hash.update(`${path.relative(root, file)}:${stat.size}:${stat.mtimeMs}\n`);
+    hash.update(`${path.relative(root, file).replace(/\\/g, "/")}\0`);
+    hash.update(fs.readFileSync(file));
+    hash.update("\0");
   }
   return hash.digest("hex");
 }

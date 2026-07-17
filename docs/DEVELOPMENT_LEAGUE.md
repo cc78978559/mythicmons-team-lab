@@ -166,7 +166,7 @@ npm run promote-development-in-place -- `
   --transaction-id after-season-09
 ```
 
-The command requires a matching clean `audit-summary.json`, verifies the compressed promotion-package hash, rejects a live `.run.lock`, stores a compressed exact pre-transaction state and audit under `promotion-transactions/<id>/`, then atomically replaces `dynasty-state.json`. Explicit retirement or exceptional vacancies remain available with `--replacements manager-05,manager-06 --candidate-indices 1,2 --reason retirement`.
+The command requires a matching clean `audit-summary.json`, recomputes its input signature, verifies the compressed promotion-package hash, and accepts only a schema-v2 package bound to the exact source root, state hash, seed, season, runtime fingerprint, registry, and audit signature. A package already consumed by the dynasty, a duplicate child, an active lineage, or a previously admitted lineage is rejected. The command rejects a live `.run.lock`, stores a compressed exact pre-transaction state and audit under `promotion-transactions/<id>/`, then atomically replaces `dynasty-state.json`. Explicit retirement or exceptional vacancies remain available with `--replacements manager-05,manager-06 --candidate-indices 1,2 --reason retirement`.
 
 Before another season has changed the state, the exact transaction can be rolled back:
 
@@ -176,6 +176,38 @@ npm run promote-development-in-place -- `
 ```
 
 Rollback is refused unless the current state hash still equals the committed post-promotion hash. After promotion, resume the same dynasty normally with the next internal season number. If the runtime source changed since the checkpoint, authorize that source transition once with `V12_ALLOW_CODE_UPGRADE=true`.
+
+A prepared transaction is recovered before any later promotion: if the current state still has the before hash it is marked aborted; if it has the planned after hash it is marked committed and the command stops for inspection; any third state is treated as ambiguous and blocked.
+
+## Audited official-season pipeline
+
+The resumable production command combines the clean pre-season audit, one development cohort, source-bound promotion package, atomic bottom-N promotion, next major season, final audit, and optional global-history update. Every stage is persisted under `season-cycles/<cycle-id>.json`; a completed cycle is idempotent, and an unfinished cycle resumes from verified artifacts rather than repeating completed battles.
+
+```powershell
+npm run official-season-cycle -- `
+  --major-source output/official-era-02/league `
+  --development-out output/official-development-season-19 `
+  --previous-development output/official-development-season-18-active-era `
+  --promotion-slots 3 `
+  --cycle-id after-global-s19 `
+  --global-season-offset 9 `
+  --history-ledger output/official-era-02/official-history-ledger.json `
+  --allow-code-upgrade
+```
+
+`--allow-code-upgrade` is deliberately explicit and should appear only on the first resumed season after reviewed runtime changes. Production-scale development automatically uses the validated 30-academy grant/load/payroll-reserve profile; smaller smoke populations retain the six-academy profile.
+
+Build or rebuild one canonical global-season ledger from earlier era manifests and the current dynasty:
+
+```powershell
+npm run official-history -- `
+  --major-source output/official-era-02/league `
+  --global-season-offset 9 `
+  --era-manifests output/official-dynasty/official-nine-season-manifest.json,output/official-era-02/official-active-era-manifest.json `
+  --out output/official-era-02/official-history-ledger.json
+```
+
+The ledger rejects conflicting or missing global seasons and retains hashes for its source manifests, current state, audit, season seals, and promotion transactions.
 
 ## New-journey promotion (legacy/experimental)
 

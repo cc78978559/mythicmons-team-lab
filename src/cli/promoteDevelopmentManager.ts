@@ -10,7 +10,7 @@ import type {LineageIdentity} from "../draft/naturalEvolution";
 interface MajorManager {id: string; name: string; baseProfile: ManagerProfile; currentProfile: ManagerProfile; lineage: LineageIdentity; lineageHistory: LineageIdentity[]; titles: number; totalPoints: number; seasons: Array<{season: number; rank: number; points: number; champion: boolean}>}
 interface MajorState {version: number; seed: string; completedSeason: number; settings: Record<string, number | string | boolean | undefined>; managers: MajorManager[]; fingerprint: CareerMemoryCheckpoint["source"]["fingerprint"]; registry?: {hash?: string; revision?: string; snapshot?: string}}
 interface PromotionCandidate {slotId: string; childId: string; childName: string; parentId: string; parentName: string; rightsHolderId: string; optionYearsRemaining: number; currentProfile: ManagerProfile; lineage: LineageIdentity; lineageHistory: LineageIdentity[]; career: unknown[]}
-interface PromotionPayload {schemaVersion: 1; source: Record<string, unknown>; candidates: PromotionCandidate[]}
+interface PromotionPayload {schemaVersion: 1 | 2; source: Record<string, unknown>; candidates: PromotionCandidate[]}
 interface PromotionAssignment {replacementId: string; candidateIndex: number; outgoing: MajorManager; candidate: PromotionCandidate}
 
 const args = process.argv.slice(2), root = process.cwd();
@@ -62,7 +62,7 @@ function loadPromotionPackage(): {payload: PromotionPayload; sha256: string} {
   const hash = crypto.createHash("sha256").update(bytes).digest("hex");
   if (hash !== manifest.sha256) throw new Error(`Promotion package hash mismatch: ${hash} != ${manifest.sha256}`);
   const payload = JSON.parse(bytes.toString("utf8")) as PromotionPayload;
-  if (payload.schemaVersion !== 1 || !Array.isArray(payload.candidates) || payload.candidates.length !== manifest.candidates) throw new Error("Invalid promotion package");
+  if (![1, 2].includes(payload.schemaVersion) || !Array.isArray(payload.candidates) || payload.candidates.length !== manifest.candidates) throw new Error("Invalid promotion package");
   return {payload, sha256: hash};
 }
 

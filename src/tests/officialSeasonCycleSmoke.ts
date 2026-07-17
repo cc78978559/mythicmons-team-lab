@@ -1,0 +1,33 @@
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import {spawnSync} from "node:child_process";
+
+const root = process.cwd(), workspace = fs.mkdtempSync(path.join(os.tmpdir(), "mythic-official-cycle-"));
+const league = path.join(workspace, "league"), development = path.join(workspace, "development"), history = path.join(workspace, "official-history.json");
+const env = {...process.env, V12_OUT: league, V12_SEASONS: "1", V12_MANAGER_LIMIT: "6", V12_PAIRS: "1", V12_POOL_SIZE: "100", V12_AUCTION_LOTS: "10", V12_REGULAR_ROUNDS: "1", V12_MAX_TURNS: "20", V12_MIN_ROSTER: "6", V12_MAX_ROSTER: "6", V12_SEED: "official-cycle-smoke", V12_EVOLUTION_MODE: "punctuated", V12_EVOLUTION_POLICY: "shadow", V12_EVIDENCE_RETENTION: "compact", V12_EVIDENCE_SAMPLE_RATE: "0"};
+try {
+  run("src/cli/draftLeagueV12.ts", [], env);
+  run("src/cli/buildOfficialHistory.ts", ["--major-source", league, "--out", history]);
+  const before = read<any>(path.join(league, "dynasty-state.json"));
+  const bottom = before.managers.slice().sort((a: any, b: any) => b.seasons.at(-1).rank - a.seasons.at(-1).rank)[0].id;
+  const cycleArgs = ["--major-source", league, "--development-out", development, "--promotion-slots", "1", "--cycle-id", "cycle-smoke", "--history-ledger", history];
+  run("src/cli/runOfficialSeasonCycle.ts", cycleArgs);
+  const state = read<any>(path.join(league, "dynasty-state.json")), audit = read<any>(path.join(league, "audit-summary.json")), manifest = read<any>(path.join(league, "season-cycles", "cycle-smoke.json"));
+  assert.equal(state.completedSeason, 2); assert.equal(audit.completedSeasons, 2); assert.equal(audit.fatalCount, 0); assert.equal(audit.warningCount, 0);
+  assert.equal(manifest.status, "complete"); assert.deepEqual(Object.keys(manifest.stages), ["before-audit", "development", "promotion", "season", "after-audit", "history"]);
+  assert.equal(manifest.stages.season.evidence.globalSeason, 2);
+  const historyLedger = read<any>(history); assert.equal(historyLedger.completedGlobalSeason, 2); assert.deepEqual(historyLedger.seasons.map((season: any) => season.globalSeason), [1, 2]);
+  const replacement = state.managers.find((manager: any) => manager.id === bottom);
+  assert.deepEqual(replacement.seasons.map((season: any) => season.season), [2]);
+  const beforeRerun = hash(fs.readFileSync(path.join(league, "dynasty-state.json")));
+  const repeated = run("src/cli/runOfficialSeasonCycle.ts", cycleArgs);
+  assert.match(repeated.stdout, /"reused": true/); assert.equal(hash(fs.readFileSync(path.join(league, "dynasty-state.json"))), beforeRerun);
+  console.log("Official season cycle smoke passed: audited development, atomic promotion, next-season resume, final audit, and idempotent rerun");
+} finally { fs.rmSync(workspace, {recursive: true, force: true}); }
+
+function run(file: string, args: string[], commandEnv = process.env): {stdout: string; stderr: string} { const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, file), ...args], {cwd: root, env: commandEnv, encoding: "utf8", maxBuffer: 64 * 1024 * 1024}); assert.equal(result.status, 0, result.stderr || result.stdout); return {stdout: result.stdout, stderr: result.stderr}; }
+function read<T>(file: string): T { return JSON.parse(fs.readFileSync(file, "utf8")) as T; }
+function hash(value: Buffer): string { return crypto.createHash("sha256").update(value).digest("hex"); }
