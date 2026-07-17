@@ -40,6 +40,7 @@
     "counterfactual:whitebox-batch": "tsx src/cli/aggregateWhiteBoxCounterfactual.ts",
     "counterfactual:whitebox-sample": "tsx src/cli/sampleWhiteBoxCounterfactual.ts",
     "counterfactual:whitebox-lineup-sample": "tsx src/cli/sampleWhiteBoxLineup.ts",
+    "counterfactual:whitebox-unified": "tsx src/cli/unifiedWhiteBoxEvidence.ts",
     "scan:whitebox-opportunity": "tsx src/cli/scanWhiteBoxOpportunity.ts",
     "release:whitebox": "tsx src/cli/exportWhiteBoxRelease.ts",
     "release:development-ai": "tsx src/cli/releaseDevelopmentAi.ts",
@@ -82,12 +83,13 @@
     "smoke:whitebox-counterfactual": "tsx src/tests/whiteBoxCounterfactualSmoke.ts",
     "smoke:whitebox-counterfactual-batch": "tsx src/tests/whiteBoxCounterfactualBatchSmoke.ts",
     "smoke:whitebox-sampling": "tsx src/tests/whiteBoxSamplingSmoke.ts",
+    "smoke:whitebox-unified": "tsx src/tests/unifiedWhiteBoxEvidenceSmoke.ts",
     "smoke:whitebox-retention": "tsx src/tests/whiteBoxRetentionSmoke.ts",
     "smoke:whitebox-release": "tsx src/tests/whiteBoxReleaseSmoke.ts",
     "smoke:whitebox-release-registry": "tsx src/tests/whiteBoxReleaseRegistrySmoke.ts",
     "test:whitebox-boundaries": "tsx src/tests/whiteBoxBoundaryBatch.ts",
     "test:regressions": "tsx src/tests/regressions.ts",
-    "test": "npm run typecheck && npm run smoke:whitebox && npm run smoke:whitebox-audit && npm run smoke:whitebox-soak && npm run smoke:whitebox-review && npm run smoke:whitebox-counterfactual && npm run smoke:whitebox-counterfactual-batch && npm run smoke:whitebox-sampling && npm run smoke:whitebox-retention && npm run smoke:whitebox-release && npm run smoke:whitebox-release-registry && npm run test:whitebox-boundaries && npm run smoke:boss && npm run smoke:tactical-memory && npm run smoke:lineups && npm run smoke:strategy-program && npm run smoke:punctuated-evolution && npm run smoke:punctuated-counterfactual && npm run smoke:development-league && npm run smoke:promotion-flow && npm run smoke:promotion-in-place && npm run smoke:official-season-cycle && npm run smoke:parallel-registry && npm run smoke:season-brief && npm run smoke:career && npm run test:regressions && npm run smoke:simulate && npm run smoke:evaluate && npm run smoke:variants && npm run smoke:sandbox && npm run smoke:dynasty && npm run smoke:v9 && npm run smoke:v10 && npm run smoke:v10-audit && npm run smoke:v11 && npm run smoke:v12"
+    "test": "npm run typecheck && npm run smoke:whitebox && npm run smoke:whitebox-audit && npm run smoke:whitebox-soak && npm run smoke:whitebox-review && npm run smoke:whitebox-counterfactual && npm run smoke:whitebox-counterfactual-batch && npm run smoke:whitebox-sampling && npm run smoke:whitebox-unified && npm run smoke:whitebox-retention && npm run smoke:whitebox-release && npm run smoke:whitebox-release-registry && npm run test:whitebox-boundaries && npm run smoke:boss && npm run smoke:tactical-memory && npm run smoke:lineups && npm run smoke:strategy-program && npm run smoke:punctuated-evolution && npm run smoke:punctuated-counterfactual && npm run smoke:development-league && npm run smoke:promotion-flow && npm run smoke:promotion-in-place && npm run smoke:official-season-cycle && npm run smoke:parallel-registry && npm run smoke:season-brief && npm run smoke:career && npm run test:regressions && npm run smoke:simulate && npm run smoke:evaluate && npm run smoke:variants && npm run smoke:sandbox && npm run smoke:dynasty && npm run smoke:v9 && npm run smoke:v10 && npm run smoke:v10-audit && npm run smoke:v11 && npm run smoke:v12"
   },
   "keywords": [],
   "author": "",
