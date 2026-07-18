@@ -10,13 +10,13 @@ type RetentionPolicy = "audit-summary" | "full";
 interface SeedRun {seed: string; status: RunStatus; baseline: string; experiment?: string; completedSeasons: number; candidates: number; managerId?: string; durationMs: number; retention?: WhiteBoxRetentionTrace[]; error?: string}
 interface Manifest {
   schemaVersion: 1;
-  config: {targetSamples: number; minimumSeeds: number; maximumBaselineSeasons: number; maximumOutputMb: number; retention: RetentionPolicy; managers: number; pairs: number; pool: number; auctionLots: number; rounds: number; maxTurns: number};
+  config: {targetSamples: number; minimumSeeds: number; maximumBaselineSeasons: number; horizonSeasons: number; maximumOutputMb: number; retention: RetentionPolicy; managers: number; pairs: number; pool: number; auctionLots: number; rounds: number; maxTurns: number};
   seeds: SeedRun[];
   stopReason?: string;
 }
 interface CandidatePackage {candidates?: Array<{managerId: string; programBehaviorDistance: number}>}
 interface CounterfactualSummary {
-  schemaVersion: 1; seed: string; sourceVerified: boolean; sourceSeason: number; activationSeason: number; prefixVerified: boolean;
+  schemaVersion: 1; seed: string; sourceVerified: boolean; sourceSeason: number; activationSeason: number; evaluationSeason: number; horizonSeasons: number; prefixVerified: boolean;
   isolatedDifference: {managerId: string; parentProgramHash: string; candidateProgramHash: string; behaviorDistance: number; opportunityDistance: number | null; choicePotential: number | null; operatorMutations: string[]};
   decisionEffects: StrategyProgramCounterfactualSample["decisionEffects"];
   delta: {points: number; rankImprovement: number; titles: number; cash: number};
@@ -25,14 +25,22 @@ interface CounterfactualSummary {
 const args = process.argv.slice(2), root = process.cwd(), out = path.resolve(option("--out", "output/strategy-program-evolution-sampler"));
 const targetSamples = integerOption("--target-samples", 10, 1, 1000), minimumSeeds = integerOption("--minimum-seeds", Math.min(10, targetSamples), 1, targetSamples);
 const maximumBaselineSeasons = integerOption("--baseline-seasons", 4, 2, 20), maximumOutputMb = integerOption("--max-output-mb", 1024, 25, 102400);
+const horizonSeasons = integerOption("--horizon", 2, 2, 2);
 const retention = retentionOption("--retention", "audit-summary");
 const managers = integerOption("--managers", 6, 4, 30), pairs = integerOption("--pairs", 1, 1, 20), pool = integerOption("--pool", 100, 40, 2000), auctionLots = integerOption("--auction-lots", 10, 0, 500), rounds = integerOption("--rounds", 1, 1, 20), maxTurns = integerOption("--max-turns", 80, 20, 300);
 const candidateSeeds = option("--seeds", Array.from({length: 40}, (_, index) => `strategy-program-${String(index + 1).padStart(3, "0")}`).join(",")).split(",").map(value => value.trim()).filter(Boolean);
-const config: Manifest["config"] = {targetSamples, minimumSeeds, maximumBaselineSeasons, maximumOutputMb, retention, managers, pairs, pool, auctionLots, rounds, maxTurns};
+const config: Manifest["config"] = {targetSamples, minimumSeeds, maximumBaselineSeasons, horizonSeasons, maximumOutputMb, retention, managers, pairs, pool, auctionLots, rounds, maxTurns};
 const manifestFile = path.join(out, "strategy-program-sampler-manifest.json");
 fs.mkdirSync(out, {recursive: true});
 let manifest: Manifest = fs.existsSync(manifestFile) ? read<Manifest>(manifestFile) : {schemaVersion: 1, config, seeds: []};
-if (JSON.stringify(manifest.config) !== JSON.stringify(config)) throw new Error("Sampler configuration differs from its manifest; use a new --out directory");
+if (JSON.stringify(manifest.config) !== JSON.stringify(config)) {
+  const previous = manifest.config;
+  const immutable = (value: Manifest["config"]) => ({...value, targetSamples: 0, minimumSeeds: 0});
+  const extendsEvidenceTarget = JSON.stringify(immutable(previous)) === JSON.stringify(immutable(config)) && targetSamples >= previous.targetSamples && minimumSeeds >= previous.minimumSeeds;
+  if (!extendsEvidenceTarget) throw new Error("Sampler configuration differs from its manifest; only evidence targets may increase in place");
+  manifest.config = config;
+  manifest.stopReason = undefined;
+}
 save();
 
 if (args.includes("--run")) {
@@ -61,9 +69,9 @@ if (args.includes("--run")) for (const seed of candidateSeeds) {
       process.stdout.write(`strategy-program ${seed}: no semantic shadow winner in ${maximumBaselineSeasons} seasons\n`);
       continue;
     }
-    run([path.join(root, "src", "cli", "counterfactualShadowProgram.ts"), "--source", baseline, "--out", experiment, "--manager", candidate.managerId], process.env, `Counterfactual ${seed}`);
+    run([path.join(root, "src", "cli", "counterfactualShadowProgram.ts"), "--source", baseline, "--out", experiment, "--manager", candidate.managerId, "--horizon", String(horizonSeasons)], process.env, `Counterfactual ${seed}`);
     const result = read<CounterfactualSummary>(path.join(experiment, "counterfactual-summary.json"));
-    if (result.seed !== seed || result.isolatedDifference.managerId !== candidate.managerId || result.isolatedDifference.behaviorDistance <= 0 || result.isolatedDifference.opportunityDistance === null || result.isolatedDifference.choicePotential === null || !result.isolatedDifference.operatorMutations.some(mutation => mutation.startsWith("program."))) throw new Error("Counterfactual summary does not match the selected opportunity-adjusted candidate");
+    if (result.seed !== seed || result.horizonSeasons !== horizonSeasons || result.evaluationSeason !== result.sourceSeason + horizonSeasons || result.isolatedDifference.managerId !== candidate.managerId || result.isolatedDifference.behaviorDistance <= 0 || result.isolatedDifference.opportunityDistance === null || result.isolatedDifference.choicePotential === null || !result.isolatedDifference.operatorMutations.some(mutation => mutation.startsWith("program."))) throw new Error("Counterfactual summary does not match the selected opportunity-adjusted candidate");
     const compacted = compact([baseline, path.join(experiment, "experiment"), path.join(experiment, "control")]);
     finish({seed, status: "complete", baseline, experiment, completedSeasons: result.sourceSeason, candidates: candidate.count, managerId: candidate.managerId, durationMs: Date.now() - started, retention: compacted});
     process.stdout.write(`strategy-program ${seed}: paired season complete for ${candidate.managerId}\n`);
@@ -103,7 +111,7 @@ function loadSamples(): StrategyProgramCounterfactualSample[] {
   return manifest.seeds.filter(entry => entry.status === "complete" && entry.experiment).map(entry => {
     const value = read<CounterfactualSummary>(path.join(entry.experiment!, "counterfactual-summary.json"));
     if (value.isolatedDifference.opportunityDistance === null || value.isolatedDifference.choicePotential === null) throw new Error(`Sample ${value.seed} predates opportunity-adjusted evidence; use a new sampler output`);
-    return {seed: value.seed, managerId: value.isolatedDifference.managerId, sourceSeason: value.sourceSeason, activationSeason: value.activationSeason, sourceVerified: value.sourceVerified, prefixVerified: value.prefixVerified, parentProgramHash: value.isolatedDifference.parentProgramHash, candidateProgramHash: value.isolatedDifference.candidateProgramHash, behaviorDistance: value.isolatedDifference.behaviorDistance, opportunityDistance: value.isolatedDifference.opportunityDistance, choicePotential: value.isolatedDifference.choicePotential, operatorMutations: value.isolatedDifference.operatorMutations, decisionEffects: value.decisionEffects, delta: value.delta};
+    return {seed: value.seed, managerId: value.isolatedDifference.managerId, sourceSeason: value.sourceSeason, activationSeason: value.activationSeason, evaluationSeason: value.evaluationSeason, horizonSeasons: value.horizonSeasons, sourceVerified: value.sourceVerified, prefixVerified: value.prefixVerified, parentProgramHash: value.isolatedDifference.parentProgramHash, candidateProgramHash: value.isolatedDifference.candidateProgramHash, behaviorDistance: value.isolatedDifference.behaviorDistance, opportunityDistance: value.isolatedDifference.opportunityDistance, choicePotential: value.isolatedDifference.choicePotential, operatorMutations: value.isolatedDifference.operatorMutations, decisionEffects: value.decisionEffects, delta: value.delta};
   });
 }
 function compact(directories: string[]): WhiteBoxRetentionTrace[] { if (retention === "full") return []; return directories.filter(directory => fs.existsSync(path.join(directory, "dynasty-state.json"))).map(directory => compactWhiteBoxRun(directory)); }

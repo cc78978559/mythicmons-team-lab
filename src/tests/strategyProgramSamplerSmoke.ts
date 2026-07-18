@@ -36,13 +36,20 @@ try {
   assert(evidence.samples[0].behaviorDistance > 0);
   assert(evidence.samples[0].decisionEffects.battleCompared > 0);
   assert(manifest.seeds[0].retention.length >= 1);
+  const extended = [...command];
+  extended[extended.indexOf("--target-samples") + 1] = "2";
+  run(extended);
+  const extendedManifest = read<any>(path.join(out, "strategy-program-sampler-manifest.json"));
+  assert.equal(extendedManifest.config.targetSamples, 2);
+  assert.equal(extendedManifest.seeds.length, 1, "Increasing a target must retain validated seeds without recomputing them");
+  assert.notEqual(spawnSync(process.execPath, command, {cwd: process.cwd(), encoding: "utf8", maxBuffer: 64 * 1024 * 1024}).status, 0, "Evidence targets must not decrease in place");
 } finally {
   fs.rmSync(root, {recursive: true, force: true});
 }
 console.log("Strategy-program evolution sampler smoke passed");
 
 function sample(index: number, direction: number): StrategyProgramCounterfactualSample {
-  return {seed: `seed-${index}`, managerId: `manager-${index}`, sourceSeason: 2, activationSeason: 3, sourceVerified: true, prefixVerified: true, parentProgramHash: `parent-${index}`, candidateProgramHash: `candidate-${index}`, behaviorDistance: .01 + index / 1000, opportunityDistance: .02, choicePotential: .01, operatorMutations: ["program.acquire.observed-boundary.speed@0.5:+2"], decisionEffects: {ledgerCompared: 2, ledgerSelectionDifferences: direction ? 1 : 0, ledgerRecordSetDifferences: 0, programSignalsCompared: 2, programSignalDifferences: 1, battleCompared: 10, battleChoiceDifferences: 0, battleRecordSetDifferences: 0}, delta: {points: direction * 3, rankImprovement: direction, titles: 0, cash: direction}};
+  return {seed: `seed-${index}`, managerId: `manager-${index}`, sourceSeason: 2, activationSeason: 3, evaluationSeason: 4, horizonSeasons: 2, sourceVerified: true, prefixVerified: true, parentProgramHash: `parent-${index}`, candidateProgramHash: `candidate-${index}`, behaviorDistance: .01 + index / 1000, opportunityDistance: .02, choicePotential: .01, operatorMutations: ["program.acquire.observed-boundary.speed@0.5:+2"], decisionEffects: {ledgerCompared: 2, ledgerSelectionDifferences: direction ? 1 : 0, ledgerRecordSetDifferences: 0, programSignalsCompared: 2, programSignalDifferences: 1, battleCompared: 10, battleChoiceDifferences: 0, battleRecordSetDifferences: 0}, delta: {points: direction * 3, rankImprovement: direction, titles: 0, cash: direction}};
 }
 function read<T>(file: string): T { return JSON.parse(fs.readFileSync(file, "utf8")) as T; }
 function run(command: string[]): void { const result = spawnSync(process.execPath, command, {cwd: process.cwd(), encoding: "utf8", maxBuffer: 64 * 1024 * 1024}); if (result.status !== 0) throw new Error(result.stderr || result.stdout); }

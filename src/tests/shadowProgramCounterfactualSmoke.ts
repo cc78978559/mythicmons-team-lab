@@ -25,6 +25,8 @@ try {
   assert.equal(summary.prefixVerified, true);
   assert.equal(summary.seed, "program-semantic-probe");
   assert.equal(summary.sourceVerified, true);
+  assert.equal(summary.horizonSeasons, 2);
+  assert.equal(summary.evaluationSeason, summary.sourceSeason + 2);
   assert(summary.isolatedDifference.behaviorDistance > 0);
   assert(summary.isolatedDifference.opportunityDistance > 0);
   assert(summary.isolatedDifference.choicePotential > 0);

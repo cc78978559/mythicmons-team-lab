@@ -39,7 +39,10 @@ interface ShadowPackage {schemaVersion: 1; season: number; seed: string; registr
 const args = process.argv.slice(2), root = process.cwd();
 const source = path.resolve(option("--source", "output/draft-league-v12"));
 const out = path.resolve(option("--out", "output/shadow-program-counterfactual"));
+const horizonSeasons = integerOption("--horizon", 2, 1, 3);
 const sourceState = read<DynastyState>(path.join(source, "dynasty-state.json"));
+const activationSeason = sourceState.completedSeason + 1;
+const evaluationSeason = sourceState.completedSeason + horizonSeasons;
 const packageFile = path.join(source, `season-${String(sourceState.completedSeason).padStart(2, "0")}`, "evolution-shadow-candidates.json");
 const shadow = read<ShadowPackage>(packageFile);
 validatePackage();
@@ -53,13 +56,11 @@ const experimentDir = path.join(out, "experiment"), controlDir = path.join(out, 
 cloneSource(experimentDir); cloneSource(controlDir);
 injectProgramCandidate(experimentDir);
 runBranch(experimentDir); runBranch(controlDir);
-
-const activationSeason = sourceState.completedSeason + 1;
 const experiment = read<DynastyState>(path.join(experimentDir, "dynasty-state.json"));
 const control = read<DynastyState>(path.join(controlDir, "dynasty-state.json"));
 const experimentManager = requiredManager(experiment, candidate.managerId), controlManager = requiredManager(control, candidate.managerId);
-const experimentSeason = requiredSeason(experimentManager, activationSeason), controlSeason = requiredSeason(controlManager, activationSeason);
-const decisionEffects = compareDecisionEffects(experimentDir, controlDir, activationSeason, candidate.managerId);
+const experimentSeasons = seasonRange(activationSeason, evaluationSeason).map(season => requiredSeason(experimentManager, season)), controlSeasons = seasonRange(activationSeason, evaluationSeason).map(season => requiredSeason(controlManager, season));
+const decisionEffects = seasonRange(activationSeason, evaluationSeason).map(season => compareDecisionEffects(experimentDir, controlDir, season, candidate.managerId)).reduce(sumDecisionEffects);
 const expectedLineageId = isolatedLineage().lineageId;
 if (experimentManager.lineage.lineageId !== expectedLineageId) throw new Error("Experiment did not activate the isolated program lineage");
 if (controlManager.lineage.lineageId !== sourceManager.lineage.lineageId) throw new Error("Control did not retain the source lineage");
@@ -72,12 +73,14 @@ const summary = {
   sourceRegistryHash: sourceState.fingerprint.registryHash,
   sourceSeason: sourceState.completedSeason,
   activationSeason,
+  evaluationSeason,
+  horizonSeasons,
   prefixVerified: verifySourcePrefix(experimentDir) && verifySourcePrefix(controlDir),
   isolatedDifference: {managerId: candidate.managerId, parentProgramHash: strategyProgramHash(sourceManager.currentProfile.strategyProgram!), candidateProgramHash: strategyProgramHash(candidate.profile.strategyProgram!), behaviorDistance: strategyProgramBehaviorDistance(sourceManager.currentProfile.strategyProgram, candidate.profile.strategyProgram), opportunityDistance: candidate.programOpportunity?.distance ?? null, choicePotential: candidate.programOpportunity?.choicePotential ?? null, operatorMutations: candidate.lineage.mutations.filter(mutation => mutation.startsWith("program."))},
   decisionEffects,
-  experiment: result(experimentManager, experimentSeason),
-  control: result(controlManager, controlSeason),
-  delta: {points: experimentSeason.points - controlSeason.points, rankImprovement: controlSeason.rank - experimentSeason.rank, titles: experimentManager.titles - controlManager.titles, cash: experimentManager.cash - controlManager.cash},
+  experiment: result(experimentManager, experimentSeasons),
+  control: result(controlManager, controlSeasons),
+  delta: {points: sum(experimentSeasons.map(season => season.points)) - sum(controlSeasons.map(season => season.points)), rankImprovement: controlSeasons.at(-1)!.rank - experimentSeasons.at(-1)!.rank, titles: experimentManager.titles - controlManager.titles, cash: experimentManager.cash - controlManager.cash},
 };
 write(path.join(out, "counterfactual-summary.json"), summary);
 fs.writeFileSync(path.join(out, "counterfactual-report.md"), markdown(summary), "utf8");
@@ -108,7 +111,7 @@ function isolatedLineage(): LineageIdentity {
 }
 function runBranch(directory: string): void {
   const settings = sourceState.settings, registrySource = sourceState.registry?.snapshot ? path.resolve(directory, sourceState.registry.snapshot) : path.resolve("data/draft");
-  const env = {...process.env, V12_OUT: directory, V12_RESUME: "true", V12_ALLOW_CODE_UPGRADE: "true", V12_SEASONS: String(sourceState.completedSeason + 1), V12_SEED: sourceState.seed, V12_MANAGER_LIMIT: String(settings.managerLimit), V12_PAIRS: String(settings.pairs), V12_POOL_SIZE: String(settings.poolSize), V12_AUCTION_LOTS: String(settings.auctionLots), V12_REGULAR_ROUNDS: String(settings.regularRounds), V12_MAX_TURNS: String(settings.maxTurns), V12_MIN_ROSTER: String(settings.minRoster ?? 6), V12_MAX_ROSTER: String(settings.maxRoster ?? 10), V12_REGISTRY_SOURCE: registrySource, V12_REGISTRY_REVISION: sourceState.registry?.revision ?? "shadow-program-counterfactual", V12_EVOLUTION_MODE: String(settings.evolutionMode ?? "punctuated"), V12_EVOLUTION_POLICY: String(settings.evolutionPolicy ?? "shadow"), V12_EVOLUTION_MAX_BURSTS: String(settings.evolutionMaxBursts ?? 2), V12_EVOLUTION_MIN_CANDIDATES: String(settings.evolutionMinCandidates ?? 4), V12_EVOLUTION_MAX_CANDIDATES: String(settings.evolutionMaxCandidates ?? 8), V12_EVIDENCE_RETENTION: "compact", V12_EVIDENCE_SAMPLE_RATE: "1"};
+  const env = {...process.env, V12_OUT: directory, V12_RESUME: "true", V12_ALLOW_CODE_UPGRADE: "true", V12_SEASONS: String(evaluationSeason), V12_SEED: sourceState.seed, V12_MANAGER_LIMIT: String(settings.managerLimit), V12_PAIRS: String(settings.pairs), V12_POOL_SIZE: String(settings.poolSize), V12_AUCTION_LOTS: String(settings.auctionLots), V12_REGULAR_ROUNDS: String(settings.regularRounds), V12_MAX_TURNS: String(settings.maxTurns), V12_MIN_ROSTER: String(settings.minRoster ?? 6), V12_MAX_ROSTER: String(settings.maxRoster ?? 10), V12_REGISTRY_SOURCE: registrySource, V12_REGISTRY_REVISION: sourceState.registry?.revision ?? "shadow-program-counterfactual", V12_EVOLUTION_MODE: String(settings.evolutionMode ?? "punctuated"), V12_EVOLUTION_POLICY: String(settings.evolutionPolicy ?? "shadow"), V12_EVOLUTION_MAX_BURSTS: String(settings.evolutionMaxBursts ?? 2), V12_EVOLUTION_MIN_CANDIDATES: String(settings.evolutionMinCandidates ?? 4), V12_EVOLUTION_MAX_CANDIDATES: String(settings.evolutionMaxCandidates ?? 8), V12_EVIDENCE_RETENTION: "compact", V12_EVIDENCE_SAMPLE_RATE: "1"};
   const run = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "draftLeagueV12.ts")], {cwd: root, env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024});
   if (run.status !== 0) throw new Error(`Counterfactual branch failed:\n${run.stderr || run.stdout}`);
 }
@@ -140,7 +143,7 @@ function prepareOutput(): void {
 }
 function requiredManager(state: DynastyState, id: string): ManagerState { const manager = state.managers.find(entry => entry.id === id); if (!manager) throw new Error(`Missing manager ${id}`); return manager; }
 function requiredSeason(manager: ManagerState, season: number) { const value = manager.seasons.find(entry => entry.season === season); if (!value) throw new Error(`Missing season ${season} for ${manager.id}`); return value; }
-function result(manager: ManagerState, season: ReturnType<typeof requiredSeason>) { return {lineageId: manager.lineage.lineageId, points: season.points, rank: season.rank, champion: season.champion, titles: manager.titles, cash: manager.cash}; }
+function result(manager: ManagerState, seasons: Array<ReturnType<typeof requiredSeason>>) { const final = seasons.at(-1)!; return {lineageId: manager.lineage.lineageId, points: sum(seasons.map(season => season.points)), rank: final.rank, champion: final.champion, titles: manager.titles, cash: manager.cash}; }
 function compareDecisionEffects(experimentRoot: string, controlRoot: string, season: number, managerId: string) {
   const seasonName = `season-${String(season).padStart(2, "0")}`;
   const experimentLedger = targetLedger(path.join(experimentRoot, seasonName, "decision-ledger.json"), managerId), controlLedger = targetLedger(path.join(controlRoot, seasonName, "decision-ledger.json"), managerId);
@@ -161,8 +164,12 @@ function programSignals(records: any[]): number[] { const values: number[] = [];
 function battleSelections(directory: string, managerId: string): Map<string, string> { const output = new Map<string, string>(); if (!fs.existsSync(directory)) return output; for (const file of filesNamed(directory, new Set(["ai-decisions.json", "ai-decisions.json.gz"]))) { const records = readCompressedJson<any[]>(file).filter(record => record.personalityId === managerId); records.forEach((record, index) => output.set(`${path.relative(directory, file).replaceAll("\\", "/").replace(/\.gz$/, "")}:${record.playerId}:${index}`, String(record.selected))); } return output; }
 function filesNamed(directory: string, names: Set<string>): string[] { return fs.readdirSync(directory, {withFileTypes: true}).flatMap(entry => entry.isDirectory() ? filesNamed(path.join(directory, entry.name), names) : names.has(entry.name) ? [path.join(directory, entry.name)] : []); }
 function readCompressedJson<T>(file: string): T { const source = fs.readFileSync(file); return JSON.parse((file.endsWith(".gz") ? zlib.gunzipSync(source) : source).toString("utf8")) as T; }
-function markdown(value: typeof summary): string { const effects = value.decisionEffects; return `# Shadow program counterfactual\n\n- Source season: ${value.sourceSeason}\n- Activation season: ${value.activationSeason}\n- Manager: ${value.isolatedDifference.managerId}\n- Operator mutation: ${value.isolatedDifference.operatorMutations.map(mutation => `\`${mutation}\``).join(", ") || "unavailable"}\n- Parent program: \`${value.isolatedDifference.parentProgramHash}\`\n- Candidate program: \`${value.isolatedDifference.candidateProgramHash}\`\n- Behavior distance: ${value.isolatedDifference.behaviorDistance.toFixed(6)}\n- Historical opportunity distance: ${value.isolatedDifference.opportunityDistance ?? "unavailable"}\n- Historical choice potential: ${value.isolatedDifference.choicePotential ?? "unavailable"}\n- Prefix verified: ${value.prefixVerified}\n- Program signal differences: ${effects.programSignalDifferences}/${effects.programSignalsCompared}\n- Management decision differences: ${effects.ledgerSelectionDifferences} (+${effects.ledgerRecordSetDifferences} unmatched)\n- Battle choice differences: ${effects.battleChoiceDifferences} (+${effects.battleRecordSetDifferences} unmatched)\n\n| Branch | Points | Rank | Champion | Titles | Cash |\n|---|---:|---:|---|---|---:|\n| Experiment | ${value.experiment.points} | ${value.experiment.rank} | ${value.experiment.champion} | ${value.experiment.titles} | ${value.experiment.cash} |\n| Control | ${value.control.points} | ${value.control.rank} | ${value.control.champion} | ${value.control.titles} | ${value.control.cash} |\n\nPoint delta: **${value.delta.points}**. Rank improvement: **${value.delta.rankImprovement}**.\n`; }
+function markdown(value: typeof summary): string { const effects = value.decisionEffects; return `# Shadow program counterfactual\n\n- Source season: ${value.sourceSeason}\n- Activation/evaluation season: ${value.activationSeason}/${value.evaluationSeason}\n- Evaluation horizon: ${value.horizonSeasons} seasons\n- Manager: ${value.isolatedDifference.managerId}\n- Operator mutation: ${value.isolatedDifference.operatorMutations.map(mutation => `\`${mutation}\``).join(", ") || "unavailable"}\n- Parent program: \`${value.isolatedDifference.parentProgramHash}\`\n- Candidate program: \`${value.isolatedDifference.candidateProgramHash}\`\n- Behavior distance: ${value.isolatedDifference.behaviorDistance.toFixed(6)}\n- Historical opportunity distance: ${value.isolatedDifference.opportunityDistance ?? "unavailable"}\n- Historical choice potential: ${value.isolatedDifference.choicePotential ?? "unavailable"}\n- Prefix verified: ${value.prefixVerified}\n- Program signal differences: ${effects.programSignalDifferences}/${effects.programSignalsCompared}\n- Management decision differences: ${effects.ledgerSelectionDifferences} (+${effects.ledgerRecordSetDifferences} unmatched)\n- Battle choice differences: ${effects.battleChoiceDifferences} (+${effects.battleRecordSetDifferences} unmatched)\n\n| Branch | Cumulative points | Final rank | Final-season champion | Titles | Cash |\n|---|---:|---:|---|---|---:|\n| Experiment | ${value.experiment.points} | ${value.experiment.rank} | ${value.experiment.champion} | ${value.experiment.titles} | ${value.experiment.cash} |\n| Control | ${value.control.points} | ${value.control.rank} | ${value.control.champion} | ${value.control.titles} | ${value.control.cash} |\n\nCumulative point delta: **${value.delta.points}**. Final-rank improvement: **${value.delta.rankImprovement}**.\n`; }
+function sumDecisionEffects(left: ReturnType<typeof compareDecisionEffects>, right: ReturnType<typeof compareDecisionEffects>) { return Object.fromEntries(Object.keys(left).map(key => [key, left[key as keyof typeof left] + right[key as keyof typeof right]])) as ReturnType<typeof compareDecisionEffects>; }
+function seasonRange(first: number, last: number): number[] { return Array.from({length: last - first + 1}, (_, index) => first + index); }
+function sum(values: number[]): number { return values.reduce((total, value) => total + value, 0); }
 function digestFile(file: string): string { return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex"); }
 function write(file: string, value: unknown): void { fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, "utf8"); }
 function read<T>(file: string): T { return JSON.parse(fs.readFileSync(file, "utf8")) as T; }
 function option(name: string, fallback: string): string { const index = args.indexOf(name); return index >= 0 ? args[index + 1] ?? fallback : fallback; }
+function integerOption(name: string, fallback: number, minimum: number, maximum: number): number { const value = Number(option(name, String(fallback))); if (!Number.isInteger(value) || value < minimum || value > maximum) throw new Error(`${name} must be ${minimum}..${maximum}`); return value; }

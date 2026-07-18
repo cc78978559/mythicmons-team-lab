@@ -5,6 +5,8 @@ export interface StrategyProgramCounterfactualSample {
   managerId: string;
   sourceSeason: number;
   activationSeason: number;
+  evaluationSeason: number;
+  horizonSeasons: number;
   sourceVerified: boolean;
   prefixVerified: boolean;
   parentProgramHash: string;
@@ -20,7 +22,7 @@ export interface StrategyProgramCounterfactualSample {
 export interface StrategyProgramEvolutionAggregate {
   schemaVersion: 1;
   conclusion: StrategyProgramEvolutionConclusion;
-  hypothesis: "observed-boundary-program-operator-v1";
+  hypothesis: "observed-boundary-two-season-program-operator-v1";
   thresholds: {minimumSamples: number; minimumSeeds: number; minimumDecisivePairs: number; minimumDecisiveSeeds: number; maximumOneSidedP: number};
   metrics: {
     samples: number; seeds: number; better: number; neutral: number; worse: number; decisivePairs: number;
@@ -79,7 +81,7 @@ export function aggregateStrategyProgramEvolution(samples: readonly StrategyProg
     : oneSidedRegressionP <= maximumOneSidedP && worse > better ? "reject-operator"
     : oneSidedImprovementP <= maximumOneSidedP && better > worse && healthy ? "candidate-for-bounded-active-review"
     : "no-clear-benefit";
-  return {schemaVersion: 1, conclusion, hypothesis: "observed-boundary-program-operator-v1", thresholds: {minimumSamples, minimumSeeds, minimumDecisivePairs, minimumDecisiveSeeds, maximumOneSidedP}, metrics, issues, samples: samples.map(sample => structuredClone(sample))};
+  return {schemaVersion: 1, conclusion, hypothesis: "observed-boundary-two-season-program-operator-v1", thresholds: {minimumSamples, minimumSeeds, minimumDecisivePairs, minimumDecisiveSeeds, maximumOneSidedP}, metrics, issues, samples: samples.map(sample => structuredClone(sample))};
 }
 
 export function strategyProgramEvolutionMarkdown(value: StrategyProgramEvolutionAggregate): string {
@@ -88,7 +90,7 @@ export function strategyProgramEvolutionMarkdown(value: StrategyProgramEvolution
 }
 
 function validateSample(sample: StrategyProgramCounterfactualSample): void {
-  if (!sample.seed || !sample.managerId || !Number.isInteger(sample.sourceSeason) || !Number.isInteger(sample.activationSeason) || sample.activationSeason !== sample.sourceSeason + 1) throw new Error("Malformed strategy-program sample identity");
+  if (!sample.seed || !sample.managerId || !Number.isInteger(sample.sourceSeason) || !Number.isInteger(sample.activationSeason) || !Number.isInteger(sample.evaluationSeason) || !Number.isInteger(sample.horizonSeasons) || sample.activationSeason !== sample.sourceSeason + 1 || sample.evaluationSeason !== sample.sourceSeason + sample.horizonSeasons || sample.horizonSeasons !== 2) throw new Error("Malformed strategy-program sample identity");
   if (!Array.isArray(sample.operatorMutations) || !sample.operatorMutations.some(mutation => mutation.startsWith("program."))) throw new Error(`Missing strategy-program operator identity for ${sample.seed}`);
   if (!Number.isFinite(sample.behaviorDistance) || !Number.isFinite(sample.opportunityDistance) || !Number.isFinite(sample.choicePotential) || sample.opportunityDistance < 0 || sample.choicePotential < 0 || !Object.values(sample.delta).every(Number.isFinite)) throw new Error(`Malformed strategy-program metrics for ${sample.seed}`);
   if (!sample.decisionEffects || !Object.values(sample.decisionEffects).every(value => Number.isInteger(value) && value >= 0)) throw new Error(`Missing decision-effect telemetry for ${sample.seed}`);
