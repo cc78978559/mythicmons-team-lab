@@ -12,7 +12,7 @@ import {cloneTacticalMemory, extractTacticalEpisode, updateTacticalMemory, type 
 import {auditLeagueSeason, type LeagueHealthSnapshot} from "../draft/leagueHealth";
 import {updateQualityDiversityArchive, type QualityDiversityCandidate} from "../draft/qualityDiversity";
 import {chooseRfaOffer, matchingContract, releaseDeadMoney, taggedContract, waiverWinner, type ContractOffer, type SportsContract} from "../draft/sportsMarket";
-import {evaluateStrategyProgram, countProgramNodes, strategyProgramHash, validateStrategyProgram} from "../draft/strategyProgram";
+import {evaluateStrategyProgram, countProgramNodes, strategyProgramHash, strategyProgramMutationOperator, validateStrategyProgram, type StrategyProgramMutationOperator} from "../draft/strategyProgram";
 import {StrategyProgramOpportunityCollector, type ProgramOpportunitySnapshot} from "../draft/strategyProgramOpportunity";
 import {createRegistrySnapshot, loadRegistrySnapshot, type RegistrySnapshot} from "../draft/registrySnapshot";
 import {acquireRunLock} from "../draft/runLock";
@@ -91,7 +91,7 @@ interface DynastyState {
   version: number;
   seed: string;
   completedSeason: number;
-  settings: {seasonCount: number; managerLimit: number; pairs: number; poolSize: number; auctionLots: number; maxTurns: number; regularRounds: number; baseBudget?: number; keeperCap?: number; auctionMode?: string; minRoster?: number; maxRoster?: number; midseasonGrant?: number; contractModel?: string; dynamicPool?: boolean; learningModel?: string; carryRate?: number; carryCap?: number; maxKeepers?: number; separatePayroll?: boolean; dualLayer?: boolean; programEvolution?: boolean; evolutionMode?: "punctuated" | "generational"; evolutionPolicy?: "active" | "shadow"; evolutionMaxBursts?: number; evolutionMinCandidates?: number; evolutionMaxCandidates?: number; tacticalMemoryBehaviorPolicy?: TacticalMemoryBehaviorPolicy; tacticalMemoryConfidenceFloor?: number};
+  settings: {seasonCount: number; managerLimit: number; pairs: number; poolSize: number; auctionLots: number; maxTurns: number; regularRounds: number; baseBudget?: number; keeperCap?: number; auctionMode?: string; minRoster?: number; maxRoster?: number; midseasonGrant?: number; contractModel?: string; dynamicPool?: boolean; learningModel?: string; carryRate?: number; carryCap?: number; maxKeepers?: number; separatePayroll?: boolean; dualLayer?: boolean; programEvolution?: boolean; strategyProgramOperator?: StrategyProgramMutationOperator; evolutionMode?: "punctuated" | "generational"; evolutionPolicy?: "active" | "shadow"; evolutionMaxBursts?: number; evolutionMinCandidates?: number; evolutionMaxCandidates?: number; tacticalMemoryBehaviorPolicy?: TacticalMemoryBehaviorPolicy; tacticalMemoryConfidenceFloor?: number};
   managers: ManagerCareer[];
   market: Record<string, MarketAggregate>;
   assets: Record<string, AssetLedgerEntry>;
@@ -142,6 +142,8 @@ const dualLayer = stateVersion >= 11 || /^(1|true|yes)$/i.test(process.env.V4_DU
 const programEvolution = stateVersion >= 12 || /^(1|true|yes)$/i.test(process.env.V4_PROGRAM_EVOLUTION || "false");
 if (dualLayer) process.env.V4_DUAL_LAYER = "true";
 if (programEvolution) process.env.V4_PROGRAM_EVOLUTION = "true";
+const strategyProgramOperator = strategyProgramMutationOperator(process.env.V4_STRATEGY_PROGRAM_OPERATOR);
+process.env.V4_STRATEGY_PROGRAM_OPERATOR = strategyProgramOperator;
 const baseBudget = integerSetting("V4_BASE_BUDGET", 100, 20, 120);
 const keeperCap = integerSetting("V4_KEEPER_CAP", 70, 40, 120);
 const auctionMode = process.env.V4_AUCTION_MODE || "sequential";
@@ -531,6 +533,7 @@ function evolvePopulation(season: number, result: SeasonResult, seasonDir: strin
       season,
       seed,
       registryHash: runtimeFingerprint.registryHash,
+      strategyProgramOperator,
       candidates: punctuated.programDescendants.map(descendant => {
         const evidence = punctuated.decisions.flatMap(decision => decision.candidates).find(candidate => candidate.lineageId === descendant.lineage.lineageId)!;
         return {
@@ -1139,7 +1142,7 @@ function signed(value: number): string {
 }
 
 function currentSettings(): DynastyState["settings"] {
-  return {seasonCount, managerLimit, pairs, poolSize, auctionLots, maxTurns, regularRounds, baseBudget, keeperCap, auctionMode, minRoster, maxRoster, midseasonGrant, contractModel, dynamicPool, learningModel, carryRate, carryCap, maxKeepers, separatePayroll, dualLayer, programEvolution, evolutionMode, evolutionPolicy: evolutionPolicy === "suppress-experiment" ? "active" : evolutionPolicy, evolutionMaxBursts, evolutionMinCandidates, evolutionMaxCandidates, tacticalMemoryBehaviorPolicy, tacticalMemoryConfidenceFloor};
+  return {seasonCount, managerLimit, pairs, poolSize, auctionLots, maxTurns, regularRounds, baseBudget, keeperCap, auctionMode, minRoster, maxRoster, midseasonGrant, contractModel, dynamicPool, learningModel, carryRate, carryCap, maxKeepers, separatePayroll, dualLayer, programEvolution, strategyProgramOperator, evolutionMode, evolutionPolicy: evolutionPolicy === "suppress-experiment" ? "active" : evolutionPolicy, evolutionMaxBursts, evolutionMinCandidates, evolutionMaxCandidates, tacticalMemoryBehaviorPolicy, tacticalMemoryConfidenceFloor};
 }
 
 function settingsMatch(saved: DynastyState["settings"]): boolean {
@@ -1164,6 +1167,7 @@ function settingsMatch(saved: DynastyState["settings"]): boolean {
     && (saved.maxKeepers ?? 3) === current.maxKeepers
     && (saved.dualLayer ?? false) === current.dualLayer
     && (saved.programEvolution ?? false) === current.programEvolution
+    && (saved.strategyProgramOperator ?? "observed-boundary-v1") === current.strategyProgramOperator
     && (saved.evolutionMode ?? evolutionMode) === current.evolutionMode
     && (saved.evolutionPolicy ?? current.evolutionPolicy) === current.evolutionPolicy
     && (saved.evolutionMaxBursts ?? evolutionMaxBursts) === current.evolutionMaxBursts

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import {cloneManagerProfile, emptyGenome, materializeManagerProfile, type DraftRole, type ManagerConfigurationGenome, type ManagerEconomics, type ManagerOrganizationGenome, type ManagerProfile, type ManagerSystemGenome, type ManagerTraits} from "./managerProfiles";
-import {crossoverStrategyPrograms, mutateStrategyProgram, strategyProgramBehaviorDistance, type ProgramOpportunityInputs} from "./strategyProgram";
+import {crossoverStrategyPrograms, mutateStrategyProgram, strategyProgramBehaviorDistance, strategyProgramMutationOperator, type ProgramOpportunityInputs} from "./strategyProgram";
 import {buildWhiteBoxEvolutionTrace, type WhiteBoxEvolutionTrace} from "../ai/whiteBox/evolution";
 
 export interface LineageIdentity {
@@ -296,7 +296,7 @@ function mutateProfile(profile: ManagerProfile, seed: string, programOpportuniti
   }
   profile.genome = genome;
   if (/^(1|true|yes)$/i.test(process.env.V4_PROGRAM_EVOLUTION || "false") && unit(`${seed}:program-gate`) < .7) {
-    const evolved = mutateStrategyProgram(profile.strategyProgram, `${seed}:program`, PROGRAM_INPUTS, programOpportunities);
+    const evolved = mutateStrategyProgram(profile.strategyProgram, `${seed}:program`, PROGRAM_INPUTS, programOpportunities, strategyProgramMutationOperator(process.env.V4_STRATEGY_PROGRAM_OPERATOR));
     profile.strategyProgram = evolved.program;
     mutations.push(evolved.mutation);
   }

@@ -1,8 +1,12 @@
+import type {StrategyProgramMutationOperator} from "../../draft/strategyProgram";
+
 export type StrategyProgramEvolutionConclusion = "blocked" | "insufficient-evidence" | "no-observed-effect" | "reject-operator" | "no-clear-benefit" | "candidate-for-bounded-active-review";
+export type StrategyProgramEvolutionHypothesis = "observed-boundary-two-season-program-operator-v1" | "compound-observed-boundary-two-season-program-operator-v2";
 
 export interface StrategyProgramCounterfactualSample {
   seed: string;
   managerId: string;
+  operator: StrategyProgramMutationOperator;
   sourceSeason: number;
   activationSeason: number;
   evaluationSeason: number;
@@ -22,7 +26,7 @@ export interface StrategyProgramCounterfactualSample {
 export interface StrategyProgramEvolutionAggregate {
   schemaVersion: 1;
   conclusion: StrategyProgramEvolutionConclusion;
-  hypothesis: "observed-boundary-two-season-program-operator-v1";
+  hypothesis: StrategyProgramEvolutionHypothesis;
   thresholds: {minimumSamples: number; minimumSeeds: number; minimumDecisivePairs: number; minimumDecisiveSeeds: number; maximumOneSidedP: number};
   metrics: {
     samples: number; seeds: number; better: number; neutral: number; worse: number; decisivePairs: number;
@@ -37,6 +41,9 @@ export interface StrategyProgramEvolutionAggregate {
 export function aggregateStrategyProgramEvolution(samples: readonly StrategyProgramCounterfactualSample[], options: {minimumSamples?: number; minimumSeeds?: number; minimumDecisivePairs?: number; minimumDecisiveSeeds?: number; maximumOneSidedP?: number} = {}): StrategyProgramEvolutionAggregate {
   if (!samples.length) throw new Error("Strategy-program aggregation requires at least one sample");
   samples.forEach(validateSample);
+  const operators = new Set(samples.map(sample => sample.operator));
+  if (operators.size !== 1) throw new Error("Strategy-program aggregation cannot mix mutation operators");
+  const operator = samples[0].operator;
   const minimumSamples = integer(options.minimumSamples ?? 10, 3, 10000, "minimumSamples");
   const minimumSeeds = integer(options.minimumSeeds ?? 10, 2, minimumSamples, "minimumSeeds");
   const minimumDecisivePairs = integer(options.minimumDecisivePairs ?? 4, 2, minimumSamples, "minimumDecisivePairs");
@@ -81,7 +88,7 @@ export function aggregateStrategyProgramEvolution(samples: readonly StrategyProg
     : oneSidedRegressionP <= maximumOneSidedP && worse > better ? "reject-operator"
     : oneSidedImprovementP <= maximumOneSidedP && better > worse && healthy ? "candidate-for-bounded-active-review"
     : "no-clear-benefit";
-  return {schemaVersion: 1, conclusion, hypothesis: "observed-boundary-two-season-program-operator-v1", thresholds: {minimumSamples, minimumSeeds, minimumDecisivePairs, minimumDecisiveSeeds, maximumOneSidedP}, metrics, issues, samples: samples.map(sample => structuredClone(sample))};
+  return {schemaVersion: 1, conclusion, hypothesis: hypothesisFor(operator), thresholds: {minimumSamples, minimumSeeds, minimumDecisivePairs, minimumDecisiveSeeds, maximumOneSidedP}, metrics, issues, samples: samples.map(sample => structuredClone(sample))};
 }
 
 export function strategyProgramEvolutionMarkdown(value: StrategyProgramEvolutionAggregate): string {
@@ -92,9 +99,11 @@ export function strategyProgramEvolutionMarkdown(value: StrategyProgramEvolution
 function validateSample(sample: StrategyProgramCounterfactualSample): void {
   if (!sample.seed || !sample.managerId || !Number.isInteger(sample.sourceSeason) || !Number.isInteger(sample.activationSeason) || !Number.isInteger(sample.evaluationSeason) || !Number.isInteger(sample.horizonSeasons) || sample.activationSeason !== sample.sourceSeason + 1 || sample.evaluationSeason !== sample.sourceSeason + sample.horizonSeasons || sample.horizonSeasons !== 2) throw new Error("Malformed strategy-program sample identity");
   if (!Array.isArray(sample.operatorMutations) || !sample.operatorMutations.some(mutation => mutation.startsWith("program."))) throw new Error(`Missing strategy-program operator identity for ${sample.seed}`);
+  if (sample.operator !== "observed-boundary-v1" && sample.operator !== "compound-observed-boundary-v2") throw new Error(`Unknown strategy-program operator for ${sample.seed}`);
   if (!Number.isFinite(sample.behaviorDistance) || !Number.isFinite(sample.opportunityDistance) || !Number.isFinite(sample.choicePotential) || sample.opportunityDistance < 0 || sample.choicePotential < 0 || !Object.values(sample.delta).every(Number.isFinite)) throw new Error(`Malformed strategy-program metrics for ${sample.seed}`);
   if (!sample.decisionEffects || !Object.values(sample.decisionEffects).every(value => Number.isInteger(value) && value >= 0)) throw new Error(`Missing decision-effect telemetry for ${sample.seed}`);
 }
+function hypothesisFor(operator: StrategyProgramMutationOperator): StrategyProgramEvolutionHypothesis { return operator === "compound-observed-boundary-v2" ? "compound-observed-boundary-two-season-program-operator-v2" : "observed-boundary-two-season-program-operator-v1"; }
 function competitiveDirection(delta: StrategyProgramCounterfactualSample["delta"]): number { if (delta.titles !== 0) return Math.sign(delta.titles); if (delta.points !== 0) return Math.sign(delta.points); if (delta.rankImprovement !== 0) return Math.sign(delta.rankImprovement); return 0; }
 function groupedSeedDirections(samples: readonly StrategyProgramCounterfactualSample[], directions: readonly number[]): Map<string, number> { const grouped = new Map<string, number[]>(); samples.forEach((sample, index) => grouped.set(sample.seed, [...(grouped.get(sample.seed) ?? []), directions[index]])); return new Map([...grouped].map(([seed, values]) => [seed, Math.sign(mean(values))])); }
 function binomialUpperTail(successes: number, trials: number): number { const logs: number[] = []; let logProbability = -trials * Math.log(2); for (let k = 0; k <= trials; k += 1) { if (k >= successes) logs.push(logProbability); if (k < trials) logProbability += Math.log(trials - k) - Math.log(k + 1); } const maximum = Math.max(...logs); return Math.exp(maximum) * logs.reduce((sum, value) => sum + Math.exp(value - maximum), 0); }

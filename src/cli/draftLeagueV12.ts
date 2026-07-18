@@ -11,6 +11,7 @@ const importedCheckpoint = aiRelease ? writeCareerCheckpointFromWhiteBoxRelease(
 const env = {
   ...process.env,
   V4_STATE_VERSION: "12", V4_DUAL_LAYER: "true", V4_PROGRAM_EVOLUTION: "true",
+  V4_STRATEGY_PROGRAM_OPERATOR: process.env.V12_STRATEGY_PROGRAM_OPERATOR || process.env.V4_STRATEGY_PROGRAM_OPERATOR || "observed-boundary-v1",
   V4_SEED: process.env.V12_SEED || "self-programming-v12",
   V4_OUT: output,
   V4_SEASONS: process.env.V12_SEASONS || "1",

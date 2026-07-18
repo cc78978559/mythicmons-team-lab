@@ -17,6 +17,7 @@ export interface StrategyProgram {
 export interface ProgramTrace {hash: string; entrypoint: ProgramEntrypoint; value: number; nodes: number; inputs: Record<string, number>}
 export interface ProgramBehaviorFingerprint {schemaVersion: 1; values: number[]; hash: string; nonZero: number; range: number}
 export type ProgramOpportunityInputs = Partial<Record<ProgramEntrypoint, {samples: Array<{inputs: Record<string, number>}>}>>;
+export type StrategyProgramMutationOperator = "observed-boundary-v1" | "compound-observed-boundary-v2";
 
 const ENTRYPOINTS: ProgramEntrypoint[] = ["acquire", "configure", "lineup", "battle", "learn"];
 const BINARY = ["add", "subtract", "multiply", "divide", "minimum", "maximum", "greater", "less"] as const;
@@ -62,8 +63,13 @@ export function evaluateStrategyProgram(program: StrategyProgram | undefined, en
   return {hash: strategyProgramHash(active), entrypoint, value, nodes: visited, inputs: {...inputs}};
 }
 
-export function mutateStrategyProgram(program: StrategyProgram | undefined, seed: string, availableInputs: readonly string[], opportunities?: ProgramOpportunityInputs): {program: StrategyProgram; mutation: string} {
+export function mutateStrategyProgram(program: StrategyProgram | undefined, seed: string, availableInputs: readonly string[], opportunities?: ProgramOpportunityInputs, operator: StrategyProgramMutationOperator = "observed-boundary-v1"): {program: StrategyProgram; mutation: string} {
   const previousProgram = cloneStrategyProgram(program);
+  if (operator === "compound-observed-boundary-v2") {
+    const compound = mutateAtObservedBoundaries(previousProgram, `${seed}:compound-v2`, availableInputs, opportunities);
+    if (compound && strategyProgramBehaviorDistance(previousProgram, compound.program) > 1e-9) return compound;
+    return {program: previousProgram, mutation: `program.compound-observed-boundary-v2:semantic-noop:${strategyProgramHash(previousProgram).slice(0, 10)}`};
+  }
   const boundary = mutateAtObservedBoundary(previousProgram, `${seed}:observed-boundary`, availableInputs, opportunities);
   if (boundary && strategyProgramBehaviorDistance(previousProgram, boundary.program) > 1e-9) return boundary;
   for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -74,12 +80,32 @@ export function mutateStrategyProgram(program: StrategyProgram | undefined, seed
   return {program: previousProgram, mutation: `program.semantic-noop:${strategyProgramHash(previousProgram).slice(0, 10)}`};
 }
 
-function mutateAtObservedBoundary(program: StrategyProgram, seed: string, availableInputs: readonly string[], opportunities: ProgramOpportunityInputs | undefined): {program: StrategyProgram; mutation: string} | undefined {
+export function strategyProgramMutationOperator(value: string | undefined): StrategyProgramMutationOperator {
+  const operator = value || "observed-boundary-v1";
+  if (operator !== "observed-boundary-v1" && operator !== "compound-observed-boundary-v2") throw new Error(`Unsupported strategy-program mutation operator: ${operator}`);
+  return operator;
+}
+
+function mutateAtObservedBoundaries(program: StrategyProgram, seed: string, availableInputs: readonly string[], opportunities: ProgramOpportunityInputs | undefined): {program: StrategyProgram; mutation: string} | undefined {
+  const steps = 2 + index(seed, "steps", 2);
+  let next = cloneStrategyProgram(program);
+  const mutations: string[] = [];
+  for (let step = 0; step < steps; step += 1) {
+    const result = mutateAtObservedBoundary(next, `${seed}:step:${step}`, availableInputs, opportunities, new Set(mutations.map(boundaryIdentity)));
+    if (!result) break;
+    next = result.program;
+    mutations.push(result.mutation);
+  }
+  if (mutations.length < 2) return undefined;
+  return {program: next, mutation: `program.compound-observed-boundary-v2[${mutations.map(mutation => mutation.slice("program.".length)).join("|")}]`};
+}
+
+function mutateAtObservedBoundary(program: StrategyProgram, seed: string, availableInputs: readonly string[], opportunities: ProgramOpportunityInputs | undefined, excluded = new Set<string>()): {program: StrategyProgram; mutation: string} | undefined {
   const choices = ENTRYPOINTS.flatMap(entrypoint => {
     const samples = opportunities?.[entrypoint]?.samples ?? [];
     return STRATEGY_PROGRAM_INPUTS[entrypoint].filter(key => availableInputs.includes(key)).flatMap(key => {
       const values = [...new Set(samples.map(sample => sample.inputs[key]).filter(value => Number.isFinite(value)).map(value => round(value!)))].sort((left, right) => left - right);
-      return values.length > 1 ? [{entrypoint, key, values}] : [];
+      return values.length > 1 && !excluded.has(`${entrypoint}.${key}`) ? [{entrypoint, key, values}] : [];
     });
   });
   if (!choices.length) return undefined;
@@ -97,6 +123,11 @@ function mutateAtObservedBoundary(program: StrategyProgram, seed: string, availa
   if (countNodes(next.entrypoints[choice.entrypoint]) > next.limits.maxNodes || expressionDepth(next.entrypoints[choice.entrypoint]) > next.limits.maxDepth) return undefined;
   validateStrategyProgram(next);
   return {program: next, mutation: `program.${choice.entrypoint}.observed-boundary.${choice.key}@${threshold}:${direction > 0 ? "+" : "-"}${amplitude}`};
+}
+
+function boundaryIdentity(mutation: string): string {
+  const match = mutation.match(/^program\.([^.]+)\.observed-boundary\.([^@]+)@/);
+  return match ? `${match[1]}.${match[2]}` : mutation;
 }
 
 function mutateOnce(program: StrategyProgram, seed: string, availableInputs: readonly string[]): {program: StrategyProgram; mutation: string} {

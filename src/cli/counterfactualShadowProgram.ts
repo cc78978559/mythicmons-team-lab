@@ -5,7 +5,7 @@ import zlib from "node:zlib";
 import {spawnSync} from "node:child_process";
 import {cloneManagerProfile, type ManagerProfile} from "../draft/managerProfiles";
 import type {LineageIdentity} from "../draft/naturalEvolution";
-import {strategyProgramBehaviorDistance, strategyProgramHash} from "../draft/strategyProgram";
+import {strategyProgramBehaviorDistance, strategyProgramHash, strategyProgramMutationOperator, type StrategyProgramMutationOperator} from "../draft/strategyProgram";
 import {createRegistrySnapshot} from "../draft/registrySnapshot";
 
 interface ManagerState {
@@ -35,7 +35,7 @@ interface ShadowCandidate {
   programBehaviorDistance: number;
   programOpportunity?: {distance: number; choicePotential: number; observedEntrypoints: number; observations: number};
 }
-interface ShadowPackage {schemaVersion: 1; season: number; seed: string; registryHash: string; candidates: ShadowCandidate[]}
+interface ShadowPackage {schemaVersion: 1; season: number; seed: string; registryHash: string; strategyProgramOperator?: StrategyProgramMutationOperator; candidates: ShadowCandidate[]}
 
 const args = process.argv.slice(2), root = process.cwd();
 const source = path.resolve(option("--source", "output/draft-league-v12"));
@@ -48,6 +48,7 @@ const evaluationSeason = sourceState.completedSeason + horizonSeasons;
 const packageFile = path.join(source, `season-${String(sourceState.completedSeason).padStart(2, "0")}`, "evolution-shadow-candidates.json");
 const shadow = read<ShadowPackage>(packageFile);
 validatePackage();
+const operator = strategyProgramMutationOperator(shadow.strategyProgramOperator ?? sourceState.settings.strategyProgramOperator as string | undefined);
 const requestedManager = option("--manager", "");
 const candidates = shadow.candidates.filter(candidate => strategyProgramBehaviorDistance(requiredManager(sourceState, candidate.managerId).currentProfile.strategyProgram, candidate.profile.strategyProgram) > 0);
 const candidate = requireCandidate(requestedManager ? candidates.find(entry => entry.managerId === requestedManager) : candidates[0]);
@@ -79,7 +80,7 @@ const summary = {
   horizonSeasons,
   continuationSalt: continuationSalt || null,
   prefixVerified: verifySourcePrefix(experimentDir) && verifySourcePrefix(controlDir),
-  isolatedDifference: {managerId: candidate.managerId, parentProgramHash: strategyProgramHash(sourceManager.currentProfile.strategyProgram!), candidateProgramHash: strategyProgramHash(candidate.profile.strategyProgram!), behaviorDistance: strategyProgramBehaviorDistance(sourceManager.currentProfile.strategyProgram, candidate.profile.strategyProgram), opportunityDistance: candidate.programOpportunity?.distance ?? null, choicePotential: candidate.programOpportunity?.choicePotential ?? null, operatorMutations: candidate.lineage.mutations.filter(mutation => mutation.startsWith("program."))},
+  isolatedDifference: {managerId: candidate.managerId, operator, parentProgramHash: strategyProgramHash(sourceManager.currentProfile.strategyProgram!), candidateProgramHash: strategyProgramHash(candidate.profile.strategyProgram!), behaviorDistance: strategyProgramBehaviorDistance(sourceManager.currentProfile.strategyProgram, candidate.profile.strategyProgram), opportunityDistance: candidate.programOpportunity?.distance ?? null, choicePotential: candidate.programOpportunity?.choicePotential ?? null, operatorMutations: candidate.lineage.mutations.filter(mutation => mutation.startsWith("program."))},
   decisionEffects,
   experiment: result(experimentManager, experimentSeasons),
   control: result(controlManager, controlSeasons),
@@ -91,6 +92,7 @@ console.log(JSON.stringify({prefixVerified: summary.prefixVerified, isolatedDiff
 
 function validatePackage(): void {
   if (shadow.schemaVersion !== 1 || shadow.season !== sourceState.completedSeason || shadow.seed !== sourceState.seed || shadow.registryHash !== sourceState.fingerprint.registryHash) throw new Error("Shadow candidate package does not match the source dynasty");
+  if (strategyProgramMutationOperator(shadow.strategyProgramOperator) !== strategyProgramMutationOperator(sourceState.settings.strategyProgramOperator as string | undefined)) throw new Error("Shadow candidate operator does not match the source dynasty");
   for (const candidate of shadow.candidates) {
     const manager = requiredManager(sourceState, candidate.managerId);
     if (candidate.replacedLineageId !== manager.lineage.lineageId || candidate.profile.id !== manager.id || candidate.lineage.birthSeason !== sourceState.completedSeason + 1) throw new Error(`Invalid shadow candidate binding for ${candidate.managerId}`);
@@ -114,7 +116,7 @@ function isolatedLineage(): LineageIdentity {
 }
 function runBranch(directory: string): void {
   const settings = sourceState.settings, registrySource = registrySourceFor(directory);
-  const env = {...process.env, V12_OUT: directory, V12_RESUME: "true", V12_ALLOW_CODE_UPGRADE: "true", V12_SEASONS: String(evaluationSeason), V12_SEED: sourceState.seed, V12_MANAGER_LIMIT: String(settings.managerLimit), V12_PAIRS: String(settings.pairs), V12_POOL_SIZE: String(settings.poolSize), V12_AUCTION_LOTS: String(settings.auctionLots), V12_REGULAR_ROUNDS: String(settings.regularRounds), V12_MAX_TURNS: String(settings.maxTurns), V12_MIN_ROSTER: String(settings.minRoster ?? 6), V12_MAX_ROSTER: String(settings.maxRoster ?? 10), V12_REGISTRY_SOURCE: registrySource, V12_REGISTRY_REVISION: sourceState.registry?.revision ?? "shadow-program-counterfactual", V12_EVOLUTION_MODE: String(settings.evolutionMode ?? "punctuated"), V12_EVOLUTION_POLICY: String(settings.evolutionPolicy ?? "shadow"), V12_EVOLUTION_MAX_BURSTS: String(settings.evolutionMaxBursts ?? 2), V12_EVOLUTION_MIN_CANDIDATES: String(settings.evolutionMinCandidates ?? 4), V12_EVOLUTION_MAX_CANDIDATES: String(settings.evolutionMaxCandidates ?? 8), V12_EVIDENCE_RETENTION: "compact", V12_EVIDENCE_SAMPLE_RATE: "1", ...(continuationSalt ? {V12_COUNTERFACTUAL_CONTINUATION: "true", V12_CONTINUATION_SALT: continuationSalt} : {})};
+  const env = {...process.env, V12_OUT: directory, V12_RESUME: "true", V12_ALLOW_CODE_UPGRADE: "true", V12_SEASONS: String(evaluationSeason), V12_SEED: sourceState.seed, V12_MANAGER_LIMIT: String(settings.managerLimit), V12_PAIRS: String(settings.pairs), V12_POOL_SIZE: String(settings.poolSize), V12_AUCTION_LOTS: String(settings.auctionLots), V12_REGULAR_ROUNDS: String(settings.regularRounds), V12_MAX_TURNS: String(settings.maxTurns), V12_MIN_ROSTER: String(settings.minRoster ?? 6), V12_MAX_ROSTER: String(settings.maxRoster ?? 10), V12_REGISTRY_SOURCE: registrySource, V12_REGISTRY_REVISION: sourceState.registry?.revision ?? "shadow-program-counterfactual", V12_STRATEGY_PROGRAM_OPERATOR: String(settings.strategyProgramOperator ?? "observed-boundary-v1"), V12_EVOLUTION_MODE: String(settings.evolutionMode ?? "punctuated"), V12_EVOLUTION_POLICY: String(settings.evolutionPolicy ?? "shadow"), V12_EVOLUTION_MAX_BURSTS: String(settings.evolutionMaxBursts ?? 2), V12_EVOLUTION_MIN_CANDIDATES: String(settings.evolutionMinCandidates ?? 4), V12_EVOLUTION_MAX_CANDIDATES: String(settings.evolutionMaxCandidates ?? 8), V12_EVIDENCE_RETENTION: "compact", V12_EVIDENCE_SAMPLE_RATE: "1", ...(continuationSalt ? {V12_COUNTERFACTUAL_CONTINUATION: "true", V12_CONTINUATION_SALT: continuationSalt} : {})};
   const run = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "draftLeagueV12.ts")], {cwd: root, env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024});
   if (run.status !== 0) throw new Error(`Counterfactual branch failed:\n${run.stderr || run.stdout}`);
 }

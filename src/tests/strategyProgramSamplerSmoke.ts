@@ -8,10 +8,14 @@ import {aggregateStrategyProgramEvolution, type StrategyProgramCounterfactualSam
 const positive = Array.from({length: 10}, (_, index) => sample(index, index < 8 ? 1 : -1));
 const supported = aggregateStrategyProgramEvolution(positive);
 assert.equal(supported.conclusion, "candidate-for-bounded-active-review");
+assert.equal(supported.hypothesis, "observed-boundary-two-season-program-operator-v1");
 assert.equal(supported.metrics.betterSeeds, 8);
 assert.equal(supported.metrics.oneSidedImprovementP < .1, true);
 assert.equal(aggregateStrategyProgramEvolution(Array.from({length: 10}, (_, index) => sample(index, 0))).conclusion, "no-observed-effect");
 assert.equal(aggregateStrategyProgramEvolution(Array.from({length: 10}, (_, index) => sample(index, index < 8 ? -1 : 1))).conclusion, "reject-operator");
+const compound = positive.map(value => ({...value, operator: "compound-observed-boundary-v2" as const, operatorMutations: ["program.compound-observed-boundary-v2[acquire.observed-boundary.speed@0.5:+2|lineup.observed-boundary.strength@0.4:-1]"]}));
+assert.equal(aggregateStrategyProgramEvolution(compound).hypothesis, "compound-observed-boundary-two-season-program-operator-v2");
+assert.throws(() => aggregateStrategyProgramEvolution([positive[0], compound[1]]), /cannot mix mutation operators/);
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "strategy-program-sampler-"));
 try {
@@ -49,7 +53,7 @@ try {
 console.log("Strategy-program evolution sampler smoke passed");
 
 function sample(index: number, direction: number): StrategyProgramCounterfactualSample {
-  return {seed: `seed-${index}`, managerId: `manager-${index}`, sourceSeason: 2, activationSeason: 3, evaluationSeason: 4, horizonSeasons: 2, sourceVerified: true, prefixVerified: true, parentProgramHash: `parent-${index}`, candidateProgramHash: `candidate-${index}`, behaviorDistance: .01 + index / 1000, opportunityDistance: .02, choicePotential: .01, operatorMutations: ["program.acquire.observed-boundary.speed@0.5:+2"], decisionEffects: {ledgerCompared: 2, ledgerSelectionDifferences: direction ? 1 : 0, ledgerRecordSetDifferences: 0, programSignalsCompared: 2, programSignalDifferences: 1, battleCompared: 10, battleChoiceDifferences: 0, battleRecordSetDifferences: 0}, delta: {points: direction * 3, rankImprovement: direction, titles: 0, cash: direction}};
+  return {seed: `seed-${index}`, managerId: `manager-${index}`, operator: "observed-boundary-v1", sourceSeason: 2, activationSeason: 3, evaluationSeason: 4, horizonSeasons: 2, sourceVerified: true, prefixVerified: true, parentProgramHash: `parent-${index}`, candidateProgramHash: `candidate-${index}`, behaviorDistance: .01 + index / 1000, opportunityDistance: .02, choicePotential: .01, operatorMutations: ["program.acquire.observed-boundary.speed@0.5:+2"], decisionEffects: {ledgerCompared: 2, ledgerSelectionDifferences: direction ? 1 : 0, ledgerRecordSetDifferences: 0, programSignalsCompared: 2, programSignalDifferences: 1, battleCompared: 10, battleChoiceDifferences: 0, battleRecordSetDifferences: 0}, delta: {points: direction * 3, rankImprovement: direction, titles: 0, cash: direction}};
 }
 function read<T>(file: string): T { return JSON.parse(fs.readFileSync(file, "utf8")) as T; }
 function run(command: string[]): void { const result = spawnSync(process.execPath, command, {cwd: process.cwd(), encoding: "utf8", maxBuffer: 64 * 1024 * 1024}); if (result.status !== 0) throw new Error(result.stderr || result.stdout); }

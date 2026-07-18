@@ -10,13 +10,15 @@ const source = path.join(workspace, "source"), out = path.join(workspace, "count
 try {
   const league = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "draftLeagueV12.ts")], {
     cwd: root,
-    env: {...process.env, V12_OUT: source, V12_SEASONS: "2", V12_MANAGER_LIMIT: "6", V12_PAIRS: "1", V12_POOL_SIZE: "100", V12_AUCTION_LOTS: "10", V12_REGULAR_ROUNDS: "1", V12_MAX_TURNS: "20", V12_MIN_ROSTER: "6", V12_MAX_ROSTER: "6", V12_SEED: "program-semantic-probe", V12_EVOLUTION_MODE: "punctuated", V12_EVOLUTION_POLICY: "shadow", V12_EVOLUTION_SHOCK: "1", V12_EVIDENCE_RETENTION: "compact", V12_EVIDENCE_SAMPLE_RATE: "0"},
+    env: {...process.env, V12_OUT: source, V12_SEASONS: "2", V12_MANAGER_LIMIT: "6", V12_PAIRS: "1", V12_POOL_SIZE: "100", V12_AUCTION_LOTS: "10", V12_REGULAR_ROUNDS: "1", V12_MAX_TURNS: "20", V12_MIN_ROSTER: "6", V12_MAX_ROSTER: "6", V12_SEED: "program-semantic-probe", V12_STRATEGY_PROGRAM_OPERATOR: "compound-observed-boundary-v2", V12_EVOLUTION_MODE: "punctuated", V12_EVOLUTION_POLICY: "shadow", V12_EVOLUTION_SHOCK: "1", V12_EVIDENCE_RETENTION: "compact", V12_EVIDENCE_SAMPLE_RATE: "0"},
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });
   assert.equal(league.status, 0, league.stderr || league.stdout);
   const candidatePackage = read<any>(path.join(source, "season-02", "evolution-shadow-candidates.json"));
   assert.equal(candidatePackage.schemaVersion, 1);
+  assert.equal(candidatePackage.strategyProgramOperator, "compound-observed-boundary-v2");
+  assert.equal(read<any>(path.join(source, "dynasty-state.json")).settings.strategyProgramOperator, "compound-observed-boundary-v2");
   assert(candidatePackage.candidates.some((candidate: any) => candidate.programBehaviorDistance > 0 && candidate.programOpportunity?.distance > 0 && candidate.profile?.strategyProgram));
   compactWhiteBoxRun(source);
 
@@ -30,10 +32,12 @@ try {
   assert.equal(summary.horizonSeasons, 2);
   assert.equal(summary.evaluationSeason, summary.sourceSeason + 2);
   assert.equal(summary.continuationSalt, "smoke-environment");
+  assert.equal(summary.isolatedDifference.operator, "compound-observed-boundary-v2");
   assert(summary.isolatedDifference.behaviorDistance > 0);
   assert(summary.isolatedDifference.opportunityDistance > 0);
   assert(summary.isolatedDifference.choicePotential > 0);
   assert(summary.isolatedDifference.operatorMutations.some((mutation: string) => mutation.startsWith("program.")));
+  assert(summary.isolatedDifference.operatorMutations.some((mutation: string) => mutation.startsWith("program.compound-observed-boundary-v2[")));
   assert(summary.decisionEffects.programSignalsCompared >= summary.decisionEffects.programSignalDifferences);
   assert(summary.decisionEffects.battleCompared > 0);
   assert.notEqual(summary.isolatedDifference.parentProgramHash, summary.isolatedDifference.candidateProgramHash);

@@ -4,13 +4,16 @@ import {spawnSync} from "node:child_process";
 import type {StrategyProgramEvolutionAggregate} from "../ai/whiteBox/strategyProgramAggregation";
 import {selectBeneficialStrategyProgramSamples, summarizeStrategyProgramScreening, type StrategyProgramScreeningResult} from "../ai/whiteBox/strategyProgramScreening";
 import type {StrategyProgramReplicationAggregate} from "../ai/whiteBox/strategyProgramReplication";
+import type {StrategyProgramMutationOperator} from "../draft/strategyProgram";
 
 interface SamplerManifest {seeds: Array<{seed: string; status: string; baseline: string}>}
 
 const args = process.argv.slice(2), root = process.cwd();
 const sampler = path.resolve(option("--sampler", "output/strategy-program-evolution-sampler")), out = path.resolve(option("--out", "output/strategy-program-candidate-screen"));
 const replicas = integerOption("--replicas", 3, 3, 9), horizon = integerOption("--horizon", 2, 2, 2), maximumCandidates = integerOption("--max-candidates", 100, 1, 1000);
-const evidence = read<StrategyProgramEvolutionAggregate>(path.join(sampler, "strategy-program-evidence.json")), manifest = read<SamplerManifest>(path.join(sampler, "strategy-program-sampler-manifest.json"));
+const rawEvidence = read<StrategyProgramEvolutionAggregate>(path.join(sampler, "strategy-program-evidence.json")), manifest = read<SamplerManifest>(path.join(sampler, "strategy-program-sampler-manifest.json"));
+const evidenceOperator: StrategyProgramMutationOperator = rawEvidence.hypothesis === "compound-observed-boundary-two-season-program-operator-v2" ? "compound-observed-boundary-v2" : "observed-boundary-v1";
+const evidence = {...rawEvidence, samples: rawEvidence.samples.map(sample => ({...sample, operator: sample.operator ?? evidenceOperator}))};
 const candidates = selectBeneficialStrategyProgramSamples(evidence.samples).slice(0, maximumCandidates);
 fs.mkdirSync(out, {recursive: true});
 const results: StrategyProgramScreeningResult[] = [];
@@ -22,7 +25,7 @@ for (const candidate of candidates) {
   if (run.status !== 0) throw new Error(`Candidate screen failed for ${candidate.seed}:\n${run.stderr || run.stdout}`);
   const replication = read<StrategyProgramReplicationAggregate>(path.join(directory, "replication-summary.json"));
   if (replication.candidate.managerId !== candidate.managerId || replication.candidate.programHash !== candidate.candidateProgramHash) throw new Error(`Candidate screen identity drifted for ${candidate.seed}`);
-  results.push({seed: candidate.seed, managerId: candidate.managerId, candidateProgramHash: candidate.candidateProgramHash, sourceDelta: candidate.delta, replicationConclusion: replication.conclusion});
+  results.push({seed: candidate.seed, managerId: candidate.managerId, operator: candidate.operator, candidateProgramHash: candidate.candidateProgramHash, sourceDelta: candidate.delta, replicationConclusion: replication.conclusion});
 }
 const summary = {...summarizeStrategyProgramScreening(results), hypothesis: evidence.hypothesis, sourceEvidence: path.join(sampler, "strategy-program-evidence.json"), settings: {replicas, horizon, maximumCandidates}};
 write(path.join(out, "screening-summary.json"), summary);

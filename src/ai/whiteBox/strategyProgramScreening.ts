@@ -1,7 +1,7 @@
 import type {StrategyProgramCounterfactualSample} from "./strategyProgramAggregation";
 import type {StrategyProgramReplicationConclusion} from "./strategyProgramReplication";
 
-export interface StrategyProgramScreeningResult {seed: string; managerId: string; candidateProgramHash: string; sourceDelta: StrategyProgramCounterfactualSample["delta"]; replicationConclusion: StrategyProgramReplicationConclusion}
+export interface StrategyProgramScreeningResult {seed: string; managerId: string; operator: StrategyProgramCounterfactualSample["operator"]; candidateProgramHash: string; sourceDelta: StrategyProgramCounterfactualSample["delta"]; replicationConclusion: StrategyProgramReplicationConclusion}
 
 export function selectBeneficialStrategyProgramSamples(samples: readonly StrategyProgramCounterfactualSample[]): StrategyProgramCounterfactualSample[] {
   return samples.filter(sample => competitiveDirection(sample.delta) > 0).sort((left, right) => left.seed.localeCompare(right.seed) || left.managerId.localeCompare(right.managerId));

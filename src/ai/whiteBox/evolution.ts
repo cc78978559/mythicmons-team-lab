@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import {cloneManagerProfile, emptyGenome, type DraftRole, type ManagerProfile, type ManagerTraits} from "../../draft/managerProfiles";
-import {mutateStrategyProgram, strategyProgramBehavior, strategyProgramBehaviorDistance, strategyProgramHash, type ProgramOpportunityInputs} from "../../draft/strategyProgram";
+import {mutateStrategyProgram, strategyProgramBehavior, strategyProgramBehaviorDistance, strategyProgramHash, strategyProgramMutationOperator, type ProgramOpportunityInputs} from "../../draft/strategyProgram";
 import {EVOLUTION_SHADOW_PARAMETERS} from "./parameters";
 
 export const WHITE_BOX_EVOLUTION_VERSION = "white-box-evolution-v1";
@@ -96,7 +96,7 @@ function replayMutation(source: ManagerProfile, seed: string, programEvolution: 
   gate("learning.memoryDecay", `${seed}:memory-gate`, p["evolution.learningrate"], () => {const raw=(genome.learning.memoryDecay ?? profile.learning.memoryDecay)+signedDelta(`${seed}:memory`,.06);rawValues["genome.learning.memoryDecay"]=raw;genome.learning.memoryDecay=clamp(raw,.5,.99);declared.push("learning.memoryDecay");});
   gate("learning.exploration", `${seed}:explore-gate`, p["evolution.explorationrate"], () => {const delta=signedDelta(`${seed}:explore`,.08),raw=(genome.learning.exploration??0)+delta;rawValues["genome.learning.exploration"]=raw;genome.learning.exploration=clamp(raw,-.25,.25);declared.push(`learning.exploration${signed(delta)}`);});
   profile.genome = genome;
-  if (programEvolution) gate("strategyProgram", `${seed}:program-gate`, p["evolution.programrate"], () => {const evolved=mutateStrategyProgram(profile.strategyProgram!,`${seed}:program`,PROGRAM_INPUTS,programOpportunities);profile.strategyProgram=evolved.program;declared.push(evolved.mutation);});
+  if (programEvolution) gate("strategyProgram", `${seed}:program-gate`, p["evolution.programrate"], () => {const evolved=mutateStrategyProgram(profile.strategyProgram!,`${seed}:program`,PROGRAM_INPUTS,programOpportunities,strategyProgramMutationOperator(process.env.V4_STRATEGY_PROGRAM_OPERATOR));profile.strategyProgram=evolved.program;declared.push(evolved.mutation);});
   if (!declared.length) declared.push("conservative-copy");
   return {profile, gates, rawValues, declared};
 

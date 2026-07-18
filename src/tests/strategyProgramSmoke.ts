@@ -57,6 +57,15 @@ assert.equal(observedDistance.observedEntrypoints, 1);
 const boundary = mutateStrategyProgram(noviceStrategyProgram(), "observed-boundary-smoke", STRATEGY_PROGRAM_INPUTS.acquire, opportunitySnapshot.managers[0].entrypoints);
 assert.match(boundary.mutation, /^program\.acquire\.observed-boundary\./);
 assert(strategyProgramOpportunityDistance(noviceStrategyProgram(), boundary.program, opportunitySnapshot.managers[0]).choicePotential > 0);
+const compoundFirst = mutateStrategyProgram(noviceStrategyProgram(), "compound-boundary-smoke", STRATEGY_PROGRAM_INPUTS.acquire, opportunitySnapshot.managers[0].entrypoints, "compound-observed-boundary-v2");
+const compoundReplay = mutateStrategyProgram(noviceStrategyProgram(), "compound-boundary-smoke", STRATEGY_PROGRAM_INPUTS.acquire, opportunitySnapshot.managers[0].entrypoints, "compound-observed-boundary-v2");
+assert.equal(strategyProgramHash(compoundFirst.program), strategyProgramHash(compoundReplay.program));
+assert.match(compoundFirst.mutation, /^program\.compound-observed-boundary-v2\[/);
+assert((compoundFirst.mutation.match(/observed-boundary/g) ?? []).length >= 2);
+validateStrategyProgram(compoundFirst.program);
+const insufficientCompound = mutateStrategyProgram(noviceStrategyProgram(), "compound-insufficient", STRATEGY_PROGRAM_INPUTS.acquire, {acquire: {samples: [{inputs: {speed: .2}}, {inputs: {speed: .8}}]}}, "compound-observed-boundary-v2");
+assert.match(insufficientCompound.mutation, /^program\.compound-observed-boundary-v2:semantic-noop:/);
+assert.equal(strategyProgramHash(insufficientCompound.program), strategyProgramHash(noviceStrategyProgram()));
 console.log("Typed strategy program smoke test passed");
 
 function inputKeys(value: any): string[] {
