@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import {cloneManagerProfile, emptyGenome, type DraftRole, type ManagerProfile, type ManagerTraits} from "../../draft/managerProfiles";
-import {mutateStrategyProgram, strategyProgramBehavior, strategyProgramBehaviorDistance, strategyProgramHash} from "../../draft/strategyProgram";
+import {mutateStrategyProgram, strategyProgramBehavior, strategyProgramBehaviorDistance, strategyProgramHash, type ProgramOpportunityInputs} from "../../draft/strategyProgram";
 import {EVOLUTION_SHADOW_PARAMETERS} from "./parameters";
 
 export const WHITE_BOX_EVOLUTION_VERSION = "white-box-evolution-v1";
@@ -45,10 +45,11 @@ export function buildWhiteBoxEvolutionTrace(input: {
   mutated: ManagerProfile;
   declaredMutations: string[];
   programEvolution: boolean;
+  programOpportunities?: ProgramOpportunityInputs;
 }): WhiteBoxEvolutionTrace {
   const parameters = EVOLUTION_SHADOW_PARAMETERS.snapshot().values;
   const crossoverDraw = evolutionUnit(input.crossoverSeed);
-  const replay = replayMutation(input.inherited, input.mutationSeed, input.programEvolution, input.protectedCopy, parameters);
+  const replay = replayMutation(input.inherited, input.mutationSeed, input.programEvolution, input.protectedCopy, parameters, input.programOpportunities);
   const actualSnapshot = parameterSnapshot(input.mutated);
   const replaySnapshot = parameterSnapshot(replay.profile);
   if (JSON.stringify(actualSnapshot) !== JSON.stringify(replaySnapshot) || strategyProgramHash(input.mutated.strategyProgram!) !== strategyProgramHash(replay.profile.strategyProgram!) || JSON.stringify(input.declaredMutations) !== JSON.stringify(replay.declared)) {
@@ -72,7 +73,7 @@ export function buildWhiteBoxEvolutionTrace(input: {
   };
 }
 
-function replayMutation(source: ManagerProfile, seed: string, programEvolution: boolean, protectedCopy: boolean, p: Record<string, number>) {
+function replayMutation(source: ManagerProfile, seed: string, programEvolution: boolean, protectedCopy: boolean, p: Record<string, number>, programOpportunities?: ProgramOpportunityInputs) {
   const profile = cloneManagerProfile(source), gates: WhiteBoxEvolutionGate[] = [], rawValues: Record<string, number> = {}, declared: string[] = [];
   if (protectedCopy) return {profile, gates, rawValues, declared: ["protected-elite-copy"]};
   const genome = profile.genome ?? emptyGenome();
@@ -95,7 +96,7 @@ function replayMutation(source: ManagerProfile, seed: string, programEvolution: 
   gate("learning.memoryDecay", `${seed}:memory-gate`, p["evolution.learningrate"], () => {const raw=(genome.learning.memoryDecay ?? profile.learning.memoryDecay)+signedDelta(`${seed}:memory`,.06);rawValues["genome.learning.memoryDecay"]=raw;genome.learning.memoryDecay=clamp(raw,.5,.99);declared.push("learning.memoryDecay");});
   gate("learning.exploration", `${seed}:explore-gate`, p["evolution.explorationrate"], () => {const delta=signedDelta(`${seed}:explore`,.08),raw=(genome.learning.exploration??0)+delta;rawValues["genome.learning.exploration"]=raw;genome.learning.exploration=clamp(raw,-.25,.25);declared.push(`learning.exploration${signed(delta)}`);});
   profile.genome = genome;
-  if (programEvolution) gate("strategyProgram", `${seed}:program-gate`, p["evolution.programrate"], () => {const evolved=mutateStrategyProgram(profile.strategyProgram!,`${seed}:program`,PROGRAM_INPUTS);profile.strategyProgram=evolved.program;declared.push(evolved.mutation);});
+  if (programEvolution) gate("strategyProgram", `${seed}:program-gate`, p["evolution.programrate"], () => {const evolved=mutateStrategyProgram(profile.strategyProgram!,`${seed}:program`,PROGRAM_INPUTS,programOpportunities);profile.strategyProgram=evolved.program;declared.push(evolved.mutation);});
   if (!declared.length) declared.push("conservative-copy");
   return {profile, gates, rawValues, declared};
 

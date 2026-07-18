@@ -4,7 +4,7 @@ import {founderLineage, type EvolutionCompetitor} from "../draft/naturalEvolutio
 import {runPunctuatedEvolution} from "../draft/punctuatedEvolution";
 
 const profiles = createNoviceProfiles(6);
-const programOpportunities = Object.fromEntries(profiles.map(profile => [profile.id, {managerId: profile.id, entrypoints: {acquire: {observations: 20, samples: [{hash: "a", inputs: {baseline: .4, strength: .7, price: .5, roleBreadth: .3, speed: .6, bulk: .5, rosterSize: .8}}]}, configure: {observations: 20, samples: [{hash: "b", inputs: {baseline: .4, strength: .7, accuracy: .9, speed: .6, bulk: .5, roleBreadth: .3}}]}, lineup: {observations: 10, samples: [{hash: "c", inputs: {baseline: .7, strength: .7, roleBreadth: .5, rosterSize: 1, opponentPressure: .7}}]}, battle: {observations: 10, samples: [{hash: "d", inputs: {baseline: 0, strength: .7, opponentPressure: .7, rosterSize: 1, tacticalConfidence: .2, historicalWinRate: .5, opponentLeadConcentration: .3, opponentSwitchRate: .2}}]}, learn: {observations: 10, samples: [{hash: "e", inputs: {baseline: .5, usage: .4, production: .3, teamResult: .5}}]}}}]));
+const programOpportunities = Object.fromEntries(profiles.map(profile => [profile.id, {managerId: profile.id, entrypoints: {acquire: {observations: 20, samples: [{hash: "a1", inputs: {baseline: .4, strength: .7, price: .5, roleBreadth: .3, speed: .6, bulk: .5, rosterSize: .8}}, {hash: "a2", inputs: {baseline: .45, strength: .55, price: .2, roleBreadth: .6, speed: .35, bulk: .8, rosterSize: .5}}]}, configure: {observations: 20, samples: [{hash: "b", inputs: {baseline: .4, strength: .7, accuracy: .9, speed: .6, bulk: .5, roleBreadth: .3}}]}, lineup: {observations: 10, samples: [{hash: "c", inputs: {baseline: .7, strength: .7, roleBreadth: .5, rosterSize: 1, opponentPressure: .7}}]}, battle: {observations: 10, samples: [{hash: "d", inputs: {baseline: 0, strength: .7, opponentPressure: .7, rosterSize: 1, tacticalConfidence: .2, historicalWinRate: .5, opponentLeadConcentration: .3, opponentSwitchRate: .2}}]}, learn: {observations: 10, samples: [{hash: "e", inputs: {baseline: .5, usage: .4, production: .3, teamResult: .5}}]}}}]));
 const competitors: EvolutionCompetitor[] = profiles.map((profile, index) => ({
   slotId: profile.id,
   profile,
@@ -50,4 +50,5 @@ assert.equal(shocked.descendants.length, 2);
 assert(shocked.programDescendants.length > 0);
 assert.equal(shocked.budget.retainedProgramCandidates, shocked.programDescendants.length);
 assert(shocked.decisions.flatMap(decision => decision.candidates).filter(candidate => candidate.programSelected).every(candidate => candidate.programOpportunity.choicePotential > 0));
+assert(shocked.decisions.flatMap(decision => decision.candidates).some(candidate => candidate.mutations.some(mutation => mutation.includes(".observed-boundary."))));
 console.log("Punctuated evolution smoke passed: accumulation, dynamic budget, deterministic candidates, cooldown, and shock response");

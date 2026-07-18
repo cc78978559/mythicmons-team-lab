@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import {cloneManagerProfile, emptyGenome, materializeManagerProfile, type DraftRole, type ManagerConfigurationGenome, type ManagerEconomics, type ManagerOrganizationGenome, type ManagerProfile, type ManagerSystemGenome, type ManagerTraits} from "./managerProfiles";
-import {crossoverStrategyPrograms, mutateStrategyProgram, strategyProgramBehaviorDistance} from "./strategyProgram";
+import {crossoverStrategyPrograms, mutateStrategyProgram, strategyProgramBehaviorDistance, type ProgramOpportunityInputs} from "./strategyProgram";
 import {buildWhiteBoxEvolutionTrace, type WhiteBoxEvolutionTrace} from "../ai/whiteBox/evolution";
 
 export interface LineageIdentity {
@@ -125,6 +125,7 @@ export function clusterBehaviorSpecies(competitors: readonly EvolutionCompetitor
 export interface EvolutionPopulationOptions {
   targetSlotIds?: readonly string[];
   protectedCopies?: boolean;
+  programOpportunities?: Readonly<Record<string, ProgramOpportunityInputs>>;
 }
 
 export function evolveManagerPopulation(competitors: readonly EvolutionCompetitor[], season: number, seed: string, historical: readonly EvolutionCompetitor[] = [], options: EvolutionPopulationOptions = {}): EvolutionDescendant[] {
@@ -169,7 +170,9 @@ export function evolveManagerPopulation(competitors: readonly EvolutionCompetito
     const second = crossover ? weightedPick(population.filter(entry => entry.lineage.lineageId !== parent.lineage.lineageId), entry => fitness.get(entry.slotId)!, `${seed}:${season}:mate:${slot.slotId}`) : undefined;
     const child = inheritProfile(parent.profile, second?.profile, slot.profile, `${seed}:${season}:child:${slot.slotId}`);
     const inherited = cloneManagerProfile(child);
-    const mutations = protectedCopy ? ["protected-elite-copy"] : mutateProfile(child, `${seed}:${season}:mutation:${slot.slotId}`);
+    const mutationSeed = `${seed}:${season}:mutation:${slot.slotId}`;
+    const programOpportunities = options.programOpportunities?.[slot.slotId];
+    const mutations = protectedCopy ? ["protected-elite-copy"] : mutateProfile(child, mutationSeed, programOpportunities);
     const parentIds = [parent.lineage.lineageId, ...(second ? [second.lineage.lineageId] : [])];
     const whiteBoxEvolutionTrace = buildWhiteBoxEvolutionTrace({
       eventId: `evolution:${season}:${slot.slotId}`,
@@ -179,12 +182,13 @@ export function evolveManagerPopulation(competitors: readonly EvolutionCompetito
       protectedCopy,
       ecologicalFitness: fitness.get(parent.slotId)!,
       crossoverSeed: `${seed}:${season}:cross:${slot.slotId}`,
-      mutationSeed: `${seed}:${season}:mutation:${slot.slotId}`,
+      mutationSeed,
       primaryParent: parent.profile,
       inherited,
       mutated: child,
       declaredMutations: mutations,
       programEvolution: /^(1|true|yes)$/i.test(process.env.V4_PROGRAM_EVOLUTION || "false"),
+      programOpportunities,
     });
     return {
       slotId: slot.slotId,
@@ -235,7 +239,7 @@ function inheritProfile(parent: ManagerProfile, second: ManagerProfile | undefin
   return child;
 }
 
-function mutateProfile(profile: ManagerProfile, seed: string): string[] {
+function mutateProfile(profile: ManagerProfile, seed: string, programOpportunities?: ProgramOpportunityInputs): string[] {
   const mutations: string[] = [];
   const genome = profile.genome ?? emptyGenome();
   for (const trait of TRAITS) if (unit(`${seed}:trait-gate:${trait}`) < .22) {
@@ -292,7 +296,7 @@ function mutateProfile(profile: ManagerProfile, seed: string): string[] {
   }
   profile.genome = genome;
   if (/^(1|true|yes)$/i.test(process.env.V4_PROGRAM_EVOLUTION || "false") && unit(`${seed}:program-gate`) < .7) {
-    const evolved = mutateStrategyProgram(profile.strategyProgram, `${seed}:program`, PROGRAM_INPUTS);
+    const evolved = mutateStrategyProgram(profile.strategyProgram, `${seed}:program`, PROGRAM_INPUTS, programOpportunities);
     profile.strategyProgram = evolved.program;
     mutations.push(evolved.mutation);
   }

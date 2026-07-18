@@ -54,6 +54,9 @@ const observedDistance = strategyProgramOpportunityDistance(noviceStrategyProgra
 assert(observedDistance.distance > 0);
 assert(observedDistance.choicePotential > 0);
 assert.equal(observedDistance.observedEntrypoints, 1);
+const boundary = mutateStrategyProgram(noviceStrategyProgram(), "observed-boundary-smoke", STRATEGY_PROGRAM_INPUTS.acquire, opportunitySnapshot.managers[0].entrypoints);
+assert.match(boundary.mutation, /^program\.acquire\.observed-boundary\./);
+assert(strategyProgramOpportunityDistance(noviceStrategyProgram(), boundary.program, opportunitySnapshot.managers[0]).choicePotential > 0);
 console.log("Typed strategy program smoke test passed");
 
 function inputKeys(value: any): string[] {

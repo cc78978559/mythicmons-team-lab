@@ -16,6 +16,7 @@ export interface StrategyProgram {
 
 export interface ProgramTrace {hash: string; entrypoint: ProgramEntrypoint; value: number; nodes: number; inputs: Record<string, number>}
 export interface ProgramBehaviorFingerprint {schemaVersion: 1; values: number[]; hash: string; nonZero: number; range: number}
+export type ProgramOpportunityInputs = Partial<Record<ProgramEntrypoint, {samples: Array<{inputs: Record<string, number>}>}>>;
 
 const ENTRYPOINTS: ProgramEntrypoint[] = ["acquire", "configure", "lineup", "battle", "learn"];
 const BINARY = ["add", "subtract", "multiply", "divide", "minimum", "maximum", "greater", "less"] as const;
@@ -61,14 +62,41 @@ export function evaluateStrategyProgram(program: StrategyProgram | undefined, en
   return {hash: strategyProgramHash(active), entrypoint, value, nodes: visited, inputs: {...inputs}};
 }
 
-export function mutateStrategyProgram(program: StrategyProgram | undefined, seed: string, availableInputs: readonly string[]): {program: StrategyProgram; mutation: string} {
+export function mutateStrategyProgram(program: StrategyProgram | undefined, seed: string, availableInputs: readonly string[], opportunities?: ProgramOpportunityInputs): {program: StrategyProgram; mutation: string} {
   const previousProgram = cloneStrategyProgram(program);
+  const boundary = mutateAtObservedBoundary(previousProgram, `${seed}:observed-boundary`, availableInputs, opportunities);
+  if (boundary && strategyProgramBehaviorDistance(previousProgram, boundary.program) > 1e-9) return boundary;
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const attemptSeed = `${seed}:attempt:${attempt}`;
     const result = mutateOnce(previousProgram, attemptSeed, availableInputs);
     if (strategyProgramBehaviorDistance(previousProgram, result.program) > 1e-9) return result;
   }
   return {program: previousProgram, mutation: `program.semantic-noop:${strategyProgramHash(previousProgram).slice(0, 10)}`};
+}
+
+function mutateAtObservedBoundary(program: StrategyProgram, seed: string, availableInputs: readonly string[], opportunities: ProgramOpportunityInputs | undefined): {program: StrategyProgram; mutation: string} | undefined {
+  const choices = ENTRYPOINTS.flatMap(entrypoint => {
+    const samples = opportunities?.[entrypoint]?.samples ?? [];
+    return STRATEGY_PROGRAM_INPUTS[entrypoint].filter(key => availableInputs.includes(key)).flatMap(key => {
+      const values = [...new Set(samples.map(sample => sample.inputs[key]).filter(value => Number.isFinite(value)).map(value => round(value!)))].sort((left, right) => left - right);
+      return values.length > 1 ? [{entrypoint, key, values}] : [];
+    });
+  });
+  if (!choices.length) return undefined;
+  const choice = choices[index(seed, "choice", choices.length)];
+  const gap = index(seed, "gap", choice.values.length - 1);
+  const threshold = round((choice.values[gap] + choice.values[gap + 1]) / 2);
+  const amplitude = [1, 2, 3, 4][index(seed, "amplitude", 4)];
+  const direction = unit(`${seed}:direction`) < .5 ? -1 : 1;
+  const previous = program.entrypoints[choice.entrypoint];
+  const condition: ProgramExpression = {op: "subtract", left: {op: "input", key: choice.key}, right: {op: "constant", value: threshold}};
+  const positive: ProgramExpression = {op: "add", left: previous, right: {op: "constant", value: amplitude * direction}};
+  const negative: ProgramExpression = {op: "subtract", left: previous, right: {op: "constant", value: amplitude * direction}};
+  const next = cloneStrategyProgram(program);
+  next.entrypoints[choice.entrypoint] = {op: "choose", condition, whenTrue: positive, whenFalse: negative};
+  if (countNodes(next.entrypoints[choice.entrypoint]) > next.limits.maxNodes || expressionDepth(next.entrypoints[choice.entrypoint]) > next.limits.maxDepth) return undefined;
+  validateStrategyProgram(next);
+  return {program: next, mutation: `program.${choice.entrypoint}.observed-boundary.${choice.key}@${threshold}:${direction > 0 ? "+" : "-"}${amplitude}`};
 }
 
 function mutateOnce(program: StrategyProgram, seed: string, availableInputs: readonly string[]): {program: StrategyProgram; mutation: string} {
@@ -128,5 +156,6 @@ function expressionDepth(expression: ProgramExpression): number { return express
 function cloneExpression<T extends ProgramExpression>(value: T): T { return JSON.parse(JSON.stringify(value)) as T; }
 function finite(value: number): number { return Number.isFinite(value) ? value : 0; }
 function bounded(value: number): number { return Math.max(-4, Math.min(4, finite(value))); }
+function round(value: number): number { return Math.round((value + Number.EPSILON) * 1e6) / 1e6; }
 function unit(seed: string): number { return Number.parseInt(crypto.createHash("sha256").update(seed).digest("hex").slice(0, 13), 16) / 0x10000000000000; }
 function index(seed: string, suffix: string, length: number): number { return Math.min(length - 1, Math.floor(unit(`${seed}:${suffix}`) * length)); }

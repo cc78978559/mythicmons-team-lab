@@ -109,7 +109,7 @@ export function runPunctuatedEvolution(input: {
   const candidatesByManager = new Map<string, EvolutionDescendant[]>();
 
   for (let index = 0; index < candidateCount; index += 1) {
-    const descendants = evolveManagerPopulation(competitors, input.season, `${input.seed}:burst-candidate:${index}`, input.historical ?? [], {targetSlotIds: selectedIds, protectedCopies: false});
+    const descendants = evolveManagerPopulation(competitors, input.season, `${input.seed}:burst-candidate:${index}`, input.historical ?? [], {targetSlotIds: selectedIds, protectedCopies: false, programOpportunities: Object.fromEntries(selectedIds.map(managerId => [managerId, input.programOpportunities?.[managerId]?.entrypoints ?? {}]))});
     for (const descendant of descendants) candidatesByManager.set(descendant.slotId, [...(candidatesByManager.get(descendant.slotId) ?? []), descendant]);
   }
 

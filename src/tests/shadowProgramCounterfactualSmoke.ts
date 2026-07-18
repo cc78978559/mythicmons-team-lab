@@ -28,6 +28,7 @@ try {
   assert(summary.isolatedDifference.behaviorDistance > 0);
   assert(summary.isolatedDifference.opportunityDistance > 0);
   assert(summary.isolatedDifference.choicePotential > 0);
+  assert(summary.isolatedDifference.operatorMutations.some((mutation: string) => mutation.startsWith("program.")));
   assert(summary.decisionEffects.programSignalsCompared >= summary.decisionEffects.programSignalDifferences);
   assert(summary.decisionEffects.battleCompared > 0);
   assert.notEqual(summary.isolatedDifference.parentProgramHash, summary.isolatedDifference.candidateProgramHash);
