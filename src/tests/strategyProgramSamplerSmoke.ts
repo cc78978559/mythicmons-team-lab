@@ -1,0 +1,48 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import {spawnSync} from "node:child_process";
+import {aggregateStrategyProgramEvolution, type StrategyProgramCounterfactualSample} from "../ai/whiteBox/strategyProgramAggregation";
+
+const positive = Array.from({length: 10}, (_, index) => sample(index, index < 8 ? 1 : -1));
+const supported = aggregateStrategyProgramEvolution(positive);
+assert.equal(supported.conclusion, "candidate-for-bounded-active-review");
+assert.equal(supported.metrics.betterSeeds, 8);
+assert.equal(supported.metrics.oneSidedImprovementP < .1, true);
+assert.equal(aggregateStrategyProgramEvolution(Array.from({length: 10}, (_, index) => sample(index, 0))).conclusion, "no-observed-effect");
+assert.equal(aggregateStrategyProgramEvolution(Array.from({length: 10}, (_, index) => sample(index, index < 8 ? -1 : 1))).conclusion, "reject-operator");
+
+const root = fs.mkdtempSync(path.join(os.tmpdir(), "strategy-program-sampler-"));
+try {
+  const out = path.join(root, "sample"), command = [require.resolve("tsx/cli"), path.join(process.cwd(), "src", "cli", "sampleStrategyProgramEvolution.ts"), "--run", "--out", out, "--target-samples", "1", "--minimum-seeds", "1", "--baseline-seasons", "2", "--seeds", "program-semantic-probe", "--managers", "6", "--pairs", "1", "--rounds", "1", "--max-turns", "20", "--retention", "audit-summary"];
+  run(command);
+  const interrupted = path.join(out, "seeds", "interrupted-seed"); fs.mkdirSync(interrupted, {recursive: true}); fs.writeFileSync(path.join(interrupted, "partial.txt"), "partial");
+  const interruptedManifest = read<any>(path.join(out, "strategy-program-sampler-manifest.json"));
+  interruptedManifest.seeds.push({seed: "interrupted-seed", status: "running", baseline: path.join(interrupted, "baseline"), completedSeasons: 0, candidates: 0, durationMs: 0});
+  fs.writeFileSync(path.join(out, "strategy-program-sampler-manifest.json"), `${JSON.stringify(interruptedManifest, null, 2)}\n`);
+  run(command);
+  const manifest = read<any>(path.join(out, "strategy-program-sampler-manifest.json")), summary = read<any>(path.join(out, "strategy-program-sampler-summary.json")), evidence = read<any>(path.join(out, "strategy-program-evidence.json"));
+  assert.equal(manifest.seeds.length, 1);
+  assert.equal(fs.existsSync(interrupted), false);
+  assert.equal(manifest.seeds[0].status, "complete");
+  assert.equal(summary.progress.complete, true);
+  assert.equal(summary.progress.samples, 1);
+  assert.equal(summary.failed, 0);
+  assert.equal(evidence.conclusion, "insufficient-evidence");
+  assert.equal(evidence.samples[0].seed, "program-semantic-probe");
+  assert.equal(evidence.samples[0].sourceVerified, true);
+  assert.equal(evidence.samples[0].prefixVerified, true);
+  assert(evidence.samples[0].behaviorDistance > 0);
+  assert(evidence.samples[0].decisionEffects.battleCompared > 0);
+  assert(manifest.seeds[0].retention.length >= 1);
+} finally {
+  fs.rmSync(root, {recursive: true, force: true});
+}
+console.log("Strategy-program evolution sampler smoke passed");
+
+function sample(index: number, direction: number): StrategyProgramCounterfactualSample {
+  return {seed: `seed-${index}`, managerId: `manager-${index}`, sourceSeason: 2, activationSeason: 3, sourceVerified: true, prefixVerified: true, parentProgramHash: `parent-${index}`, candidateProgramHash: `candidate-${index}`, behaviorDistance: .01 + index / 1000, decisionEffects: {ledgerCompared: 2, ledgerSelectionDifferences: direction ? 1 : 0, ledgerRecordSetDifferences: 0, programSignalsCompared: 2, programSignalDifferences: 1, battleCompared: 10, battleChoiceDifferences: 0, battleRecordSetDifferences: 0}, delta: {points: direction * 3, rankImprovement: direction, titles: 0, cash: direction}};
+}
+function read<T>(file: string): T { return JSON.parse(fs.readFileSync(file, "utf8")) as T; }
+function run(command: string[]): void { const result = spawnSync(process.execPath, command, {cwd: process.cwd(), encoding: "utf8", maxBuffer: 64 * 1024 * 1024}); if (result.status !== 0) throw new Error(result.stderr || result.stdout); }

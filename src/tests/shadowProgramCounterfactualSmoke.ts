@@ -23,7 +23,11 @@ try {
   const summary = read<any>(path.join(out, "counterfactual-summary.json"));
   assert.equal(summary.schemaVersion, 1);
   assert.equal(summary.prefixVerified, true);
+  assert.equal(summary.seed, "program-semantic-probe");
+  assert.equal(summary.sourceVerified, true);
   assert(summary.isolatedDifference.behaviorDistance > 0);
+  assert(summary.decisionEffects.programSignalsCompared >= summary.decisionEffects.programSignalDifferences);
+  assert(summary.decisionEffects.battleCompared > 0);
   assert.notEqual(summary.isolatedDifference.parentProgramHash, summary.isolatedDifference.candidateProgramHash);
   assert.equal(typeof summary.delta.points, "number");
   assert.equal(read<any>(path.join(out, "control", "dynasty-state.json")).managers.find((manager: any) => manager.id === summary.isolatedDifference.managerId).lineage.lineageId.startsWith("program-s"), false);

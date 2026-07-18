@@ -44,4 +44,29 @@ A four-season, six-manager forced-burst probe generated 48 cheap candidates:
 
 The first exact program-only continuation replaced one manager's zero program with a candidate at behavior distance `0.0125`. The full four-season prefix matched, both fifth-season branches completed, and points, rank, titles, and cash were unchanged. This validates the causal workflow only.
 
-No program is activated from this probe. Formal activation still requires a resumable cross-seed sampler, paired aggregation, sufficient outcome-changing seed clusters, and an explicit promotion review. V12 audit emits `program-behavior-collapse` when program evolution is enabled for at least three seasons but every active manager still has the same behavior fingerprint.
+No program is activated from this probe. Formal activation requires evidence from the cross-seed sampler below, sufficient outcome-changing seed clusters, and an explicit promotion review. V12 audit emits `program-behavior-collapse` when program evolution is enabled for at least three seasons but every active manager still has the same behavior fingerprint.
+
+## Cross-seed sampler
+
+`sample:strategy-program-evolution` implements that evidence loop locally. For each independent seed it advances a small shadow league one season at a time, stops at the first season containing semantic shadow winners, chooses one eligible manager by a seed hash rather than effect size, and runs the exact program-only counterfactual. A seed with no semantic winner inside the configured horizon is recorded as `no-candidate`, not as a failed or neutral experiment.
+
+```powershell
+npm run sample:strategy-program-evolution -- --run `
+  --out output/strategy-program-evidence `
+  --target-samples 10 `
+  --minimum-seeds 10
+```
+
+The manifest is saved before and after every seed. A process interrupted while a seed is `running` removes only that unverified seed directory and restarts it; validated seeds are never repeated. `--retry-failed` explicitly retries failed seeds. The default `audit-summary` retention removes battle, roster, career, and configuration bulk after the counterfactual summary is complete. A three-seed workflow probe removed `41.92 MB` and retained about `50.1 MB`.
+
+The counterfactual summary records three distinct effect layers before compaction:
+
+- program contribution values changed;
+- management selections changed, including record-set divergence;
+- battle choices changed, including post-divergence record-set changes.
+
+Full AI decision tracing is enabled only for the paired continuation season and immediately compacted. This distinguishes a program that executes without crossing a choice boundary from one that actually changes play, without requiring later review of turn-by-turn logs.
+
+The formal gate cannot be weakened below ten paired independent seeds by requesting a smaller workflow target. It also requires at least four outcome-changing pairs and four directional seed clusters, one-sided evidence at `p <= .1`, and non-negative mean points and titles. Passing produces only `candidate-for-bounded-active-review`; the sampler never edits production policy. Different seeds produce different programs, so this gate evaluates the bounded shadow-winner program operator, not a universal fixed strategy.
+
+The first three-seed telemetry probe found semantic winners in all three seeds and compared `372` target-manager battle choices. One program changed three recorded program-contribution values; none changed a management selection, battle choice, points, rank, title, or cash outcome. The result is `insufficient-evidence`, not activation evidence. This indicates that the next evolutionary improvement should reward opportunity-adjusted behavioral expression before spending the full formal sample budget; the sampler and its gate remain ready for that later hypothesis.
