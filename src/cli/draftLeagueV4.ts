@@ -13,6 +13,7 @@ import {auditLeagueSeason, type LeagueHealthSnapshot} from "../draft/leagueHealt
 import {updateQualityDiversityArchive, type QualityDiversityCandidate} from "../draft/qualityDiversity";
 import {chooseRfaOffer, matchingContract, releaseDeadMoney, taggedContract, waiverWinner, type ContractOffer, type SportsContract} from "../draft/sportsMarket";
 import {evaluateStrategyProgram, countProgramNodes, strategyProgramHash, validateStrategyProgram} from "../draft/strategyProgram";
+import {StrategyProgramOpportunityCollector, type ProgramOpportunitySnapshot} from "../draft/strategyProgramOpportunity";
 import {createRegistrySnapshot, loadRegistrySnapshot, type RegistrySnapshot} from "../draft/registrySnapshot";
 import {acquireRunLock} from "../draft/runLock";
 import {writeSeasonBrief} from "../draft/seasonBrief";
@@ -369,6 +370,8 @@ function runDynastySeason(season: number): void {
 
   ledger.add({stage: "calibration", actor: "system", decision: `启动王朝第${season}季`, selected: `${managerLimit}名经理`, context: {season, poolSize, auctionLots, pairs, keepers: managers.reduce((sum, manager) => sum + manager.contracts.length, 0)}, alternatives: [], rationale: ["所有经理使用相同学习规则，历史经验后验进入估值", "保留名单先占用预算，其余成员回到公共池", "同一系列赛完成双向换边后才进入赛后学习"]});
   runV3Season(season, seasonDir, profilePath, keeperPath, marketPath, budgetPath, assetPath);
+  const programOpportunityFile = path.join(seasonDir, "program-opportunities.json");
+  const programOpportunityCollector = StrategyProgramOpportunityCollector.read(programOpportunityFile);
 
   const seasonResult = readJson<SeasonResult>(path.join(seasonDir, "season.json"));
   if (stateVersion >= 12 && (!seasonResult.validity?.valid || seasonResult.validity.battleLineupSize !== 6)) throw new Error(`Season ${season} is not a valid V12 six-versus-six sample`);
@@ -394,7 +397,7 @@ function runDynastySeason(season: number): void {
     if (stateVersion >= 10) for (const released of previousContracts.filter(contract => !career.contracts.some(keeper => keeper.assetId === contract.assetId) && (contract.yearsRemaining ?? 0) > 0)) waiverQueue.push({formerManager: career, contract: released});
     career.cash = rosterFile.budget;
     career.currentProfile = materializeManagerProfile({...career.currentProfile, traits: {...review.after}, development: review.developmentAfter});
-    learnConfigurationPreferences(career, roster, standing, seasonResult.standings, season);
+    learnConfigurationPreferences(career, roster, standing, seasonResult.standings, season, programOpportunityCollector);
     learnOpponentMatchups(career, roster, seasonResult, seasonLedger);
     learnTacticalEpisodes(career, roster, seasonResult, seasonDir);
     updateMarket(roster);
@@ -413,7 +416,8 @@ function runDynastySeason(season: number): void {
     updateDynamicMarket(season, seasonLedger);
     settleClosedEconomy(season, seasonResult, startingBudgets, seasonDir);
   }
-  evolvePopulation(season, seasonResult, seasonDir, seasonLedger);
+  programOpportunityCollector.write(programOpportunityFile, season);
+  evolvePopulation(season, seasonResult, seasonDir, seasonLedger, programOpportunityCollector.snapshot(season));
   writeJson(path.join(seasonDir, "health.json"), auditLeagueSeason(seasonDir));
   if (stateVersion >= 10) writeFinancialHealth(seasonDir);
   syncAssetLedger(season, seasonDir);
@@ -423,7 +427,7 @@ function runDynastySeason(season: number): void {
   checkpoint(season);
 }
 
-function learnConfigurationPreferences(career: ManagerCareer, roster: DynastyRosterMember[], standing: DynastyStanding, standings: DynastyStanding[], season: number): void {
+function learnConfigurationPreferences(career: ManagerCareer, roster: DynastyRosterMember[], standing: DynastyStanding, standings: DynastyStanding[], season: number, opportunities: StrategyProgramOpportunityCollector): void {
   const memory = career.currentProfile.configurationMemory ?? {moves: {}, items: {}};
   const maxPoints = Math.max(1, ...standings.map(entry => entry.points));
   const teamResult = standing.points / maxPoints;
@@ -435,7 +439,8 @@ function learnConfigurationPreferences(career: ManagerCareer, roster: DynastyRos
       if (!observed?.uses) continue;
       const events = observed.damageEvents + observed.statusEvents + observed.healEvents + observed.boostEvents;
       const baseEvidence = evaluateConfigurationEvidence({kind: "move", teamResult, production, eventRate: events / observed.uses, koRate: observed.kos / observed.uses});
-      const programValue = stateVersion >= 12 ? evaluateStrategyProgram(career.currentProfile.strategyProgram, "learn", {baseline: baseEvidence.baseEvidence, usage: Math.min(1, observed.uses / 20), production, teamResult}).value : 0;
+      const learningInputs = {baseline: baseEvidence.baseEvidence, usage: Math.min(1, observed.uses / 20), production, teamResult};
+      const programValue = stateVersion >= 12 ? opportunities.evaluate(career.id, career.currentProfile.strategyProgram, "learn", learningInputs) : 0;
       const evidenceTrace = evaluateConfigurationEvidence({kind: "move", teamResult, production, eventRate: events / observed.uses, koRate: observed.kos / observed.uses, programValue});
       const posteriorTrace = evaluateConfigurationPosterior(id, memory.moves[id], evidenceTrace.evidence, Math.min(4, observed.uses));
       memory.moves[id] = {...posteriorTrace.after};
@@ -476,7 +481,7 @@ function activatePendingGeneration(season: number): void {
   }
 }
 
-function evolvePopulation(season: number, result: SeasonResult, seasonDir: string, decisions: readonly DecisionRecord[]): void {
+function evolvePopulation(season: number, result: SeasonResult, seasonDir: string, decisions: readonly DecisionRecord[], programOpportunities: ProgramOpportunitySnapshot): void {
   const competitors = managers.map(career => {
     const standing = result.standings.find(entry => entry.id === career.id)!;
     const seasonEntry = career.seasons.find(entry => entry.season === season)!;
@@ -495,6 +500,7 @@ function evolvePopulation(season: number, result: SeasonResult, seasonDir: strin
     season,
     seed,
     historical: evolutionArchive.map(entry => entry.payload),
+    programOpportunities: Object.fromEntries(programOpportunities.managers.map(manager => [manager.managerId, manager])),
     previousState: punctuatedEvolution,
     config: {environmentalShock: evolutionShock, maxBurstManagers: evolutionMaxBursts, minimumCandidates: evolutionMinCandidates, maximumCandidates: evolutionMaxCandidates},
   }) : undefined;
@@ -515,13 +521,15 @@ function evolvePopulation(season: number, result: SeasonResult, seasonDir: strin
     ledger.add({stage: "review", actor: "system", decision: `第${season}季间断式进化预算`, selected: `${punctuated.budget.retainedDescendants}名经理进入爆发期`, context: {season, mode: evolutionMode, budget: punctuated.budget, managers: punctuated.decisions.map(entry => ({managerId: entry.managerId, phase: entry.after.phase, pressure: entry.instantaneousPressure, reservoir: entry.after.pressureReservoir, triggerScore: entry.triggerScore, eligible: entry.eligible, selected: entry.selected, reasons: entry.reasons}))}, alternatives: [{option: "逐季全员繁殖"}], rationale: ["稳定期只积累可审计压力，不生成后代", "动态预算仅为达到阈值且不在巩固期的经理生成候选", "候选使用廉价白箱评分，完整存档只保留胜者"]});
   }
   writeJson(path.join(seasonDir, "evolution.json"), punctuated ? {schemaVersion: 2, season, mode: evolutionMode, policy: evolutionPolicy, applied: evolutionPolicy !== "shadow", budget: punctuated.budget, managers: punctuated.decisions.map(entry => ({...entry, before: entry.before, after: entry.after})), descendants: report} : {schemaVersion: 1, season, mode: evolutionMode, policy: "active", applied: true, descendants: report});
-  if (punctuated && evolutionPolicy === "shadow" && descendants.length) {
+  if (punctuated && evolutionPolicy === "shadow" && punctuated.programDescendants.length) {
     writeJson(path.join(seasonDir, "evolution-shadow-candidates.json"), {
       schemaVersion: 1,
       season,
       seed,
       registryHash: runtimeFingerprint.registryHash,
-      candidates: descendants.map(descendant => ({
+      candidates: punctuated.programDescendants.map(descendant => {
+        const evidence = punctuated.decisions.flatMap(decision => decision.candidates).find(candidate => candidate.lineageId === descendant.lineage.lineageId)!;
+        return {
         managerId: descendant.slotId,
         replacedLineageId: managers.find(manager => manager.id === descendant.slotId)!.lineage.lineageId,
         parentSlotId: descendant.parentSlotId,
@@ -530,7 +538,9 @@ function evolvePopulation(season: number, result: SeasonResult, seasonDir: strin
         lineage: descendant.lineage,
         ecologicalFitness: descendant.ecologicalFitness,
         programBehaviorDistance: descendant.programBehaviorDistance,
-      })),
+        programOpportunity: evidence.programOpportunity,
+      };
+      }),
     });
   }
 }

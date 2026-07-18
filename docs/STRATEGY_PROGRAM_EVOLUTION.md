@@ -69,4 +69,17 @@ Full AI decision tracing is enabled only for the paired continuation season and 
 
 The formal gate cannot be weakened below ten paired independent seeds by requesting a smaller workflow target. It also requires at least four outcome-changing pairs and four directional seed clusters, one-sided evidence at `p <= .1`, and non-negative mean points and titles. Passing produces only `candidate-for-bounded-active-review`; the sampler never edits production policy. Different seeds produce different programs, so this gate evaluates the bounded shadow-winner program operator, not a universal fixed strategy.
 
-The first three-seed telemetry probe found semantic winners in all three seeds and compared `372` target-manager battle choices. One program changed three recorded program-contribution values; none changed a management selection, battle choice, points, rank, title, or cash outcome. The result is `insufficient-evidence`, not activation evidence. This indicates that the next evolutionary improvement should reward opportunity-adjusted behavioral expression before spending the full formal sample budget; the sampler and its gate remain ready for that later hypothesis.
+The first three-seed telemetry probe found semantic winners in all three seeds and compared `372` target-manager battle choices. One program changed three recorded program-contribution values; none changed a management selection, battle choice, points, rank, title, or cash outcome. The result was `insufficient-evidence`, not activation evidence.
+
+## Opportunity-adjusted expression
+
+The league now records bounded real-context opportunities for acquisition, configuration, lineup, battle, and learning programs. Each manager-entrypoint pair retains at most 24 deterministic min-hash input samples plus its total observation count. This avoids both an artificial hand-written target style and unbounded candidate logs. A six-manager season uses about `130 KB`; a linear 30-manager, nine-season estimate is about `5.8 MB`.
+
+Punctuated evolution keeps two separate winners from the same cheap candidate population:
+
+- the complete descendant winner remains selected by ecological fitness, bounded mutation novelty, and fixed-probe program behavior;
+- the program-only shadow winner is selected by historical choice-boundary potential, then real-context expression distance and ecological fitness.
+
+Choice-boundary potential is direction-free. Acquisition, configuration, and lineup programs are scored by pairwise ordering changes over retained real contexts. Battle programs use the magnitude of tactical-parameter change, while learning programs use variation in evidence adjustment. A monotonic program such as `new score = old score * 1.15` can have a large numerical distance but zero ordering potential and is excluded from the program-only shadow package.
+
+On the same three seeds, opportunity distance first raised observed program-signal changes from `1/3` to `3/3`, but all selected programs merely scaled acquisition baselines. Adding choice-boundary filtering replaced them with speed, roster-size, and learning-evidence programs with predicted historical choice potential of about `0.34%` to `0.50%`. Two of three changed recorded program signals, but none changed a realized management or battle choice in the next season. The new hypothesis is therefore named `opportunity-boundary-program-operator-v1`; older samples cannot be mixed into it. Production remains shadow, and the formal ten-seed budget should wait until realized decision divergence becomes materially observable.

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import {evolveManagerPopulation, type EvolutionCompetitor, type EvolutionDescendant} from "./naturalEvolution";
 import {countProgramNodes, strategyProgramBehavior, strategyProgramHash} from "./strategyProgram";
+import {strategyProgramOpportunityDistance, type ManagerProgramOpportunities, type ProgramOpportunityDistance} from "./strategyProgramOpportunity";
 
 export type EvolutionPhase = "stable" | "pressure" | "burst" | "consolidating";
 
@@ -37,6 +38,8 @@ export interface EvolutionCandidateSummary {
   programNodes: number;
   programBehaviorHash: string;
   programBehaviorDistance: number;
+  programOpportunity: ProgramOpportunityDistance;
+  programSelected: boolean;
   score: number;
   selected: boolean;
 }
@@ -64,10 +67,12 @@ export interface PunctuatedEvolutionResult {
     candidateCount: number;
     cheapEvaluations: number;
     retainedDescendants: number;
+    retainedProgramCandidates: number;
   };
   state: Record<string, ManagerEvolutionState>;
   decisions: ManagerEvolutionDecision[];
   descendants: EvolutionDescendant[];
+  programDescendants: EvolutionDescendant[];
 }
 
 export const DEFAULT_PUNCTUATED_EVOLUTION_CONFIG: PunctuatedEvolutionConfig = {
@@ -87,6 +92,7 @@ export function runPunctuatedEvolution(input: {
   seed: string;
   historical?: readonly EvolutionCompetitor[];
   previousState?: Readonly<Record<string, ManagerEvolutionState>>;
+  programOpportunities?: Readonly<Record<string, ManagerProgramOpportunities>>;
   config?: Partial<PunctuatedEvolutionConfig>;
 }): PunctuatedEvolutionResult {
   const config = normalizeConfig(input.config);
@@ -107,11 +113,14 @@ export function runPunctuatedEvolution(input: {
     for (const descendant of descendants) candidatesByManager.set(descendant.slotId, [...(candidatesByManager.get(descendant.slotId) ?? []), descendant]);
   }
 
-  const winners: EvolutionDescendant[] = [];
+  const winners: EvolutionDescendant[] = [], programWinners: EvolutionDescendant[] = [];
   const decisions = provisional.map(decision => {
     const isSelected = selected.has(decision.managerId);
-    const candidates = (candidatesByManager.get(decision.managerId) ?? []).map(descendant => ({descendant, score: candidateScore(descendant)})).sort((a, b) => b.score - a.score || a.descendant.lineage.lineageId.localeCompare(b.descendant.lineage.lineageId));
+    const incumbent = competitors.find(entry => entry.slotId === decision.managerId)!;
+    const candidates = (candidatesByManager.get(decision.managerId) ?? []).map(descendant => ({descendant, score: candidateScore(descendant), programOpportunity: strategyProgramOpportunityDistance(incumbent.profile.strategyProgram, descendant.profile.strategyProgram, input.programOpportunities?.[decision.managerId])})).sort((a, b) => b.score - a.score || a.descendant.lineage.lineageId.localeCompare(b.descendant.lineage.lineageId));
+    const programCandidate = [...candidates].filter(candidate => candidate.programOpportunity.choicePotential > 0 && strategyProgramHash(candidate.descendant.profile.strategyProgram!) !== strategyProgramHash(incumbent.profile.strategyProgram!)).sort((left, right) => programCandidateScore(right) - programCandidateScore(left) || left.descendant.lineage.lineageId.localeCompare(right.descendant.lineage.lineageId))[0];
     if (isSelected && candidates[0]) winners.push(candidates[0].descendant);
+    if (isSelected && programCandidate) programWinners.push(programCandidate.descendant);
     const reasons = isSelected ? [...decision.reasons, `dynamic-budget-selected:${burstSlots}`] : decision.reasons;
     const after: ManagerEvolutionState = isSelected
       ? {...decision.after, phase: "burst", pressureReservoir: 0, stableSeasons: 0, lastBurstSeason: input.season, cooldownUntilSeason: input.season + config.cooldownSeasons, burstCount: decision.after.burstCount + 1, lastTriggerReasons: reasons}
@@ -133,6 +142,8 @@ export function runPunctuatedEvolution(input: {
           programNodes: countProgramNodes(candidate.descendant.profile.strategyProgram!),
           programBehaviorHash: behavior.hash,
           programBehaviorDistance: candidate.descendant.programBehaviorDistance,
+          programOpportunity: candidate.programOpportunity,
+          programSelected: isSelected && candidate.descendant.lineage.lineageId === programCandidate?.descendant.lineage.lineageId,
           score: candidate.score,
           selected: index === 0 && isSelected,
         };
@@ -144,10 +155,11 @@ export function runPunctuatedEvolution(input: {
     schemaVersion: 1,
     mode: "punctuated",
     season: input.season,
-    budget: {globalPressure, environmentalShock: config.environmentalShock, burstSlots, candidateCount, cheapEvaluations: burstSlots * candidateCount, retainedDescendants: winners.length},
+    budget: {globalPressure, environmentalShock: config.environmentalShock, burstSlots, candidateCount, cheapEvaluations: burstSlots * candidateCount, retainedDescendants: winners.length, retainedProgramCandidates: programWinners.length},
     state: Object.fromEntries(decisions.map(entry => [entry.managerId, entry.after])),
     decisions,
     descendants: winners,
+    programDescendants: programWinners,
   };
 }
 
@@ -191,6 +203,7 @@ function candidateScore(descendant: EvolutionDescendant): number {
   const instability = Math.max(0, mutationCount - 7) / 10;
   return descendant.ecologicalFitness * .78 + usefulNovelty * .12 + descendant.programBehaviorDistance * .1 - instability;
 }
+function programCandidateScore(candidate: {descendant: EvolutionDescendant; programOpportunity: ProgramOpportunityDistance}): number { return candidate.programOpportunity.choicePotential * .8 + candidate.programOpportunity.distance * .1 + candidate.descendant.ecologicalFitness * .1; }
 
 function initialState(managerId: string): ManagerEvolutionState {
   return {managerId, phase: "stable", pressure: 0, pressureReservoir: 0, stableSeasons: 0, lastBurstSeason: null, cooldownUntilSeason: 0, burstCount: 0, lastTriggerReasons: []};

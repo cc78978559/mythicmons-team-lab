@@ -11,6 +11,7 @@ import {
   strategyProgramHash,
   validateStrategyProgram,
 } from "../draft/strategyProgram";
+import {StrategyProgramOpportunityCollector, strategyProgramOpportunityDistance} from "../draft/strategyProgramOpportunity";
 
 const inputs = ["price", "power", "need", "coverage", "evidence"];
 const noviceA = noviceStrategyProgram();
@@ -43,6 +44,16 @@ assert(trace.nodes <= crossed.limits.maxNodes);
 const invalid = noviceStrategyProgram();
 invalid.limits.maxNodes = 2;
 assert.throws(() => validateStrategyProgram(invalid), /Invalid strategy program envelope/);
+const opportunities = new StrategyProgramOpportunityCollector();
+for (let index = 0; index < 40; index += 1) opportunities.record("manager-01", "acquire", {baseline: index / 400, price: index % 2, strength: .5});
+const opportunitySnapshot = opportunities.snapshot(1), acquire = opportunitySnapshot.managers[0].entrypoints.acquire!;
+assert.equal(acquire.observations, 40);
+assert.equal(acquire.samples.length, 24);
+const expressive = noviceStrategyProgram(); expressive.entrypoints.acquire = {op: "input", key: "price"};
+const observedDistance = strategyProgramOpportunityDistance(noviceStrategyProgram(), expressive, opportunitySnapshot.managers[0]);
+assert(observedDistance.distance > 0);
+assert(observedDistance.choicePotential > 0);
+assert.equal(observedDistance.observedEntrypoints, 1);
 console.log("Typed strategy program smoke test passed");
 
 function inputKeys(value: any): string[] {

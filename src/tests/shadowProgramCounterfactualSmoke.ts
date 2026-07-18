@@ -16,7 +16,7 @@ try {
   assert.equal(league.status, 0, league.stderr || league.stdout);
   const candidatePackage = read<any>(path.join(source, "season-02", "evolution-shadow-candidates.json"));
   assert.equal(candidatePackage.schemaVersion, 1);
-  assert(candidatePackage.candidates.some((candidate: any) => candidate.programBehaviorDistance > 0 && candidate.profile?.strategyProgram));
+  assert(candidatePackage.candidates.some((candidate: any) => candidate.programBehaviorDistance > 0 && candidate.programOpportunity?.distance > 0 && candidate.profile?.strategyProgram));
 
   const experiment = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "counterfactualShadowProgram.ts"), "--source", source, "--out", out], {cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024});
   assert.equal(experiment.status, 0, experiment.stderr || experiment.stdout);
@@ -26,6 +26,8 @@ try {
   assert.equal(summary.seed, "program-semantic-probe");
   assert.equal(summary.sourceVerified, true);
   assert(summary.isolatedDifference.behaviorDistance > 0);
+  assert(summary.isolatedDifference.opportunityDistance > 0);
+  assert(summary.isolatedDifference.choicePotential > 0);
   assert(summary.decisionEffects.programSignalsCompared >= summary.decisionEffects.programSignalDifferences);
   assert(summary.decisionEffects.battleCompared > 0);
   assert.notEqual(summary.isolatedDifference.parentProgramHash, summary.isolatedDifference.candidateProgramHash);

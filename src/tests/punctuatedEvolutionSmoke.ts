@@ -4,6 +4,7 @@ import {founderLineage, type EvolutionCompetitor} from "../draft/naturalEvolutio
 import {runPunctuatedEvolution} from "../draft/punctuatedEvolution";
 
 const profiles = createNoviceProfiles(6);
+const programOpportunities = Object.fromEntries(profiles.map(profile => [profile.id, {managerId: profile.id, entrypoints: {acquire: {observations: 20, samples: [{hash: "a", inputs: {baseline: .4, strength: .7, price: .5, roleBreadth: .3, speed: .6, bulk: .5, rosterSize: .8}}]}, configure: {observations: 20, samples: [{hash: "b", inputs: {baseline: .4, strength: .7, accuracy: .9, speed: .6, bulk: .5, roleBreadth: .3}}]}, lineup: {observations: 10, samples: [{hash: "c", inputs: {baseline: .7, strength: .7, roleBreadth: .5, rosterSize: 1, opponentPressure: .7}}]}, battle: {observations: 10, samples: [{hash: "d", inputs: {baseline: 0, strength: .7, opponentPressure: .7, rosterSize: 1, tacticalConfidence: .2, historicalWinRate: .5, opponentLeadConcentration: .3, opponentSwitchRate: .2}}]}, learn: {observations: 10, samples: [{hash: "e", inputs: {baseline: .5, usage: .4, production: .3, teamResult: .5}}]}}}]));
 const competitors: EvolutionCompetitor[] = profiles.map((profile, index) => ({
   slotId: profile.id,
   profile,
@@ -40,8 +41,13 @@ for (let season = 3; season <= 5; season += 1) {
   state = result.state;
 }
 
-const shocked = runPunctuatedEvolution({competitors, season: 2, seed: "punctuated-shock", previousState: season1.state, config: {environmentalShock: 1, maxBurstManagers: 2}});
+const previousProgramEvolution = process.env.V4_PROGRAM_EVOLUTION; process.env.V4_PROGRAM_EVOLUTION = "true";
+const shocked = runPunctuatedEvolution({competitors, season: 2, seed: "punctuated-shock", previousState: season1.state, programOpportunities, config: {environmentalShock: 1, maxBurstManagers: 2, minimumCandidates: 16, maximumCandidates: 16}});
+if (previousProgramEvolution === undefined) delete process.env.V4_PROGRAM_EVOLUTION; else process.env.V4_PROGRAM_EVOLUTION = previousProgramEvolution;
 assert.equal(shocked.budget.burstSlots, 2);
-assert.equal(shocked.budget.candidateCount, 8);
+assert.equal(shocked.budget.candidateCount, 16);
 assert.equal(shocked.descendants.length, 2);
+assert(shocked.programDescendants.length > 0);
+assert.equal(shocked.budget.retainedProgramCandidates, shocked.programDescendants.length);
+assert(shocked.decisions.flatMap(decision => decision.candidates).filter(candidate => candidate.programSelected).every(candidate => candidate.programOpportunity.choicePotential > 0));
 console.log("Punctuated evolution smoke passed: accumulation, dynamic budget, deterministic candidates, cooldown, and shock response");

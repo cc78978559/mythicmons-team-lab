@@ -17,7 +17,7 @@ interface Manifest {
 interface CandidatePackage {candidates?: Array<{managerId: string; programBehaviorDistance: number}>}
 interface CounterfactualSummary {
   schemaVersion: 1; seed: string; sourceVerified: boolean; sourceSeason: number; activationSeason: number; prefixVerified: boolean;
-  isolatedDifference: {managerId: string; parentProgramHash: string; candidateProgramHash: string; behaviorDistance: number};
+  isolatedDifference: {managerId: string; parentProgramHash: string; candidateProgramHash: string; behaviorDistance: number; opportunityDistance: number | null; choicePotential: number | null};
   decisionEffects: StrategyProgramCounterfactualSample["decisionEffects"];
   delta: {points: number; rankImprovement: number; titles: number; cash: number};
 }
@@ -63,7 +63,7 @@ if (args.includes("--run")) for (const seed of candidateSeeds) {
     }
     run([path.join(root, "src", "cli", "counterfactualShadowProgram.ts"), "--source", baseline, "--out", experiment, "--manager", candidate.managerId], process.env, `Counterfactual ${seed}`);
     const result = read<CounterfactualSummary>(path.join(experiment, "counterfactual-summary.json"));
-    if (result.seed !== seed || result.isolatedDifference.managerId !== candidate.managerId || result.isolatedDifference.behaviorDistance <= 0) throw new Error("Counterfactual summary does not match the selected semantic candidate");
+    if (result.seed !== seed || result.isolatedDifference.managerId !== candidate.managerId || result.isolatedDifference.behaviorDistance <= 0 || result.isolatedDifference.opportunityDistance === null || result.isolatedDifference.choicePotential === null) throw new Error("Counterfactual summary does not match the selected opportunity-adjusted candidate");
     const compacted = compact([baseline, path.join(experiment, "experiment"), path.join(experiment, "control")]);
     finish({seed, status: "complete", baseline, experiment, completedSeasons: result.sourceSeason, candidates: candidate.count, managerId: candidate.managerId, durationMs: Date.now() - started, retention: compacted});
     process.stdout.write(`strategy-program ${seed}: paired season complete for ${candidate.managerId}\n`);
@@ -102,7 +102,8 @@ function runSeason(seed: string, baseline: string, season: number): void {
 function loadSamples(): StrategyProgramCounterfactualSample[] {
   return manifest.seeds.filter(entry => entry.status === "complete" && entry.experiment).map(entry => {
     const value = read<CounterfactualSummary>(path.join(entry.experiment!, "counterfactual-summary.json"));
-    return {seed: value.seed, managerId: value.isolatedDifference.managerId, sourceSeason: value.sourceSeason, activationSeason: value.activationSeason, sourceVerified: value.sourceVerified, prefixVerified: value.prefixVerified, parentProgramHash: value.isolatedDifference.parentProgramHash, candidateProgramHash: value.isolatedDifference.candidateProgramHash, behaviorDistance: value.isolatedDifference.behaviorDistance, decisionEffects: value.decisionEffects, delta: value.delta};
+    if (value.isolatedDifference.opportunityDistance === null || value.isolatedDifference.choicePotential === null) throw new Error(`Sample ${value.seed} predates opportunity-adjusted evidence; use a new sampler output`);
+    return {seed: value.seed, managerId: value.isolatedDifference.managerId, sourceSeason: value.sourceSeason, activationSeason: value.activationSeason, sourceVerified: value.sourceVerified, prefixVerified: value.prefixVerified, parentProgramHash: value.isolatedDifference.parentProgramHash, candidateProgramHash: value.isolatedDifference.candidateProgramHash, behaviorDistance: value.isolatedDifference.behaviorDistance, opportunityDistance: value.isolatedDifference.opportunityDistance, choicePotential: value.isolatedDifference.choicePotential, decisionEffects: value.decisionEffects, delta: value.delta};
   });
 }
 function compact(directories: string[]): WhiteBoxRetentionTrace[] { if (retention === "full") return []; return directories.filter(directory => fs.existsSync(path.join(directory, "dynasty-state.json"))).map(directory => compactWhiteBoxRun(directory)); }

@@ -19,6 +19,7 @@ import {solvePortfolioAuction, type PortfolioBid} from "../draft/portfolioAuctio
 import {tradeAcceptable, waiverWinner} from "../draft/sportsMarket";
 import {assertBattleLineup, chooseK} from "../draft/lineups";
 import {evaluateStrategyProgram, strategyProgramHash} from "../draft/strategyProgram";
+import {StrategyProgramOpportunityCollector} from "../draft/strategyProgramOpportunity";
 import {analyzeConfigurationTelemetry, emptyConfigurationEvidence, mergeConfigurationEvidence, type MemberConfigurationEvidence} from "../draft/configurationTelemetry";
 import {acquireRunLock} from "../draft/runLock";
 import {tacticalFamilyValue, tacticalOpponentModel, tacticalSignals} from "../draft/tacticalMemory";
@@ -102,6 +103,7 @@ const separatePayroll = /^(1|true|yes)$/i.test(process.env.V3_SEPARATE_PAYROLL |
 const sportsMarket = /^(1|true|yes)$/i.test(process.env.V3_SPORTS_MARKET || "false");
 const dualLayer = /^(1|true|yes)$/i.test(process.env.V3_DUAL_LAYER || "false");
 const programEvolution = /^(1|true|yes)$/i.test(process.env.V3_PROGRAM_EVOLUTION || "false");
+const programOpportunities = new StrategyProgramOpportunityCollector();
 const compactOutput = /^(1|true|yes)$/i.test(process.env.V3_COMPACT_OUTPUT || "false");
 const tacticalMemoryConfidenceFloor = Number(process.env.V3_TACTICAL_MEMORY_CONFIDENCE_FLOOR || .15);
 const tacticalMemoryBehaviorPolicy = process.env.V3_TACTICAL_MEMORY_BEHAVIOR_POLICY || "cumulative";
@@ -474,7 +476,7 @@ function configureOfficialSet(speciesName: string, profile: ManagerProfile | und
     const utility = move.category === "Status" ? genericStatusValue * (1 + statusBias) : move.basePower * stab * categoryFit + Math.max(0, move.priority) * 20;
     const learned = configurationPosterior(profile, "moves", move.id);
     const exploration = profile ? boundedDraftJitter(seed, `${profile.id}:configure:${species.id}:${move.id}`, seasonNumber) * profile.learning.exploration * 18 : 0;
-    const programAdjustment = profile && programEvolution ? evaluateStrategyProgram(profile.strategyProgram, "configure", {baseline: utility / 150, strength: move.basePower / 150, accuracy: accuracy / 100, speed: species.baseStats.spe / 200, bulk: (species.baseStats.hp + species.baseStats.def + species.baseStats.spd) / 500, roleBreadth: move.category === "Status" ? 1 : 0}).value * 8 : 0;
+    const programAdjustment = profile && programEvolution ? observedProgram(profile.id, profile.strategyProgram, "configure", {baseline: utility / 150, strength: move.basePower / 150, accuracy: accuracy / 100, speed: species.baseStats.spe / 200, bulk: (species.baseStats.hp + species.baseStats.def + species.baseStats.spd) / 500, roleBreadth: move.category === "Status" ? 1 : 0}) * 8 : 0;
     return {move, score: utility * (1 - Math.max(0, 100 - accuracy) / 180 * (1 - accuracyRisk)) * learned + exploration + programAdjustment + poolTie(`set:${profile?.id ?? "baseline"}:${species.id}:${move.id}`) / 1e9};
   }).sort((a, b) => b.score - a.score);
   const selected: typeof scored = [];
@@ -825,7 +827,7 @@ function managerValue(manager: Manager, candidate: Candidate, dex: ReturnType<ty
   const counts = countRoles(manager.roster.map(entry => entry.candidate));
   const roleFit = roleTargetValue(manager, counts, candidate.roles, manager.roster.length);
   const baseline = common * .7 + personal * 1.8 + roleFit * .35 + systemFit(manager, candidate) * .3;
-  const programAdjustment = programEvolution ? evaluateStrategyProgram(manager.strategyProgram, "acquire", {baseline, strength: candidate.strength / 300, price: candidate.market / 30, roleBreadth: candidate.roles.size / 10, speed: candidate.stats.spe / 200, bulk: (candidate.stats.hp + candidate.stats.def + candidate.stats.spd) / 500, rosterSize: manager.roster.length / maximumRosterSize}).value * .15 : 0;
+  const programAdjustment = programEvolution ? observedProgram(manager.id, manager.strategyProgram, "acquire", {baseline, strength: candidate.strength / 300, price: candidate.market / 30, roleBreadth: candidate.roles.size / 10, speed: candidate.stats.spe / 200, bulk: (candidate.stats.hp + candidate.stats.def + candidate.stats.spd) / 500, rosterSize: manager.roster.length / maximumRosterSize}) * .15 : 0;
   return baseline + programAdjustment;
 }
 
@@ -851,7 +853,7 @@ function acquisitionWhiteBoxCandidate(
   const systems = systemFit(manager, candidate);
   const personal = synergy * traitWeights.synergy + counter * traitWeights.counter + flexibility * traitWeights.flexibility + value * traitWeights.value + star * traitWeights.stars + risk * traitWeights.risk;
   const baseline = commonStrength * .7 + personal * 1.8 + roleFit * .35 + systems * .3;
-  const programAdjustment = programEvolution ? evaluateStrategyProgram(manager.strategyProgram, "acquire", {baseline, strength: candidate.strength / 300, price: candidate.market / 30, roleBreadth: candidate.roles.size / 10, speed: candidate.stats.spe / 200, bulk: (candidate.stats.hp + candidate.stats.def + candidate.stats.spd) / 500, rosterSize: manager.roster.length / maximumRosterSize}).value * .15 : 0;
+  const programAdjustment = programEvolution ? observedProgram(manager.id, manager.strategyProgram, "acquire", {baseline, strength: candidate.strength / 300, price: candidate.market / 30, roleBreadth: candidate.roles.size / 10, speed: candidate.stats.spe / 200, bulk: (candidate.stats.hp + candidate.stats.def + candidate.stats.spd) / 500, rosterSize: manager.roster.length / maximumRosterSize}) * .15 : 0;
   return buildAcquisitionWhiteBoxCandidate({id: candidate.id, commonStrength, roleFit, synergy, counter, flexibility, value, star, risk, traitWeights, systemFit: systems, programAdjustment, ...extras});
 }
 
@@ -1251,6 +1253,7 @@ function resolveAcquisitionOutcomes(champion: {id: string}): void {
 
 function finish(season: unknown): void {
   ledger.write(outDir);
+  programOpportunities.write(path.join(outDir, "program-opportunities.json"), seasonNumber);
   const documented = typeof season === "object" && season !== null
     ? {...season, registry: {hash: registryHash, namespace: registryNamespace || "default"}}
     : season;
@@ -1259,6 +1262,8 @@ function finish(season: unknown): void {
   fs.writeFileSync(path.join(outDir, "decision-story.md"), decisionStory(season), "utf8");
   console.log(JSON.stringify({dryRun, season: seasonNumber, managers: managers.length, rostered: managers.reduce((sum, manager) => sum + manager.roster.length, 0), decisions: ledger.all().length, output: outDir}, null, 2));
 }
+
+function observedProgram(managerId: string, program: Parameters<typeof evaluateStrategyProgram>[0], entrypoint: Parameters<typeof evaluateStrategyProgram>[1], inputs: Record<string, number>): number { return programOpportunities.evaluate(managerId, program, entrypoint, inputs); }
 
 function writePool(pool: Candidate[]): void {
   fs.writeFileSync(path.join(outDir, "season-pool.json"), `${JSON.stringify(pool.map(candidate => ({id: candidate.id, assetId: candidate.assetId, family: candidate.family, name: candidate.name, source: candidate.source, scarcity: candidate.scarcity, economicClass: candidate.economicClass, debutGeneration: candidate.debutGeneration, configurationSource: candidate.configurationSource, supplyCap: candidate.supplyCap, tier: candidate.tier, strength: candidate.strength, market: candidate.market, roles: [...candidate.roles]})), null, 2)}\n`, "utf8");
@@ -1371,7 +1376,7 @@ function lineupValue(manager: Manager, lineup: Candidate[], opponentManager: Man
     const moveTypes = candidate.set.moves.map(move => dex.moves.get(move)).filter(move => move.category !== "Status").map(move => move.type);
     score += opponent.filter(target => moveTypes.some(type => dex.getEffectiveness(type, target.types) > 0)).length * (.02 + manager.traits.counter * .035);
   }
-  if (programEvolution) score += evaluateStrategyProgram(manager.strategyProgram, "lineup", {baseline: score / 10, strength: lineup.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800, roleBreadth: roles.size / 10, rosterSize: manager.roster.length / maximumRosterSize, opponentPressure: opponent.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800}).value * .2;
+  if (programEvolution) score += observedProgram(manager.id, manager.strategyProgram, "lineup", {baseline: score / 10, strength: lineup.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800, roleBreadth: roles.size / 10, rosterSize: manager.roster.length / maximumRosterSize, opponentPressure: opponent.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800}) * .2;
   return score;
 }
 
@@ -1426,7 +1431,7 @@ function lineupWhiteBoxCandidate(manager: Manager, lineup: Candidate[], opponent
   const base = buildLineupWhiteBoxCandidate(input);
   const baseline = whiteBoxCandidateTotal(base);
   const programAdjustment = programEvolution
-    ? evaluateStrategyProgram(manager.strategyProgram, "lineup", {baseline: baseline / 10, strength: lineup.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800, roleBreadth: new Set(lineup.flatMap(candidate => [...candidate.roles])).size / 10, rosterSize: manager.roster.length / maximumRosterSize, opponentPressure: opponent.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800}).value * .2
+    ? observedProgram(manager.id, manager.strategyProgram, "lineup", {baseline: baseline / 10, strength: lineup.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800, roleBreadth: new Set(lineup.flatMap(candidate => [...candidate.roles])).size / 10, rosterSize: manager.roster.length / maximumRosterSize, opponentPressure: opponent.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800}) * .2
     : 0;
   return buildLineupWhiteBoxCandidate({...input, programAdjustment});
 }
@@ -1438,7 +1443,7 @@ function lineupCandidateId(lineup: Candidate[]): string {
 function programTactics(manager: Manager, opponent: Manager): Manager["tactics"] {
   if (!programEvolution) return manager.tactics;
   const memory = tacticalSignals(manager.tacticalMemory, opponent.id);
-  const value = evaluateStrategyProgram(manager.strategyProgram, "battle", {baseline: 0, strength: manager.roster.reduce((sum, entry) => sum + entry.candidate.strength, 0) / 2400, opponentPressure: opponent.roster.reduce((sum, entry) => sum + entry.candidate.strength, 0) / 2400, rosterSize: manager.roster.length / maximumRosterSize, tacticalConfidence: memory.confidence, historicalWinRate: memory.historicalWinRate, opponentLeadConcentration: memory.opponentLeadConcentration, opponentSwitchRate: memory.opponentSwitchRate}).value;
+  const value = observedProgram(manager.id, manager.strategyProgram, "battle", {baseline: 0, strength: manager.roster.reduce((sum, entry) => sum + entry.candidate.strength, 0) / 2400, opponentPressure: opponent.roster.reduce((sum, entry) => sum + entry.candidate.strength, 0) / 2400, rosterSize: manager.roster.length / maximumRosterSize, tacticalConfidence: memory.confidence, historicalWinRate: memory.historicalWinRate, opponentLeadConcentration: memory.opponentLeadConcentration, opponentSwitchRate: memory.opponentSwitchRate});
   return {...manager.tactics, aggression: clampBiasValue(manager.tactics.aggression + value * .15), setupBias: clampBiasValue(manager.tactics.setupBias + value * .08), switchBias: clampBiasValue(manager.tactics.switchBias - value * .08)};
 }
 

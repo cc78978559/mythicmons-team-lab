@@ -10,6 +10,8 @@ export interface StrategyProgramCounterfactualSample {
   parentProgramHash: string;
   candidateProgramHash: string;
   behaviorDistance: number;
+  opportunityDistance: number;
+  choicePotential: number;
   decisionEffects: {ledgerCompared: number; ledgerSelectionDifferences: number; ledgerRecordSetDifferences: number; programSignalsCompared: number; programSignalDifferences: number; battleCompared: number; battleChoiceDifferences: number; battleRecordSetDifferences: number};
   delta: {points: number; rankImprovement: number; titles: number; cash: number};
 }
@@ -17,13 +19,13 @@ export interface StrategyProgramCounterfactualSample {
 export interface StrategyProgramEvolutionAggregate {
   schemaVersion: 1;
   conclusion: StrategyProgramEvolutionConclusion;
-  hypothesis: "shadow-winner-program-operator-v1";
+  hypothesis: "opportunity-boundary-program-operator-v1";
   thresholds: {minimumSamples: number; minimumSeeds: number; minimumDecisivePairs: number; minimumDecisiveSeeds: number; maximumOneSidedP: number};
   metrics: {
     samples: number; seeds: number; better: number; neutral: number; worse: number; decisivePairs: number;
     betterSeeds: number; neutralSeeds: number; worseSeeds: number; decisiveSeeds: number;
     pairedWinRate: number; meanPointsDelta: number; meanRankImprovement: number; meanTitlesDelta: number; meanCashDelta: number;
-    meanBehaviorDistance: number; samplesWithProgramSignalDifference: number; samplesWithDecisionDifference: number; decisionDivergenceRate: number; oneSidedImprovementP: number; oneSidedRegressionP: number;
+    meanBehaviorDistance: number; meanOpportunityDistance: number; meanChoicePotential: number; samplesWithProgramSignalDifference: number; samplesWithDecisionDifference: number; decisionDivergenceRate: number; oneSidedImprovementP: number; oneSidedRegressionP: number;
   };
   issues: Array<{severity: "fatal" | "warning"; code: string; message: string}>;
   samples: StrategyProgramCounterfactualSample[];
@@ -63,7 +65,7 @@ export function aggregateStrategyProgramEvolution(samples: readonly StrategyProg
     meanRankImprovement: round(mean(samples.map(sample => sample.delta.rankImprovement))),
     meanTitlesDelta: round(mean(samples.map(sample => sample.delta.titles))),
     meanCashDelta: round(mean(samples.map(sample => sample.delta.cash))),
-    meanBehaviorDistance: round(mean(samples.map(sample => sample.behaviorDistance))), samplesWithProgramSignalDifference, samplesWithDecisionDifference, decisionDivergenceRate: round(samplesWithDecisionDifference / samples.length),
+    meanBehaviorDistance: round(mean(samples.map(sample => sample.behaviorDistance))), meanOpportunityDistance: round(mean(samples.map(sample => sample.opportunityDistance))), meanChoicePotential: round(mean(samples.map(sample => sample.choicePotential))), samplesWithProgramSignalDifference, samplesWithDecisionDifference, decisionDivergenceRate: round(samplesWithDecisionDifference / samples.length),
     oneSidedImprovementP: round(oneSidedImprovementP), oneSidedRegressionP: round(oneSidedRegressionP),
   };
   const fatal = issues.some(issue => issue.severity === "fatal");
@@ -76,17 +78,17 @@ export function aggregateStrategyProgramEvolution(samples: readonly StrategyProg
     : oneSidedRegressionP <= maximumOneSidedP && worse > better ? "reject-operator"
     : oneSidedImprovementP <= maximumOneSidedP && better > worse && healthy ? "candidate-for-bounded-active-review"
     : "no-clear-benefit";
-  return {schemaVersion: 1, conclusion, hypothesis: "shadow-winner-program-operator-v1", thresholds: {minimumSamples, minimumSeeds, minimumDecisivePairs, minimumDecisiveSeeds, maximumOneSidedP}, metrics, issues, samples: samples.map(sample => structuredClone(sample))};
+  return {schemaVersion: 1, conclusion, hypothesis: "opportunity-boundary-program-operator-v1", thresholds: {minimumSamples, minimumSeeds, minimumDecisivePairs, minimumDecisiveSeeds, maximumOneSidedP}, metrics, issues, samples: samples.map(sample => structuredClone(sample))};
 }
 
 export function strategyProgramEvolutionMarkdown(value: StrategyProgramEvolutionAggregate): string {
   const m = value.metrics;
-  return ["# Strategy-program evolution evidence", "", `- Conclusion: ${value.conclusion}`, `- Hypothesis: ${value.hypothesis}`, `- Samples/seeds: ${m.samples}/${m.seeds}`, `- Better/neutral/worse: ${m.better}/${m.neutral}/${m.worse}`, `- Better/neutral/worse seed clusters: ${m.betterSeeds}/${m.neutralSeeds}/${m.worseSeeds}`, `- Decisive pairs/seeds: ${m.decisivePairs}/${m.decisiveSeeds}`, `- Program-signal differences: ${m.samplesWithProgramSignalDifference}/${m.samples}`, `- Management or battle decision differences: ${m.samplesWithDecisionDifference}/${m.samples} (${(m.decisionDivergenceRate * 100).toFixed(1)}%)`, `- Paired win rate: ${(m.pairedWinRate * 100).toFixed(1)}%`, `- Mean points/rank/titles/cash delta: ${signed(m.meanPointsDelta)} / ${signed(m.meanRankImprovement)} / ${signed(m.meanTitlesDelta)} / ${signed(m.meanCashDelta)}`, `- Mean program behavior distance: ${m.meanBehaviorDistance.toFixed(6)}`, `- Improvement/regression p: ${m.oneSidedImprovementP.toFixed(4)} / ${m.oneSidedRegressionP.toFixed(4)}`, "", "Each seed tests a different semantic program selected by the same shadow-winner operator. The aggregate evaluates that operator, not one universal program. Promotion is review-only and requires both directional evidence and non-negative mean points and titles.", "", "## Issues", "", ...(value.issues.length ? value.issues.map(issue => `- [${issue.severity.toUpperCase()}] ${issue.code}: ${issue.message}`) : ["No issues."]), ""].join("\n");
+  return ["# Strategy-program evolution evidence", "", `- Conclusion: ${value.conclusion}`, `- Hypothesis: ${value.hypothesis}`, `- Samples/seeds: ${m.samples}/${m.seeds}`, `- Better/neutral/worse: ${m.better}/${m.neutral}/${m.worse}`, `- Better/neutral/worse seed clusters: ${m.betterSeeds}/${m.neutralSeeds}/${m.worseSeeds}`, `- Decisive pairs/seeds: ${m.decisivePairs}/${m.decisiveSeeds}`, `- Historical opportunity distance / choice potential: ${m.meanOpportunityDistance.toFixed(6)} / ${m.meanChoicePotential.toFixed(6)}`, `- Program-signal differences: ${m.samplesWithProgramSignalDifference}/${m.samples}`, `- Management or battle decision differences: ${m.samplesWithDecisionDifference}/${m.samples} (${(m.decisionDivergenceRate * 100).toFixed(1)}%)`, `- Paired win rate: ${(m.pairedWinRate * 100).toFixed(1)}%`, `- Mean points/rank/titles/cash delta: ${signed(m.meanPointsDelta)} / ${signed(m.meanRankImprovement)} / ${signed(m.meanTitlesDelta)} / ${signed(m.meanCashDelta)}`, `- Mean program behavior distance: ${m.meanBehaviorDistance.toFixed(6)}`, `- Improvement/regression p: ${m.oneSidedImprovementP.toFixed(4)} / ${m.oneSidedRegressionP.toFixed(4)}`, "", "Each seed tests a different semantic program selected by the same shadow-winner operator. The aggregate evaluates that operator, not one universal program. Promotion is review-only and requires both directional evidence and non-negative mean points and titles.", "", "## Issues", "", ...(value.issues.length ? value.issues.map(issue => `- [${issue.severity.toUpperCase()}] ${issue.code}: ${issue.message}`) : ["No issues."]), ""].join("\n");
 }
 
 function validateSample(sample: StrategyProgramCounterfactualSample): void {
   if (!sample.seed || !sample.managerId || !Number.isInteger(sample.sourceSeason) || !Number.isInteger(sample.activationSeason) || sample.activationSeason !== sample.sourceSeason + 1) throw new Error("Malformed strategy-program sample identity");
-  if (!Number.isFinite(sample.behaviorDistance) || !Object.values(sample.delta).every(Number.isFinite)) throw new Error(`Malformed strategy-program metrics for ${sample.seed}`);
+  if (!Number.isFinite(sample.behaviorDistance) || !Number.isFinite(sample.opportunityDistance) || !Number.isFinite(sample.choicePotential) || sample.opportunityDistance < 0 || sample.choicePotential < 0 || !Object.values(sample.delta).every(Number.isFinite)) throw new Error(`Malformed strategy-program metrics for ${sample.seed}`);
   if (!sample.decisionEffects || !Object.values(sample.decisionEffects).every(value => Number.isInteger(value) && value >= 0)) throw new Error(`Missing decision-effect telemetry for ${sample.seed}`);
 }
 function competitiveDirection(delta: StrategyProgramCounterfactualSample["delta"]): number { if (delta.titles !== 0) return Math.sign(delta.titles); if (delta.points !== 0) return Math.sign(delta.points); if (delta.rankImprovement !== 0) return Math.sign(delta.rankImprovement); return 0; }
