@@ -18,7 +18,7 @@ export function compactWhiteBoxRun(rootDirectory: string): WhiteBoxRetentionTrac
   const root = path.resolve(rootDirectory);
   if (!fs.existsSync(path.join(root, "dynasty-state.json"))) throw new Error(`Refusing to compact run without dynasty-state.json: ${root}`);
   const beforeBytes = directorySize(root);
-  const targets = ["career-decisions", "careers", "config-snapshots"]
+  const targets = ["career-decisions", "careers"]
     .concat(fs.readdirSync(root, {withFileTypes: true}).filter(entry => entry.isDirectory() && /^season-\d+$/.test(entry.name)).flatMap(entry => [`${entry.name}/battles`, `${entry.name}/rosters`]));
   const removedPaths: string[] = [];
   for (const relative of targets) {
@@ -29,7 +29,7 @@ export function compactWhiteBoxRun(rootDirectory: string): WhiteBoxRetentionTrac
     removedPaths.push(relative.replaceAll("\\", "/"));
   }
   const afterBytes = directorySize(root);
-  return {version: WHITE_BOX_RETENTION_VERSION, policy: "audit-summary", root, beforeBytes, afterBytes, removedBytes: beforeBytes - afterBytes, removedPaths, retainedPaths: ["dynasty-state.json", "season-*/season.json", "season-*/decision-ledger.json"]};
+  return {version: WHITE_BOX_RETENTION_VERSION, policy: "audit-summary", root, beforeBytes, afterBytes, removedBytes: beforeBytes - afterBytes, removedPaths, retainedPaths: ["dynasty-state.json", "config-snapshots/**", "season-*/season.json", "season-*/decision-ledger.json"]};
 }
 
 export const compactIneligibleWhiteBoxRun = compactWhiteBoxRun;

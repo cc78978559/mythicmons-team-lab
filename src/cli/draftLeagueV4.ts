@@ -125,6 +125,10 @@ interface RuntimeFingerprint {
 
 const root = process.cwd();
 const seed = process.env.V4_SEED || "dynasty-league-v4";
+const counterfactualContinuation = /^(1|true|yes)$/i.test(process.env.V4_COUNTERFACTUAL_CONTINUATION || "false");
+const continuationSalt = process.env.V4_CONTINUATION_SALT || "";
+if (continuationSalt && !counterfactualContinuation) throw new Error("V4_CONTINUATION_SALT is restricted to counterfactual continuations");
+if (counterfactualContinuation && !continuationSalt) throw new Error("Counterfactual continuation requires V4_CONTINUATION_SALT");
 const outDir = path.resolve(process.env.V4_OUT || "output/draft-league-v4");
 const seasonCount = integerSetting("V4_SEASONS", 8, 1, 100);
 const managerLimit = integerSetting("V4_MANAGER_LIMIT", 10, 6, 30);
@@ -649,7 +653,7 @@ function runV3Season(season: number, seasonDir: string, profilePath: string, kee
     cwd: root,
     env: {
       ...process.env,
-      V3_SEED: `${seed}:season:${season}`,
+      V3_SEED: `${seed}:season:${season}${continuationSalt ? `:continuation:${continuationSalt}` : ""}`,
       V3_POOL_SEED: dynamicPool ? `${seed}:season:${season}:pool` : `${seed}:shared-pool`,
       V3_UNIVERSE_SEED: `${seed}:shared-universe`,
       V3_OUT: seasonDir,
