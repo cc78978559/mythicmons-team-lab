@@ -25,6 +25,8 @@ assert(season2.descendants.length >= 1 && season2.descendants.length <= 2, "Dyna
 assert(season2.budget.candidateCount >= 4 && season2.budget.candidateCount <= 8);
 assert.equal(season2.budget.cheapEvaluations, season2.budget.burstSlots * season2.budget.candidateCount);
 assert.equal(season2.decisions.flatMap(entry => entry.candidates).filter(entry => entry.selected).length, season2.descendants.length);
+assert(season2.decisions.flatMap(entry => entry.candidates).every(entry => /^[a-f0-9]{64}$/.test(entry.programHash) && /^[a-f0-9]{64}$/.test(entry.programBehaviorHash)));
+assert(season2.decisions.flatMap(entry => entry.candidates).every(entry => entry.programNodes >= 5 && entry.programBehaviorDistance >= 0));
 assert(season2.decisions.filter(entry => entry.selected).every(entry => entry.after.phase === "burst" && entry.after.cooldownUntilSeason === 5));
 
 const repeat = runPunctuatedEvolution({competitors, season: 2, seed: "punctuated-smoke", previousState: season1.state});

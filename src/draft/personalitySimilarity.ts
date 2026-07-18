@@ -1,15 +1,9 @@
 import type {ManagerProfile} from "./managerProfiles";
-import {evaluateStrategyProgram, type ProgramEntrypoint} from "./strategyProgram";
+import {strategyProgramBehaviorDistance} from "./strategyProgram";
 
-const ENTRYPOINTS: ProgramEntrypoint[] = ["acquire", "configure", "lineup", "battle", "learn"];
 const CONFIGURATION_KEYS = ["speedInvestment", "bulkBias", "statusMoveBias", "coverageBias", "accuracyRisk", "choiceItemBias", "recoveryItemBias"] as const;
 const SYSTEM_KEYS = ["weather", "trickRoom", "balance", "offense", "stall", "hazardPressure", "pivotCycle", "setupCore"] as const;
 const ORGANIZATION_KEYS = ["scarceConcentration", "backgroundReliance", "continuity", "experimentation", "rebuildPatience"] as const;
-const PROBES = [
-  {baseline: .2, strength: .8, price: .7, roleBreadth: .3, opponentPressure: .9, tacticalConfidence: .2},
-  {baseline: .5, strength: .5, price: .5, roleBreadth: .5, opponentPressure: .5, tacticalConfidence: .5},
-  {baseline: .8, strength: .2, price: .3, roleBreadth: .9, opponentPressure: .1, tacticalConfidence: .8},
-];
 
 export interface PersonalitySimilarityEvidence {similarity: number; parameterDistance: number; roleDistance: number; programDistance: number}
 
@@ -36,12 +30,7 @@ function parameterVector(profile: ManagerProfile): number[] {
 }
 
 function strategyDistance(left: ManagerProfile, right: ManagerProfile): number {
-  const distances: number[] = [];
-  for (const entrypoint of ENTRYPOINTS) for (const probe of PROBES) {
-    const a = evaluateStrategyProgram(left.strategyProgram, entrypoint, probe).value, b = evaluateStrategyProgram(right.strategyProgram, entrypoint, probe).value;
-    distances.push(Math.abs(a - b) / Math.max(1, Math.abs(a) + Math.abs(b)));
-  }
-  return average(distances);
+  return strategyProgramBehaviorDistance(left.strategyProgram, right.strategyProgram);
 }
 
 function meanDistance(left: number[], right: number[]): number { const length = Math.max(left.length, right.length); return average(Array.from({length}, (_, index) => Math.abs((left[index] ?? .5) - (right[index] ?? .5)))); }

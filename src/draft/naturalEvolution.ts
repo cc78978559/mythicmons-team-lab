@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import {cloneManagerProfile, emptyGenome, materializeManagerProfile, type DraftRole, type ManagerConfigurationGenome, type ManagerEconomics, type ManagerOrganizationGenome, type ManagerProfile, type ManagerSystemGenome, type ManagerTraits} from "./managerProfiles";
-import {crossoverStrategyPrograms, mutateStrategyProgram} from "./strategyProgram";
+import {crossoverStrategyPrograms, mutateStrategyProgram, strategyProgramBehaviorDistance} from "./strategyProgram";
 import {buildWhiteBoxEvolutionTrace, type WhiteBoxEvolutionTrace} from "../ai/whiteBox/evolution";
 
 export interface LineageIdentity {
@@ -44,6 +44,7 @@ export interface EvolutionDescendant {
   secondParentSlotId?: string;
   ecologicalFitness: number;
   protectedCopy: boolean;
+  programBehaviorDistance: number;
   whiteBoxEvolutionTrace: WhiteBoxEvolutionTrace;
 }
 
@@ -100,6 +101,7 @@ export function createManagerOffspring(input: ManagerOffspringInput): EvolutionD
     secondParentSlotId: secondParent?.slotId,
     ecologicalFitness: .5,
     protectedCopy: false,
+    programBehaviorDistance: strategyProgramBehaviorDistance(inherited.strategyProgram, child.strategyProgram),
     whiteBoxEvolutionTrace,
   };
 }
@@ -200,6 +202,7 @@ export function evolveManagerPopulation(competitors: readonly EvolutionCompetito
       secondParentSlotId: second?.slotId,
       ecologicalFitness: fitness.get(parent.slotId)!,
       protectedCopy,
+      programBehaviorDistance: strategyProgramBehaviorDistance(inherited.strategyProgram, child.strategyProgram),
       whiteBoxEvolutionTrace,
     };
   });

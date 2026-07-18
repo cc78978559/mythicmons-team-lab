@@ -15,9 +15,18 @@ export interface StrategyProgram {
 }
 
 export interface ProgramTrace {hash: string; entrypoint: ProgramEntrypoint; value: number; nodes: number; inputs: Record<string, number>}
+export interface ProgramBehaviorFingerprint {schemaVersion: 1; values: number[]; hash: string; nonZero: number; range: number}
 
 const ENTRYPOINTS: ProgramEntrypoint[] = ["acquire", "configure", "lineup", "battle", "learn"];
 const BINARY = ["add", "subtract", "multiply", "divide", "minimum", "maximum", "greater", "less"] as const;
+export const STRATEGY_PROGRAM_INPUTS: Record<ProgramEntrypoint, readonly string[]> = {
+  acquire: ["baseline", "strength", "price", "roleBreadth", "speed", "bulk", "rosterSize"],
+  configure: ["baseline", "strength", "accuracy", "speed", "bulk", "roleBreadth"],
+  lineup: ["baseline", "strength", "roleBreadth", "rosterSize", "opponentPressure"],
+  battle: ["baseline", "strength", "opponentPressure", "rosterSize", "tacticalConfidence", "historicalWinRate", "opponentLeadConcentration", "opponentSwitchRate"],
+  learn: ["baseline", "usage", "production", "teamResult"],
+};
+const BEHAVIOR_LEVELS = [.15, .5, .85] as const;
 
 export function noviceStrategyProgram(): StrategyProgram {
   return {version: 1, entrypoints: Object.fromEntries(ENTRYPOINTS.map(entry => [entry, {op: "constant", value: 0}])) as StrategyProgram["entrypoints"], limits: {maxNodes: 96, maxDepth: 12}};
@@ -53,12 +62,23 @@ export function evaluateStrategyProgram(program: StrategyProgram | undefined, en
 }
 
 export function mutateStrategyProgram(program: StrategyProgram | undefined, seed: string, availableInputs: readonly string[]): {program: StrategyProgram; mutation: string} {
+  const previousProgram = cloneStrategyProgram(program);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const attemptSeed = `${seed}:attempt:${attempt}`;
+    const result = mutateOnce(previousProgram, attemptSeed, availableInputs);
+    if (strategyProgramBehaviorDistance(previousProgram, result.program) > 1e-9) return result;
+  }
+  return {program: previousProgram, mutation: `program.semantic-noop:${strategyProgramHash(previousProgram).slice(0, 10)}`};
+}
+
+function mutateOnce(program: StrategyProgram, seed: string, availableInputs: readonly string[]): {program: StrategyProgram; mutation: string} {
   const next = cloneStrategyProgram(program);
   const entrypoint = ENTRYPOINTS[index(seed, "entrypoint", ENTRYPOINTS.length)];
   const previous = next.entrypoints[entrypoint];
   const mode = index(seed, "mode", 5);
   const constant = unit(`${seed}:constant`) * 2 - 1;
-  const input: ProgramExpression = availableInputs.length ? {op: "input", key: availableInputs[index(seed, "input", availableInputs.length)]} : {op: "constant", value: constant};
+  const compatibleInputs = STRATEGY_PROGRAM_INPUTS[entrypoint].filter(key => availableInputs.includes(key));
+  const input: ProgramExpression = compatibleInputs.length ? {op: "input", key: compatibleInputs[index(seed, "input", compatibleInputs.length)]} : {op: "constant", value: constant};
   if (mode === 0) next.entrypoints[entrypoint] = input;
   else if (mode === 1) next.entrypoints[entrypoint] = {op: BINARY[index(seed, "binary", BINARY.length)], left: previous, right: input};
   else if (mode === 2) next.entrypoints[entrypoint] = {op: unit(`${seed}:unary`) < .5 ? "negate" : "absolute", value: previous};
@@ -86,6 +106,15 @@ export function validateStrategyProgram(program: StrategyProgram): void {
 
 export function strategyProgramHash(program: StrategyProgram): string { return crypto.createHash("sha256").update(JSON.stringify(program)).digest("hex"); }
 export function countProgramNodes(program: StrategyProgram): number { return ENTRYPOINTS.reduce((sum, entrypoint) => sum + countNodes(program.entrypoints[entrypoint]), 0); }
+export function strategyProgramBehavior(program: StrategyProgram | undefined): ProgramBehaviorFingerprint {
+  const values = ENTRYPOINTS.flatMap(entrypoint => BEHAVIOR_LEVELS.map((level, probeIndex) => evaluateStrategyProgram(program, entrypoint, Object.fromEntries(STRATEGY_PROGRAM_INPUTS[entrypoint].map((key, keyIndex) => [key, BEHAVIOR_LEVELS[(probeIndex + keyIndex) % BEHAVIOR_LEVELS.length]]))).value));
+  const minimum = Math.min(...values), maximum = Math.max(...values);
+  return {schemaVersion: 1, values, hash: crypto.createHash("sha256").update(JSON.stringify(values)).digest("hex"), nonZero: values.filter(value => Math.abs(value) > 1e-9).length, range: maximum - minimum};
+}
+export function strategyProgramBehaviorDistance(left: StrategyProgram | undefined, right: StrategyProgram | undefined): number {
+  const a = strategyProgramBehavior(left).values, b = strategyProgramBehavior(right).values;
+  return a.reduce((sum, value, index) => sum + Math.abs(value - b[index]) / 8, 0) / a.length;
+}
 
 function replaceLeaf(expression: ProgramExpression, replacement: ProgramExpression, target: number, cursor = {value: 0}): ProgramExpression {
   if (expression.op === "constant" || expression.op === "input") return cursor.value++ === target ? replacement : expression;

@@ -515,6 +515,24 @@ function evolvePopulation(season: number, result: SeasonResult, seasonDir: strin
     ledger.add({stage: "review", actor: "system", decision: `第${season}季间断式进化预算`, selected: `${punctuated.budget.retainedDescendants}名经理进入爆发期`, context: {season, mode: evolutionMode, budget: punctuated.budget, managers: punctuated.decisions.map(entry => ({managerId: entry.managerId, phase: entry.after.phase, pressure: entry.instantaneousPressure, reservoir: entry.after.pressureReservoir, triggerScore: entry.triggerScore, eligible: entry.eligible, selected: entry.selected, reasons: entry.reasons}))}, alternatives: [{option: "逐季全员繁殖"}], rationale: ["稳定期只积累可审计压力，不生成后代", "动态预算仅为达到阈值且不在巩固期的经理生成候选", "候选使用廉价白箱评分，完整存档只保留胜者"]});
   }
   writeJson(path.join(seasonDir, "evolution.json"), punctuated ? {schemaVersion: 2, season, mode: evolutionMode, policy: evolutionPolicy, applied: evolutionPolicy !== "shadow", budget: punctuated.budget, managers: punctuated.decisions.map(entry => ({...entry, before: entry.before, after: entry.after})), descendants: report} : {schemaVersion: 1, season, mode: evolutionMode, policy: "active", applied: true, descendants: report});
+  if (punctuated && evolutionPolicy === "shadow" && descendants.length) {
+    writeJson(path.join(seasonDir, "evolution-shadow-candidates.json"), {
+      schemaVersion: 1,
+      season,
+      seed,
+      registryHash: runtimeFingerprint.registryHash,
+      candidates: descendants.map(descendant => ({
+        managerId: descendant.slotId,
+        replacedLineageId: managers.find(manager => manager.id === descendant.slotId)!.lineage.lineageId,
+        parentSlotId: descendant.parentSlotId,
+        secondParentSlotId: descendant.secondParentSlotId,
+        profile: descendant.profile,
+        lineage: descendant.lineage,
+        ecologicalFitness: descendant.ecologicalFitness,
+        programBehaviorDistance: descendant.programBehaviorDistance,
+      })),
+    });
+  }
 }
 
 function behaviorVector(value: ObservedBehavior): number[] {

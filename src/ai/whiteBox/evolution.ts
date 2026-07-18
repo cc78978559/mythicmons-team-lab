@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import {cloneManagerProfile, emptyGenome, type DraftRole, type ManagerProfile, type ManagerTraits} from "../../draft/managerProfiles";
-import {mutateStrategyProgram, strategyProgramHash} from "../../draft/strategyProgram";
+import {mutateStrategyProgram, strategyProgramBehavior, strategyProgramBehaviorDistance, strategyProgramHash} from "../../draft/strategyProgram";
 import {EVOLUTION_SHADOW_PARAMETERS} from "./parameters";
 
 export const WHITE_BOX_EVOLUTION_VERSION = "white-box-evolution-v1";
@@ -24,7 +24,7 @@ export interface WhiteBoxEvolutionTrace {
   selection: {previousLineageId: string; parentLineageId: string; secondParentLineageId: string | null; protectedCopy: boolean; ecologicalFitness: number; replacementReason: string};
   crossover: {draw: number; threshold: number; triggered: boolean};
   inheritanceChanges: WhiteBoxEvolutionChange[];
-  mutation: {gates: WhiteBoxEvolutionGate[]; changes: WhiteBoxEvolutionChange[]; declared: string[]; programBefore: string; programAfter: string};
+  mutation: {gates: WhiteBoxEvolutionGate[]; changes: WhiteBoxEvolutionChange[]; declared: string[]; programBefore: string; programAfter: string; programBehaviorBefore: string; programBehaviorAfter: string; programBehaviorDistance: number};
 }
 
 export function evolutionUnit(seed: string): number {
@@ -68,7 +68,7 @@ export function buildWhiteBoxEvolutionTrace(input: {
     },
     crossover: {draw: crossoverDraw, threshold: parameters["evolution.crossoverrate"], triggered: !input.protectedCopy && crossoverDraw < parameters["evolution.crossoverrate"]},
     inheritanceChanges: diffSnapshots(parameterSnapshot(input.primaryParent), parameterSnapshot(input.inherited)),
-    mutation: {gates: replay.gates, changes: diffSnapshots(parameterSnapshot(input.inherited), actualSnapshot, replay.rawValues), declared: [...input.declaredMutations], programBefore: strategyProgramHash(input.inherited.strategyProgram!), programAfter: strategyProgramHash(input.mutated.strategyProgram!)},
+    mutation: {gates: replay.gates, changes: diffSnapshots(parameterSnapshot(input.inherited), actualSnapshot, replay.rawValues), declared: [...input.declaredMutations], programBefore: strategyProgramHash(input.inherited.strategyProgram!), programAfter: strategyProgramHash(input.mutated.strategyProgram!), programBehaviorBefore: strategyProgramBehavior(input.inherited.strategyProgram).hash, programBehaviorAfter: strategyProgramBehavior(input.mutated.strategyProgram).hash, programBehaviorDistance: strategyProgramBehaviorDistance(input.inherited.strategyProgram, input.mutated.strategyProgram)},
   };
 }
 

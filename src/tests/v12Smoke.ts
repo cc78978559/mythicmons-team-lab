@@ -55,6 +55,8 @@ assert.equal(audit.fatalCount, 0, JSON.stringify(audit.issues));
 assert.equal(audit.warningCount, 0, JSON.stringify(audit.issues));
 assert.equal(audit.metrics.invalidLineups, 0);
 assert(audit.metrics.configurationUpdates > 0);
+assert.equal(audit.metrics.uniqueProgramBehaviors, 1);
+assert.equal(audit.metrics.nonZeroProgramBehaviors, 0);
 const brief = read<any>(path.join(output, "season-01", "season-brief.json"));
 const tokenBudget = read<any>(path.join(output, "season-01", "token-budget.json"));
 assert.equal(brief.season, 1);

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import {evolveManagerPopulation, type EvolutionCompetitor, type EvolutionDescendant} from "./naturalEvolution";
+import {countProgramNodes, strategyProgramBehavior, strategyProgramHash} from "./strategyProgram";
 
 export type EvolutionPhase = "stable" | "pressure" | "burst" | "consolidating";
 
@@ -32,6 +33,10 @@ export interface EvolutionCandidateSummary {
   secondParentSlotId?: string;
   mutations: string[];
   ecologicalFitness: number;
+  programHash: string;
+  programNodes: number;
+  programBehaviorHash: string;
+  programBehaviorDistance: number;
   score: number;
   selected: boolean;
 }
@@ -116,7 +121,22 @@ export function runPunctuatedEvolution(input: {
       after,
       selected: isSelected,
       reasons,
-      candidates: candidates.map((candidate, index) => ({lineageId: candidate.descendant.lineage.lineageId, parentSlotId: candidate.descendant.parentSlotId, secondParentSlotId: candidate.descendant.secondParentSlotId, mutations: candidate.descendant.lineage.mutations, ecologicalFitness: candidate.descendant.ecologicalFitness, score: candidate.score, selected: index === 0 && isSelected})),
+      candidates: candidates.map((candidate, index) => {
+        const behavior = strategyProgramBehavior(candidate.descendant.profile.strategyProgram);
+        return {
+          lineageId: candidate.descendant.lineage.lineageId,
+          parentSlotId: candidate.descendant.parentSlotId,
+          secondParentSlotId: candidate.descendant.secondParentSlotId,
+          mutations: candidate.descendant.lineage.mutations,
+          ecologicalFitness: candidate.descendant.ecologicalFitness,
+          programHash: strategyProgramHash(candidate.descendant.profile.strategyProgram!),
+          programNodes: countProgramNodes(candidate.descendant.profile.strategyProgram!),
+          programBehaviorHash: behavior.hash,
+          programBehaviorDistance: candidate.descendant.programBehaviorDistance,
+          score: candidate.score,
+          selected: index === 0 && isSelected,
+        };
+      }),
     };
   });
 
@@ -169,7 +189,7 @@ function candidateScore(descendant: EvolutionDescendant): number {
   const mutationCount = descendant.lineage.mutations.filter(entry => !entry.includes("copy") && entry !== "conservative-copy").length;
   const usefulNovelty = Math.min(4, mutationCount) / 4;
   const instability = Math.max(0, mutationCount - 7) / 10;
-  return descendant.ecologicalFitness * .78 + usefulNovelty * .22 - instability;
+  return descendant.ecologicalFitness * .78 + usefulNovelty * .12 + descendant.programBehaviorDistance * .1 - instability;
 }
 
 function initialState(managerId: string): ManagerEvolutionState {
