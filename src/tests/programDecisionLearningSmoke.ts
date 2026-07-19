@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import {aggregateProgramDecisionLabels,type ProgramDecisionLabel} from "../ai/whiteBox/programDecisionLabels";
+import {learnProgramDecisionLabels} from "../ai/whiteBox/programDecisionLearning";
+
+const labels=Array.from({length:30},(_,index)=>label(index,index%2===0?1:-1)),archive=aggregateProgramDecisionLabels(labels),learned=learnProgramDecisionLabels(archive);
+assert.equal(learned.conclusion,"candidate-for-shadow-operator-review");assert.equal(learned.metrics.eligibleDomains,1);assert.equal(learned.models[0].entrypoint,"acquire");assert.equal(learned.models[0].metrics.directionalAccuracy,1);assert.equal(learned.models[0].metrics.coverage,1);assert(learned.models[0].metrics.lossImprovement>.5);assert(learned.crossValidation.every(entry=>entry.correct===true));
+const sparse=learnProgramDecisionLabels(aggregateProgramDecisionLabels(labels.slice(0,3)));assert.equal(sparse.conclusion,"insufficient-evidence");assert.equal(sparse.metrics.eligibleDomains,0);
+assert.throws(()=>aggregateProgramDecisionLabels([labels[0],labels[0]]),/Duplicate/);
+console.log("Program-decision leave-one-source-out learner smoke passed");
+
+function label(index:number,direction:1|-1):ProgramDecisionLabel{return{id:`label-${index}`,source:`source-${index}`,seed:`seed-${index}`,prefixVerified:true,decision:{id:`decision-${index}`,entrypoint:"acquire",managerId:`manager-${index%6}`,season:1,incumbent:{id:`incumbent-${index}`,score:1,inputs:{strength:.5,speed:.5}},candidate:{id:`candidate-${index}`,score:.9,inputs:{strength:.5+direction*.25,speed:.5+direction*.1}}},followupSeasons:1,direction:direction>0?"better":"worse",delta:{cash:0,contracts:0,payroll:0,titles:0,totalPoints:direction*3,finalRank:-direction,finalPoints:direction*3}};}

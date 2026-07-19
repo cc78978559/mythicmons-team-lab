@@ -135,3 +135,13 @@ The resulting `label-archive.json` contains the real input vectors, historical s
 ```powershell
 npm run sample:program-decision-labels -- --inputs <source-root> --out <label-run> --run --target-samples 10 --minimum-sources 5 --followup 1
 ```
+
+Sampling goals can grow in place without changing evidence identity. Target labels, minimum sources, and the operational disk ceiling may be updated; source roots, follow-up horizon, and retention policy remain replay-pinned. A target cannot be reduced below the number of completed labels.
+
+`learn:program-decision-labels` fits a separate antisymmetric ridge model for each observed entrypoint. Its features are candidate-minus-incumbent input differences, so swapping the two candidates reverses the learned preference rather than adding an arbitrary style constant. Every reported prediction is leave-one-source-out: scaling and coefficients are fitted without any label from the held-out dynasty seed. The fixed gate requires 30 labels, 20 independent sources, 12 decisive labels, 75% prediction coverage, 65% directional accuracy, at least 5% squared-loss improvement over a zero prediction, and one-sided binomial `p <= .1`. Passing can only recommend review of a new shadow operator.
+
+The first real archive was expanded in place to all twenty formal v3 sources. It contains four better, eleven neutral, and five worse isolated decisions. All twenty are acquisition labels because those source leagues used fixed six-member rosters and therefore had no alternative lineup combinations; the learner reports lineup as unobserved rather than borrowing acquisition evidence. Acquisition leave-one-source-out prediction covered all nine decisive labels but was correct only three times (`33.3%`), with squared loss `38.9%` worse than always predicting neutral and one-sided `p=.910156`. The conclusion remains `insufficient-evidence`, with zero eligible domains. No learned coefficient enters evolution or production.
+
+```powershell
+npm run learn:program-decision-labels -- --archive <label-run>/label-archive.json --out <learning-run>
+```
