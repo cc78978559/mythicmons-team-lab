@@ -3,14 +3,18 @@ import fs from "node:fs";
 import {evaluateStrategyProgram, type ProgramEntrypoint, type StrategyProgram} from "./strategyProgram";
 
 export interface ProgramOpportunityEntry {observations: number; samples: Array<{hash: string; inputs: Record<string, number>}>}
-export interface ManagerProgramOpportunities {managerId: string; entrypoints: Partial<Record<ProgramEntrypoint, ProgramOpportunityEntry>>}
-export interface ProgramOpportunitySnapshot {schemaVersion: 1; season: number; sampleLimit: number; managers: ManagerProgramOpportunities[]}
+export interface ProgramDecisionCandidate {id: string; hash: string; inputs: Record<string, number>; score: number}
+export interface ProgramDecisionGroup {id: string; hash: string; entrypoint: ProgramEntrypoint; selectedIds: string[]; candidates: ProgramDecisionCandidate[]}
+export interface ManagerProgramOpportunities {managerId: string; entrypoints: Partial<Record<ProgramEntrypoint, ProgramOpportunityEntry>>; decisions?: ProgramDecisionGroup[]}
+export interface ProgramOpportunitySnapshot {schemaVersion: 1 | 2; season: number; sampleLimit: number; managers: ManagerProgramOpportunities[]}
 export interface ProgramOpportunityDistance {distance: number; choicePotential: number; observedEntrypoints: number; observations: number; byEntrypoint: Partial<Record<ProgramEntrypoint, {distance: number; choicePotential: number; observations: number; samples: number}>>}
 
 const ENTRYPOINTS: ProgramEntrypoint[] = ["acquire", "configure", "lineup", "battle", "learn"];
+const DECISION_CANDIDATE_LIMIT = 8;
 
 export class StrategyProgramOpportunityCollector {
   private readonly managers = new Map<string, ManagerProgramOpportunities>();
+  private readonly pendingDecisions = new Map<string, Map<string, {hash: string; inputs: Record<string, number>}>>();
   constructor(readonly sampleLimit = 24, snapshot?: ProgramOpportunitySnapshot) {
     if (!Number.isInteger(sampleLimit) || sampleLimit < 4 || sampleLimit > 128) throw new Error("Program opportunity sample limit must be 4..128");
     for (const manager of snapshot?.managers ?? []) this.managers.set(manager.managerId, structuredClone(manager));
@@ -30,13 +34,40 @@ export class StrategyProgramOpportunityCollector {
     manager.entrypoints[entrypoint] = entry;
     this.managers.set(managerId, manager);
   }
-  evaluate(managerId: string, program: StrategyProgram | undefined, entrypoint: ProgramEntrypoint, inputs: Record<string, number>): number {
+  evaluate(managerId: string, program: StrategyProgram | undefined, entrypoint: ProgramEntrypoint, inputs: Record<string, number>, decision?: {id: string; candidateId: string}): number {
     this.record(managerId, entrypoint, inputs);
+    if (decision?.id && decision.candidateId) {
+      const normalized = normalizeInputs(inputs), hash = inputHash(normalized), key = pendingKey(managerId, entrypoint, decision.id);
+      const candidates = this.pendingDecisions.get(key) ?? new Map();
+      candidates.set(decision.candidateId, {hash, inputs: normalized});
+      this.pendingDecisions.set(key, candidates);
+    }
     return evaluateStrategyProgram(program, entrypoint, inputs).value;
   }
-  snapshot(season: number): ProgramOpportunitySnapshot { return {schemaVersion: 1, season, sampleLimit: this.sampleLimit, managers: [...this.managers.values()].sort((left, right) => left.managerId.localeCompare(right.managerId)).map(value => structuredClone(value))}; }
+  recordDecision(managerId: string, entrypoint: ProgramEntrypoint, id: string, selectedIds: readonly string[], scores: readonly {id: string; score: number}[]): void {
+    const key = pendingKey(managerId, entrypoint, id), pending = this.pendingDecisions.get(key);
+    this.pendingDecisions.delete(key);
+    if (!pending || pending.size < 2) return;
+    const selected = [...new Set(selectedIds)].filter(candidateId => pending.has(candidateId)).sort();
+    const completeCandidates = scores.filter(candidate => pending.has(candidate.id) && Number.isFinite(candidate.score)).map(candidate => ({id: candidate.id, score: round(candidate.score), ...pending.get(candidate.id)!}));
+    if (!selected.length || selected.length > DECISION_CANDIDATE_LIMIT || completeCandidates.length < 2 || selected.some(candidateId => !completeCandidates.some(candidate => candidate.id === candidateId))) return;
+    const selectedSet = new Set(selected);
+    const candidates = [...completeCandidates.filter(candidate => selectedSet.has(candidate.id)), ...completeCandidates.filter(candidate => !selectedSet.has(candidate.id)).sort((left, right) => right.score - left.score || left.id.localeCompare(right.id)).slice(0, DECISION_CANDIDATE_LIMIT - selected.length)].sort((left, right) => left.id.localeCompare(right.id));
+    const hash = crypto.createHash("sha256").update(JSON.stringify({entrypoint, selected, candidates})).digest("hex");
+    const manager = this.managers.get(managerId) ?? {managerId, entrypoints: {}};
+    const decisions = manager.decisions ?? [];
+    if (!decisions.some(decision => decision.hash === hash)) {
+      decisions.push({id, hash, entrypoint, selectedIds: selected, candidates});
+      decisions.sort((left, right) => left.hash.localeCompare(right.hash));
+      const byEntrypoint = decisions.filter(decision => decision.entrypoint === entrypoint), decisionLimit = Math.max(4, Math.floor(this.sampleLimit / 2));
+      if (byEntrypoint.length > decisionLimit) decisions.splice(decisions.indexOf(byEntrypoint.at(-1)!), 1);
+    }
+    manager.decisions = decisions;
+    this.managers.set(managerId, manager);
+  }
+  snapshot(season: number): ProgramOpportunitySnapshot { return {schemaVersion: 2, season, sampleLimit: this.sampleLimit, managers: [...this.managers.values()].sort((left, right) => left.managerId.localeCompare(right.managerId)).map(value => structuredClone(value))}; }
   write(file: string, season: number): void { fs.writeFileSync(file, `${JSON.stringify(this.snapshot(season), null, 2)}\n`, "utf8"); }
-  static read(file: string): StrategyProgramOpportunityCollector { const value = JSON.parse(fs.readFileSync(file, "utf8")) as ProgramOpportunitySnapshot; if (value.schemaVersion !== 1) throw new Error("Unsupported program opportunity snapshot"); return new StrategyProgramOpportunityCollector(value.sampleLimit, value); }
+  static read(file: string): StrategyProgramOpportunityCollector { const value = JSON.parse(fs.readFileSync(file, "utf8")) as ProgramOpportunitySnapshot; if (value.schemaVersion !== 1 && value.schemaVersion !== 2) throw new Error("Unsupported program opportunity snapshot"); return new StrategyProgramOpportunityCollector(value.sampleLimit, value); }
 }
 
 export function strategyProgramOpportunityDistance(parent: StrategyProgram | undefined, candidate: StrategyProgram | undefined, opportunities: ManagerProgramOpportunities | undefined): ProgramOpportunityDistance {
@@ -71,3 +102,6 @@ function rankingPotential(entrypoint: "acquire" | "configure" | "lineup", inputs
 function valueRange(values: number[]): number { return values.length ? Math.max(...values) - Math.min(...values) : 0; }
 function mean(values: number[]): number { return values.reduce((sum, value) => sum + value, 0) / values.length; }
 function round(value: number): number { return Math.round((value + Number.EPSILON) * 1e6) / 1e6; }
+function normalizeInputs(inputs: Record<string, number>): Record<string, number> { return Object.fromEntries(Object.entries(inputs).sort(([left], [right]) => left.localeCompare(right)).map(([key, value]) => [key, round(Number.isFinite(value) ? value : 0)])); }
+function inputHash(inputs: Record<string, number>): string { return crypto.createHash("sha256").update(JSON.stringify(inputs)).digest("hex"); }
+function pendingKey(managerId: string, entrypoint: ProgramEntrypoint, decisionId: string): string { return `${managerId}\0${entrypoint}\0${decisionId}`; }

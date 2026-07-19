@@ -57,7 +57,7 @@ export function auditV12Output(rootDirectory: string): V12AuditSummary {
       programOpportunityFiles += 1;
       try {
         const snapshot = read<ProgramOpportunitySnapshot>(opportunityFile), managerIds = new Set<string>();
-        if (snapshot.schemaVersion !== 1 || snapshot.season !== season || !Number.isInteger(snapshot.sampleLimit) || snapshot.sampleLimit < 4 || snapshot.sampleLimit > 128) throw new Error("invalid opportunity envelope");
+        if ((snapshot.schemaVersion !== 1 && snapshot.schemaVersion !== 2) || snapshot.season !== season || !Number.isInteger(snapshot.sampleLimit) || snapshot.sampleLimit < 4 || snapshot.sampleLimit > 128) throw new Error("invalid opportunity envelope");
         for (const manager of snapshot.managers) {
           if (!manager.managerId || managerIds.has(manager.managerId)) throw new Error(`duplicate or empty manager ${manager.managerId}`);
           managerIds.add(manager.managerId);
@@ -65,6 +65,15 @@ export function auditV12Output(rootDirectory: string): V12AuditSummary {
             if (!Number.isInteger(entry.observations) || entry.observations < entry.samples.length || entry.samples.length > snapshot.sampleLimit) throw new Error(`invalid observation bounds for ${manager.managerId}`);
             programOpportunityObservations += entry.observations; programOpportunitySamples += entry.samples.length;
             for (const sample of entry.samples) if (!/^[a-f0-9]{64}$/.test(sample.hash) || Object.values(sample.inputs).some(value => !Number.isFinite(value))) throw new Error(`invalid context sample for ${manager.managerId}`);
+          }
+          if (snapshot.schemaVersion === 2) {
+            const decisionCounts = new Map<string, number>();
+            for (const decision of manager.decisions ?? []) {
+              decisionCounts.set(decision.entrypoint, (decisionCounts.get(decision.entrypoint) ?? 0) + 1);
+              if (!decision.id || !/^[a-f0-9]{64}$/.test(decision.hash) || decision.candidates.length < 2 || decision.candidates.length > 8 || !decision.selectedIds.length || decision.selectedIds.some(id => !decision.candidates.some(candidate => candidate.id === id))) throw new Error(`invalid decision group for ${manager.managerId}`);
+              if (decision.candidates.some(candidate => !candidate.id || !/^[a-f0-9]{64}$/.test(candidate.hash) || !Number.isFinite(candidate.score) || Object.values(candidate.inputs).some(value => !Number.isFinite(value)))) throw new Error(`invalid decision candidate for ${manager.managerId}`);
+            }
+            if ([...decisionCounts.values()].some(count => count > Math.max(4, Math.floor(snapshot.sampleLimit / 2)))) throw new Error(`decision group limit exceeded for ${manager.managerId}`);
           }
         }
       } catch (error) { invalidProgramOpportunities += 1; issues.push(issue("fatal", "invalid-program-opportunities", String(error), season)); }

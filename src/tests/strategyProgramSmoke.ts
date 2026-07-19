@@ -47,6 +47,7 @@ assert.throws(() => validateStrategyProgram(invalid), /Invalid strategy program 
 const opportunities = new StrategyProgramOpportunityCollector();
 for (let index = 0; index < 40; index += 1) opportunities.record("manager-01", "acquire", {baseline: index / 400, price: index % 2, strength: .5});
 const opportunitySnapshot = opportunities.snapshot(1), acquire = opportunitySnapshot.managers[0].entrypoints.acquire!;
+assert.equal(opportunitySnapshot.schemaVersion, 2);
 assert.equal(acquire.observations, 40);
 assert.equal(acquire.samples.length, 24);
 const expressive = noviceStrategyProgram(); expressive.entrypoints.acquire = {op: "input", key: "price"};
@@ -66,6 +67,20 @@ validateStrategyProgram(compoundFirst.program);
 const insufficientCompound = mutateStrategyProgram(noviceStrategyProgram(), "compound-insufficient", STRATEGY_PROGRAM_INPUTS.acquire, {acquire: {samples: [{inputs: {speed: .2}}, {inputs: {speed: .8}}]}}, "compound-observed-boundary-v2");
 assert.match(insufficientCompound.mutation, /^program\.compound-observed-boundary-v2:semantic-noop:/);
 assert.equal(strategyProgramHash(insufficientCompound.program), strategyProgramHash(noviceStrategyProgram()));
+const grouped = new StrategyProgramOpportunityCollector(4);
+for (let decision = 0; decision < 6; decision += 1) {
+  const id = `decision-${decision}`;
+  grouped.evaluate("manager", noviceStrategyProgram(), "acquire", {baseline: .2 + decision / 100, strength: .4}, {id, candidateId: "left"});
+  grouped.evaluate("manager", noviceStrategyProgram(), "acquire", {baseline: .3 + decision / 100, strength: .6}, {id, candidateId: "right"});
+  grouped.recordDecision("manager", "acquire", id, ["right"], [{id: "left", score: 1}, {id: "right", score: 2}]);
+}
+const groupedSnapshot = grouped.snapshot(2), decisionGroups = groupedSnapshot.managers[0].decisions!;
+assert.equal(groupedSnapshot.schemaVersion, 2);
+assert.equal(decisionGroups.length, 4, "Decision groups must remain bounded per entrypoint");
+assert(decisionGroups.every(decision => decision.selectedIds[0] === "right" && decision.candidates.length === 2));
+assert.deepEqual(new StrategyProgramOpportunityCollector(4, groupedSnapshot).snapshot(2), groupedSnapshot, "Decision-group snapshots must replay deterministically");
+const legacySnapshot = {schemaVersion: 1 as const, season: 1, sampleLimit: 4, managers: [{managerId: "legacy", entrypoints: {}}]};
+assert.equal(new StrategyProgramOpportunityCollector(4, legacySnapshot).snapshot(2).managers[0].decisions, undefined);
 console.log("Typed strategy program smoke test passed");
 
 function inputKeys(value: any): string[] {

@@ -16,7 +16,7 @@ export interface StrategyProgram {
 
 export interface ProgramTrace {hash: string; entrypoint: ProgramEntrypoint; value: number; nodes: number; inputs: Record<string, number>}
 export interface ProgramBehaviorFingerprint {schemaVersion: 1; values: number[]; hash: string; nonZero: number; range: number}
-export type ProgramOpportunityInputs = Partial<Record<ProgramEntrypoint, {samples: Array<{inputs: Record<string, number>}>}>>;
+export type ProgramOpportunityInputs = Partial<Record<ProgramEntrypoint, {samples: Array<{inputs: Record<string, number>}>}>> & {decisions?: Array<{id: string; entrypoint: ProgramEntrypoint; selectedIds: string[]; candidates: Array<{id: string; inputs: Record<string, number>; score: number}>}>};
 export type StrategyProgramMutationOperator = "observed-boundary-v1" | "compound-observed-boundary-v2";
 
 const ENTRYPOINTS: ProgramEntrypoint[] = ["acquire", "configure", "lineup", "battle", "learn"];

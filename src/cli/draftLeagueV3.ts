@@ -457,6 +457,7 @@ function makeCandidate(id: string, family: string, name: string, source: string,
 
 function configureOfficialSet(speciesName: string, profile: ManagerProfile | undefined, dex: ReturnType<typeof Dex.mod>): PokemonSet {
   const species = dex.species.get(speciesName);
+  const programDecisionId = profile ? `configure:${seasonNumber}:${profile.id}:${species.id}` : "";
   let legalMoveIds = legalMoveIdsCache.get(species.id);
   if (!legalMoveIds) {
     const learnset = dex.species.getLearnsetData(species.id).learnset ?? {};
@@ -476,7 +477,7 @@ function configureOfficialSet(speciesName: string, profile: ManagerProfile | und
     const utility = move.category === "Status" ? genericStatusValue * (1 + statusBias) : move.basePower * stab * categoryFit + Math.max(0, move.priority) * 20;
     const learned = configurationPosterior(profile, "moves", move.id);
     const exploration = profile ? boundedDraftJitter(seed, `${profile.id}:configure:${species.id}:${move.id}`, seasonNumber) * profile.learning.exploration * 18 : 0;
-    const programAdjustment = profile && programEvolution ? observedProgram(profile.id, profile.strategyProgram, "configure", {baseline: utility / 150, strength: move.basePower / 150, accuracy: accuracy / 100, speed: species.baseStats.spe / 200, bulk: (species.baseStats.hp + species.baseStats.def + species.baseStats.spd) / 500, roleBreadth: move.category === "Status" ? 1 : 0}) * 8 : 0;
+    const programAdjustment = profile && programEvolution ? observedProgram(profile.id, profile.strategyProgram, "configure", {baseline: utility / 150, strength: move.basePower / 150, accuracy: accuracy / 100, speed: species.baseStats.spe / 200, bulk: (species.baseStats.hp + species.baseStats.def + species.baseStats.spd) / 500, roleBreadth: move.category === "Status" ? 1 : 0}, {id: programDecisionId, candidateId: move.id}) * 8 : 0;
     return {move, score: utility * (1 - Math.max(0, 100 - accuracy) / 180 * (1 - accuracyRisk)) * learned + exploration + programAdjustment + poolTie(`set:${profile?.id ?? "baseline"}:${species.id}:${move.id}`) / 1e9};
   }).sort((a, b) => b.score - a.score);
   const selected: typeof scored = [];
@@ -490,6 +491,7 @@ function configureOfficialSet(speciesName: string, profile: ManagerProfile | und
     selected.push(entry);
   }
   const moves = selected.slice(0, 4).map(entry => entry.move.name);
+  if (profile && programEvolution) programOpportunities.recordDecision(profile.id, "configure", programDecisionId, selected.slice(0, 4).map(entry => entry.move.id), scored.map(entry => ({id: entry.move.id, score: entry.score})));
   while (moves.length < 4 && attacks[moves.length]) moves.push(attacks[moves.length].move.name);
   const bulky = species.baseStats.hp + species.baseStats.def + species.baseStats.spd > 285 || (genome?.configuration?.bulkBias ?? 0) > .08;
   const fast = species.baseStats.spe >= 80 || (genome?.configuration?.speedInvestment ?? 0) > .08;
@@ -703,8 +705,9 @@ function runSupplementalDraft(available: Map<string, Candidate>, dex: ReturnType
         if (manager.roster.length < minimumRosterSize) throw new Error(`${manager.id} has no budget for required supplemental picks`);
         continue;
       }
+      const programDecisionId = `acquire:supplemental:${seasonNumber}:${overall + 1}:${manager.id}`;
       const shortlist = [...available.values()].filter(candidate => candidate.tier === "standard")
-        .map(candidate => ({candidate, baseValue: managerValue(manager, candidate, dex)}))
+        .map(candidate => ({candidate, baseValue: managerValue(manager, candidate, dex, {id: programDecisionId, candidateId: candidate.id})}))
         .sort((a, b) => b.baseValue - a.baseValue || tie(a.candidate.id, overall) - tie(b.candidate.id, overall))
         .slice(0, 24);
       const ranked = shortlist.map(({candidate, baseValue}) => {
@@ -713,13 +716,14 @@ function runSupplementalDraft(available: Map<string, Candidate>, dex: ReturnType
         return {candidate, completion, exploration, value: baseValue + completion + exploration};
       }).sort((a, b) => b.value - a.value || tie(a.candidate.id, overall) - tie(b.candidate.id, overall));
       const selected = ranked[0];
+      if (programEvolution) programOpportunities.recordDecision(manager.id, "acquire", programDecisionId, [selected.candidate.id], ranked.map(entry => ({id: entry.candidate.id, score: entry.value})));
       const whiteBoxCandidates = ranked.map(entry => {
         const candidate = acquisitionWhiteBoxCandidate(manager, entry.candidate, dex, {completionValue: entry.completion, exploration: entry.exploration});
         const difference = Math.abs(whiteBoxAcquisitionTotal(candidate) - entry.value);
         if (difference > 1e-8) throw new Error(`White-box acquisition decomposition drifted by ${difference} for ${candidate.id}`);
         return candidate;
       });
-      const whiteBoxTrace = evaluateWhiteBoxDecision({decisionId: `acquire:supplemental:${seasonNumber}:${overall + 1}:${manager.id}`, candidates: whiteBoxCandidates, reasonableBand: acquisitionShadowValues["acquire.reasonableband"], styleContributionLimit: acquisitionShadowValues["acquire.stylelimit"]});
+      const whiteBoxTrace = evaluateWhiteBoxDecision({decisionId: programDecisionId, candidates: whiteBoxCandidates, reasonableBand: acquisitionShadowValues["acquire.reasonableband"], styleContributionLimit: acquisitionShadowValues["acquire.stylelimit"]});
       overall += 1;
       const decision = ledger.add({stage: "draft", actor: manager.id, decision: `补强第${manager.roster.length + 1}人`, selected: selected.candidate.name, context: {overallPick: overall, remainingBudget: manager.budget, roster: manager.roster.map(entry => entry.candidate.name), scarcity: missingRoles(manager), whiteBoxShadow: summarizeWhiteBoxShadow(whiteBoxTrace, selected.candidate.id, 3)}, alternatives: ranked.slice(1, 5).map(entry => ({option: entry.candidate.name, score: entry.value, rejectedBecause: explainRejection(manager, entry.candidate)})), rationale: explainFit(manager, selected.candidate), expectedValue: selected.value, confidence: confidence(ranked[0].value, ranked[1]?.value)});
       manager.roster.push(newRosterEntry(selected.candidate, "supplemental", 1, decision.id));
@@ -737,22 +741,24 @@ function runBackgroundRegistration(pool: Candidate[], dex: ReturnType<typeof Dex
   for (const manager of managers) {
     let pick = 0;
     while (manager.roster.length < targetRosterSize(manager)) {
+      const programDecisionId = `acquire:registration:${seasonNumber}:${manager.id}:${pick + 1}`;
       const ranked = backgroundShortlist(manager, background, dex).map(candidate => {
         const configured = configureCandidateForManager(manager, candidate, dex);
         const exploration = boundedDraftJitter(seed, `${manager.id}:registration:${candidate.family}`, pick) * manager.learning.exploration * (1 + (manager.genome?.organization?.experimentation ?? 0));
         const publicPreference = manager.genome?.organization?.backgroundReliance ?? 0;
         const publicAdjustment = publicPreference * .2;
-        return {candidate: configured, exploration, publicAdjustment, value: managerValue(manager, configured, dex) + exploration + publicAdjustment};
+        return {candidate: configured, exploration, publicAdjustment, value: managerValue(manager, configured, dex, {id: programDecisionId, candidateId: configured.id}) + exploration + publicAdjustment};
       }).sort((a, b) => b.value - a.value || a.candidate.family.localeCompare(b.candidate.family));
       const selected = ranked[0];
       if (!selected) throw new Error(`${manager.id} cannot complete a public registration roster`);
+      if (programEvolution) programOpportunities.recordDecision(manager.id, "acquire", programDecisionId, [selected.candidate.id], ranked.map(entry => ({id: entry.candidate.id, score: entry.value})));
       const whiteBoxCandidates = ranked.map(entry => {
         const candidate = acquisitionWhiteBoxCandidate(manager, entry.candidate, dex, {exploration: entry.exploration, publicPreference: entry.publicAdjustment});
         const difference = Math.abs(whiteBoxAcquisitionTotal(candidate) - entry.value);
         if (difference > 1e-8) throw new Error(`White-box registration decomposition drifted by ${difference} for ${candidate.id}`);
         return candidate;
       });
-      const whiteBoxTrace = evaluateWhiteBoxDecision({decisionId: `acquire:registration:${seasonNumber}:${manager.id}:${pick + 1}`, candidates: whiteBoxCandidates, reasonableBand: registrationShadowValues["registration.reasonableband"], styleContributionLimit: registrationShadowValues["registration.stylelimit"]});
+      const whiteBoxTrace = evaluateWhiteBoxDecision({decisionId: programDecisionId, candidates: whiteBoxCandidates, reasonableBand: registrationShadowValues["registration.reasonableband"], styleContributionLimit: registrationShadowValues["registration.stylelimit"]});
       const decision = ledger.add({stage: "draft", actor: manager.id, decision: `自由注册第${manager.roster.length + 1}名成员`, selected: selected.candidate.name, context: {economicClass: "background", cost: 0, sharedPool: true, unlockGeneration, configuredSet: selected.candidate.set, whiteBoxShadow: summarizeWhiteBoxShadow(whiteBoxTrace, selected.candidate.id, 3)}, alternatives: ranked.slice(1, 5).map(entry => ({option: entry.candidate.name, score: entry.value})), rationale: [...explainFit(manager, selected.candidate), "普通品种不占合同、工资或交易资产空间"], expectedValue: selected.value, confidence: confidence(selected.value, ranked[1]?.value)});
       manager.roster.push(newRosterEntry(selected.candidate, "registration", 0, decision.id));
       pick += 1;
@@ -814,7 +820,7 @@ function targetRosterSize(manager: Manager): number {
   return Math.max(minimumRosterSize, Math.min(maximumRosterSize, Math.round(minimumRosterSize + preference * (maximumRosterSize - minimumRosterSize))));
 }
 
-function managerValue(manager: Manager, candidate: Candidate, dex: ReturnType<typeof Dex.mod>): number {
+function managerValue(manager: Manager, candidate: Candidate, dex: ReturnType<typeof Dex.mod>, decision?: {id: string; candidateId: string}): number {
   const common = candidate.strength / 180;
   const synergy = rosterSynergy(manager.roster.map(entry => entry.candidate), candidate, dex);
   const counter = opponentCounterValue(manager, candidate, dex);
@@ -827,7 +833,7 @@ function managerValue(manager: Manager, candidate: Candidate, dex: ReturnType<ty
   const counts = countRoles(manager.roster.map(entry => entry.candidate));
   const roleFit = roleTargetValue(manager, counts, candidate.roles, manager.roster.length);
   const baseline = common * .7 + personal * 1.8 + roleFit * .35 + systemFit(manager, candidate) * .3;
-  const programAdjustment = programEvolution ? observedProgram(manager.id, manager.strategyProgram, "acquire", {baseline, strength: candidate.strength / 300, price: candidate.market / 30, roleBreadth: candidate.roles.size / 10, speed: candidate.stats.spe / 200, bulk: (candidate.stats.hp + candidate.stats.def + candidate.stats.spd) / 500, rosterSize: manager.roster.length / maximumRosterSize}) * .15 : 0;
+  const programAdjustment = programEvolution ? observedProgram(manager.id, manager.strategyProgram, "acquire", {baseline, strength: candidate.strength / 300, price: candidate.market / 30, roleBreadth: candidate.roles.size / 10, speed: candidate.stats.spe / 200, bulk: (candidate.stats.hp + candidate.stats.def + candidate.stats.spd) / 500, rosterSize: manager.roster.length / maximumRosterSize}, decision) * .15 : 0;
   return baseline + programAdjustment;
 }
 
@@ -882,7 +888,11 @@ function completionValue(manager: Manager, candidate: Candidate, available: Map<
 }
 
 function chooseLineup(manager: Manager, opponent: Manager, dex: ReturnType<typeof Dex.mod>, seriesId: string): RosterEntry[] {
-  const combinations = chooseSix(manager.roster).map(lineup => ({lineup, value: lineupValue(manager, lineup.map(entry => entry.candidate), opponent, dex)})).sort((a, b) => b.value - a.value);
+  const decisionId = `lineup:${seriesId}:${manager.id}`;
+  const combinations = chooseSix(manager.roster).map(lineup => {
+    const candidateId = lineupCandidateId(lineup.map(entry => entry.candidate));
+    return {lineup, candidateId, value: lineupValue(manager, lineup.map(entry => entry.candidate), opponent, dex, {id: decisionId, candidateId})};
+  }).sort((a, b) => b.value - a.value);
   const incumbent = combinations[0];
   if (!incumbent) throw new Error(`${manager.id} has no legal six-member lineup`);
   assertBattleLineup(incumbent.lineup, manager.id);
@@ -892,8 +902,7 @@ function chooseLineup(manager: Manager, opponent: Manager, dex: ReturnType<typeo
     if (difference > 1e-8) throw new Error(`White-box lineup decomposition drifted by ${difference} for ${candidate.id}`);
     return candidate;
   });
-  const incumbentId = lineupCandidateId(incumbent.lineup.map(entry => entry.candidate));
-  const decisionId = `lineup:${seriesId}:${manager.id}`;
+  const incumbentId = incumbent.candidateId;
   const whiteBoxTrace = evaluateWhiteBoxDecision({
     decisionId,
     candidates: whiteBoxCandidates,
@@ -904,6 +913,7 @@ function chooseLineup(manager: Manager, opponent: Manager, dex: ReturnType<typeo
   const experimentBand=experiment?boundedExperimentValue("V4_LINEUP_BAND",.5,0,5):whiteBoxTrace.reasonableBand,experimentStyleLimit=experiment?boundedExperimentValue("V4_LINEUP_STYLE_LIMIT",3,0,5):whiteBoxTrace.styleContributionLimit,experimentStyleScale=experiment?boundedExperimentValue("V4_LINEUP_STYLE_SCALE",1.1,0,2):1;
   const experimentTrace=experiment?evaluateWhiteBoxDecision({decisionId,candidates:whiteBoxCandidates.map(candidate=>({...candidate,style:candidate.style?.map(entry=>({...entry,value:entry.value*experimentStyleScale}))})),reasonableBand:experimentBand,styleContributionLimit:experimentStyleLimit}):null;
   const experimental=experimentTrace?.selected?combinations.find(option=>lineupCandidateId(option.lineup.map(entry=>entry.candidate))===experimentTrace.selected):undefined,selected=experimental??incumbent,experimentGate=experimentTrace?evaluateLineupAssistGate(experimentTrace.candidates.find(candidate=>candidate.id===incumbentId),experimentTrace.candidates.find(candidate=>candidate.id===experimentTrace.selected)):null;
+  if (programEvolution) programOpportunities.recordDecision(manager.id, "lineup", decisionId, [selected.candidateId], combinations.map(option => ({id: option.candidateId, score: option.value})));
   ledger.add({stage: "lineup", actor: manager.id, decision: `对阵${opponent.name}的8选6`, selected: selected.lineup.map(entry => entry.candidate.name), context: {seriesId, roles: [...new Set(selected.lineup.flatMap(entry => [...entry.candidate.roles]))], opponentRoster: opponent.roster.map(entry => entry.candidate.name), benched: manager.roster.filter(entry => !selected.lineup.includes(entry)).map(entry => entry.candidate.name), policy:experiment?"whitebox-experiment":"incumbent",whiteBoxShadow: summarizeWhiteBoxShadow(whiteBoxTrace, incumbentId, process.env.V4_WHITEBOX_FULL_LINEUP_TRACE==="true"?whiteBoxTrace.candidates.length:3),...(experimentTrace?{whiteBoxLineupExperiment:{band:experimentBand,styleLimit:experimentStyleLimit,styleScale:experimentStyleScale,gate:experimentGate,trace:summarizeWhiteBoxShadow(experimentTrace,incumbentId,experimentTrace.candidates.length)}}:{})}, alternatives: combinations.slice(1, 4).map(option => ({option: option.lineup.map(entry => entry.candidate.name).join("/"), score: option.value})), rationale: lineupReasons(selected.lineup, opponent, dex), expectedValue: selected.value, confidence: confidence(combinations[0].value, combinations[1]?.value)});
   return selected.lineup;
 }
@@ -1263,7 +1273,7 @@ function finish(season: unknown): void {
   console.log(JSON.stringify({dryRun, season: seasonNumber, managers: managers.length, rostered: managers.reduce((sum, manager) => sum + manager.roster.length, 0), decisions: ledger.all().length, output: outDir}, null, 2));
 }
 
-function observedProgram(managerId: string, program: Parameters<typeof evaluateStrategyProgram>[0], entrypoint: Parameters<typeof evaluateStrategyProgram>[1], inputs: Record<string, number>): number { return programOpportunities.evaluate(managerId, program, entrypoint, inputs); }
+function observedProgram(managerId: string, program: Parameters<typeof evaluateStrategyProgram>[0], entrypoint: Parameters<typeof evaluateStrategyProgram>[1], inputs: Record<string, number>, decision?: {id: string; candidateId: string}): number { return programOpportunities.evaluate(managerId, program, entrypoint, inputs, decision); }
 
 function writePool(pool: Candidate[]): void {
   fs.writeFileSync(path.join(outDir, "season-pool.json"), `${JSON.stringify(pool.map(candidate => ({id: candidate.id, assetId: candidate.assetId, family: candidate.family, name: candidate.name, source: candidate.source, scarcity: candidate.scarcity, economicClass: candidate.economicClass, debutGeneration: candidate.debutGeneration, configurationSource: candidate.configurationSource, supplyCap: candidate.supplyCap, tier: candidate.tier, strength: candidate.strength, market: candidate.market, roles: [...candidate.roles]})), null, 2)}\n`, "utf8");
@@ -1353,7 +1363,7 @@ function riskValue(candidate: Candidate, dex: ReturnType<typeof Dex.mod>): numbe
   return Math.min(1, inaccurate * .25 + status * .25 + setup * .3);
 }
 
-function lineupValue(manager: Manager, lineup: Candidate[], opponentManager: Manager, dex: ReturnType<typeof Dex.mod>): number {
+function lineupValue(manager: Manager, lineup: Candidate[], opponentManager: Manager, dex: ReturnType<typeof Dex.mod>, decision?: {id: string; candidateId: string}): number {
   const opponent = opponentManager.roster.map(entry => entry.candidate);
   let score = lineup.reduce((sum, candidate) => sum + candidate.strength / 200, 0);
   const roles = new Set(lineup.flatMap(candidate => [...candidate.roles]));
@@ -1376,7 +1386,7 @@ function lineupValue(manager: Manager, lineup: Candidate[], opponentManager: Man
     const moveTypes = candidate.set.moves.map(move => dex.moves.get(move)).filter(move => move.category !== "Status").map(move => move.type);
     score += opponent.filter(target => moveTypes.some(type => dex.getEffectiveness(type, target.types) > 0)).length * (.02 + manager.traits.counter * .035);
   }
-  if (programEvolution) score += observedProgram(manager.id, manager.strategyProgram, "lineup", {baseline: score / 10, strength: lineup.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800, roleBreadth: roles.size / 10, rosterSize: manager.roster.length / maximumRosterSize, opponentPressure: opponent.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800}) * .2;
+  if (programEvolution) score += observedProgram(manager.id, manager.strategyProgram, "lineup", {baseline: score / 10, strength: lineup.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800, roleBreadth: roles.size / 10, rosterSize: manager.roster.length / maximumRosterSize, opponentPressure: opponent.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800}, decision) * .2;
   return score;
 }
 

@@ -35,6 +35,12 @@ for (let season = 1; season <= 1; season += 1) {
   const result = read<any>(path.join(seasonRoot, "season.json"));
   assert.deepEqual(result.validity, {schemaVersion: 1, valid: true, battleLineupSize: 6});
   const ledger = read<any>(path.join(seasonRoot, "decision-ledger.json"));
+  const opportunities = read<any>(path.join(seasonRoot, "program-opportunities.json"));
+  assert.equal(opportunities.schemaVersion, 2);
+  const decisionGroups = opportunities.managers.flatMap((manager: any) => manager.decisions ?? []);
+  assert(decisionGroups.length > 0);
+  assert(decisionGroups.every((decision: any) => decision.candidates.length >= 2 && decision.candidates.length <= 8 && decision.selectedIds.every((id: string) => decision.candidates.some((candidate: any) => candidate.id === id))));
+  assert(decisionGroups.some((decision: any) => decision.entrypoint === "configure"));
   const lineups = ledger.records.filter((record: any) => record.stage === "lineup");
   assert(lineups.length > 0);
   assert(lineups.every((record: any) => Array.isArray(record.selected) && record.selected.length === 6));
