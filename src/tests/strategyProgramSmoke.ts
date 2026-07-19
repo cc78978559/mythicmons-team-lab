@@ -81,6 +81,17 @@ assert(decisionGroups.every(decision => decision.selectedIds[0] === "right" && d
 assert.deepEqual(new StrategyProgramOpportunityCollector(4, groupedSnapshot).snapshot(2), groupedSnapshot, "Decision-group snapshots must replay deterministically");
 const legacySnapshot = {schemaVersion: 1 as const, season: 1, sampleLimit: 4, managers: [{managerId: "legacy", entrypoints: {}}]};
 assert.equal(new StrategyProgramOpportunityCollector(4, legacySnapshot).snapshot(2).managers[0].decisions, undefined);
+const marginCollector = new StrategyProgramOpportunityCollector(4), marginProgram = noviceStrategyProgram(), marginDecision = "margin-decision";
+marginCollector.evaluate("margin-manager", marginProgram, "acquire", {baseline: .2, strength: .2}, {id: marginDecision, candidateId: "selected"});
+marginCollector.evaluate("margin-manager", marginProgram, "acquire", {baseline: .8, strength: .8}, {id: marginDecision, candidateId: "challenger"});
+marginCollector.recordDecision("margin-manager", "acquire", marginDecision, ["selected"], [{id: "selected", score: 1}, {id: "challenger", score: .9}]);
+const marginEvidence = marginCollector.snapshot(1).managers[0], marginMutation = mutateStrategyProgram(marginProgram, "margin-smoke", STRATEGY_PROGRAM_INPUTS.acquire, {...marginEvidence.entrypoints, decisions: marginEvidence.decisions}, "decision-margin-v3");
+assert.match(marginMutation.mutation, /^program\.acquire\.decision-margin-v3\./);
+const selectedAdjusted = 1 + evaluateStrategyProgram(marginMutation.program, "acquire", {baseline: .2, strength: .2}).value * .15;
+const challengerAdjusted = .9 + evaluateStrategyProgram(marginMutation.program, "acquire", {baseline: .8, strength: .8}).value * .15;
+assert(challengerAdjusted > selectedAdjusted && challengerAdjusted - selectedAdjusted < 1e-5, "v3 must cross the observed margin with the smallest rounded perturbation");
+const noMargin = mutateStrategyProgram(marginProgram, "margin-empty", STRATEGY_PROGRAM_INPUTS.acquire, {}, "decision-margin-v3");
+assert.match(noMargin.mutation, /^program\.decision-margin-v3:semantic-noop:/);
 console.log("Typed strategy program smoke test passed");
 
 function inputKeys(value: any): string[] {

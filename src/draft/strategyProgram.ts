@@ -16,8 +16,8 @@ export interface StrategyProgram {
 
 export interface ProgramTrace {hash: string; entrypoint: ProgramEntrypoint; value: number; nodes: number; inputs: Record<string, number>}
 export interface ProgramBehaviorFingerprint {schemaVersion: 1; values: number[]; hash: string; nonZero: number; range: number}
-export type ProgramOpportunityInputs = Partial<Record<ProgramEntrypoint, {samples: Array<{inputs: Record<string, number>}>}>> & {decisions?: Array<{id: string; entrypoint: ProgramEntrypoint; selectedIds: string[]; candidates: Array<{id: string; inputs: Record<string, number>; score: number}>}>};
-export type StrategyProgramMutationOperator = "observed-boundary-v1" | "compound-observed-boundary-v2";
+export type ProgramOpportunityInputs = Partial<Record<ProgramEntrypoint, {samples: Array<{inputs: Record<string, number>}>}>> & {decisions?: Array<{id: string; hash?: string; entrypoint: ProgramEntrypoint; selectedIds: string[]; candidates: Array<{id: string; inputs: Record<string, number>; score: number}>}>};
+export type StrategyProgramMutationOperator = "observed-boundary-v1" | "compound-observed-boundary-v2" | "decision-margin-v3";
 
 const ENTRYPOINTS: ProgramEntrypoint[] = ["acquire", "configure", "lineup", "battle", "learn"];
 const BINARY = ["add", "subtract", "multiply", "divide", "minimum", "maximum", "greater", "less"] as const;
@@ -29,6 +29,7 @@ export const STRATEGY_PROGRAM_INPUTS: Record<ProgramEntrypoint, readonly string[
   learn: ["baseline", "usage", "production", "teamResult"],
 };
 const BEHAVIOR_LEVELS = [.15, .5, .85] as const;
+const DECISION_PROGRAM_SCALE = {acquire: .15, lineup: .2} as const;
 
 export function noviceStrategyProgram(): StrategyProgram {
   return {version: 1, entrypoints: Object.fromEntries(ENTRYPOINTS.map(entry => [entry, {op: "constant", value: 0}])) as StrategyProgram["entrypoints"], limits: {maxNodes: 96, maxDepth: 12}};
@@ -70,6 +71,11 @@ export function mutateStrategyProgram(program: StrategyProgram | undefined, seed
     if (compound && strategyProgramBehaviorDistance(previousProgram, compound.program) > 1e-9) return compound;
     return {program: previousProgram, mutation: `program.compound-observed-boundary-v2:semantic-noop:${strategyProgramHash(previousProgram).slice(0, 10)}`};
   }
+  if (operator === "decision-margin-v3") {
+    const margin = mutateAtDecisionMargin(previousProgram, `${seed}:decision-margin-v3`, availableInputs, opportunities);
+    if (margin && strategyProgramBehaviorDistance(previousProgram, margin.program) > 1e-9) return margin;
+    return {program: previousProgram, mutation: `program.decision-margin-v3:semantic-noop:${strategyProgramHash(previousProgram).slice(0, 10)}`};
+  }
   const boundary = mutateAtObservedBoundary(previousProgram, `${seed}:observed-boundary`, availableInputs, opportunities);
   if (boundary && strategyProgramBehaviorDistance(previousProgram, boundary.program) > 1e-9) return boundary;
   for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -82,8 +88,54 @@ export function mutateStrategyProgram(program: StrategyProgram | undefined, seed
 
 export function strategyProgramMutationOperator(value: string | undefined): StrategyProgramMutationOperator {
   const operator = value || "observed-boundary-v1";
-  if (operator !== "observed-boundary-v1" && operator !== "compound-observed-boundary-v2") throw new Error(`Unsupported strategy-program mutation operator: ${operator}`);
+  if (operator !== "observed-boundary-v1" && operator !== "compound-observed-boundary-v2" && operator !== "decision-margin-v3") throw new Error(`Unsupported strategy-program mutation operator: ${operator}`);
   return operator;
+}
+
+function mutateAtDecisionMargin(program: StrategyProgram, seed: string, availableInputs: readonly string[], opportunities: ProgramOpportunityInputs | undefined): {program: StrategyProgram; mutation: string} | undefined {
+  const plans = (opportunities?.decisions ?? []).flatMap(decision => {
+    if ((decision.entrypoint !== "acquire" && decision.entrypoint !== "lineup") || decision.selectedIds.length !== 1) return [];
+    const eligibleDecision = {...decision, entrypoint: decision.entrypoint};
+    const selected = decision.candidates.find(candidate => candidate.id === decision.selectedIds[0]);
+    if (!selected) return [];
+    return decision.candidates.filter(candidate => candidate.id !== selected.id && selected.score + 1e-9 >= candidate.score).flatMap(challenger => STRATEGY_PROGRAM_INPUTS[decision.entrypoint].filter(key => availableInputs.includes(key)).flatMap(key => {
+      const selectedValue = selected.inputs[key], challengerValue = challenger.inputs[key];
+      if (!Number.isFinite(selectedValue) || !Number.isFinite(challengerValue) || Math.abs(selectedValue - challengerValue) < 1e-9) return [];
+      const threshold = round((selectedValue + challengerValue) / 2);
+      if ((selectedValue > threshold) === (challengerValue > threshold)) return [];
+      const plan = {decision: eligibleDecision, selected, challenger, key, threshold, challengerHigh: challengerValue > threshold};
+      const maximum = decisionMarginProgram(program, plan, 8);
+      return decisionMarginGain(program, plan, maximum) > 1e-7 ? [plan] : [];
+    }));
+  });
+  if (!plans.length) return undefined;
+  const plan = plans[index(seed, "plan", plans.length)];
+  let low = 0, high = 8;
+  for (let iteration = 0; iteration < 28; iteration += 1) {
+    const middle = (low + high) / 2, candidate = decisionMarginProgram(program, plan, middle);
+    if (decisionMarginGain(program, plan, candidate) > 1e-7) high = middle; else low = middle;
+  }
+  const amplitude = Math.ceil(high * 1e6) / 1e6, next = decisionMarginProgram(program, plan, amplitude);
+  if (decisionMarginGain(program, plan, next) <= 0 || countNodes(next.entrypoints[plan.decision.entrypoint]) > next.limits.maxNodes || expressionDepth(next.entrypoints[plan.decision.entrypoint]) > next.limits.maxDepth) return undefined;
+  validateStrategyProgram(next);
+  const identity = crypto.createHash("sha256").update(plan.decision.hash ?? plan.decision.id).digest("hex").slice(0, 10);
+  return {program: next, mutation: `program.${plan.decision.entrypoint}.decision-margin-v3.${plan.key}@${plan.threshold}:+${amplitude.toFixed(6)}:${identity}`};
+}
+
+function decisionMarginProgram(program: StrategyProgram, plan: {decision: {entrypoint: "acquire" | "lineup"}; key: string; threshold: number; challengerHigh: boolean}, amplitude: number): StrategyProgram {
+  const next = cloneStrategyProgram(program), previous = next.entrypoints[plan.decision.entrypoint];
+  const condition: ProgramExpression = {op: "subtract", left: {op: "input", key: plan.key}, right: {op: "constant", value: plan.threshold}};
+  const boost: ProgramExpression = {op: "add", left: previous, right: {op: "constant", value: amplitude}};
+  const penalize: ProgramExpression = {op: "subtract", left: previous, right: {op: "constant", value: amplitude}};
+  next.entrypoints[plan.decision.entrypoint] = {op: "choose", condition, whenTrue: plan.challengerHigh ? boost : penalize, whenFalse: plan.challengerHigh ? penalize : boost};
+  return next;
+}
+
+function decisionMarginGain(program: StrategyProgram, plan: {decision: {entrypoint: "acquire" | "lineup"}; selected: {inputs: Record<string, number>; score: number}; challenger: {inputs: Record<string, number>; score: number}}, candidate: StrategyProgram): number {
+  const entrypoint = plan.decision.entrypoint, scale = DECISION_PROGRAM_SCALE[entrypoint];
+  const selectedBefore = evaluateStrategyProgram(program, entrypoint, plan.selected.inputs).value, selectedAfter = evaluateStrategyProgram(candidate, entrypoint, plan.selected.inputs).value;
+  const challengerBefore = evaluateStrategyProgram(program, entrypoint, plan.challenger.inputs).value, challengerAfter = evaluateStrategyProgram(candidate, entrypoint, plan.challenger.inputs).value;
+  return plan.challenger.score + (challengerAfter - challengerBefore) * scale - plan.selected.score - (selectedAfter - selectedBefore) * scale;
 }
 
 function mutateAtObservedBoundaries(program: StrategyProgram, seed: string, availableInputs: readonly string[], opportunities: ProgramOpportunityInputs | undefined): {program: StrategyProgram; mutation: string} | undefined {

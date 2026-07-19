@@ -15,6 +15,8 @@ assert.equal(aggregateStrategyProgramEvolution(Array.from({length: 10}, (_, inde
 assert.equal(aggregateStrategyProgramEvolution(Array.from({length: 10}, (_, index) => sample(index, index < 8 ? -1 : 1))).conclusion, "reject-operator");
 const compound = positive.map(value => ({...value, operator: "compound-observed-boundary-v2" as const, operatorMutations: ["program.compound-observed-boundary-v2[acquire.observed-boundary.speed@0.5:+2|lineup.observed-boundary.strength@0.4:-1]"]}));
 assert.equal(aggregateStrategyProgramEvolution(compound).hypothesis, "compound-observed-boundary-two-season-program-operator-v2");
+const margin = positive.map(value => ({...value, operator: "decision-margin-v3" as const, operatorMutations: ["program.acquire.decision-margin-v3.strength@0.5:+0.333334:abcdef1234"]}));
+assert.equal(aggregateStrategyProgramEvolution(margin).hypothesis, "decision-margin-two-season-program-operator-v3");
 assert.throws(() => aggregateStrategyProgramEvolution([positive[0], compound[1]]), /cannot mix mutation operators/);
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "strategy-program-sampler-"));

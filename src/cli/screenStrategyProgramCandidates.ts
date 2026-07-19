@@ -12,7 +12,7 @@ const args = process.argv.slice(2), root = process.cwd();
 const sampler = path.resolve(option("--sampler", "output/strategy-program-evolution-sampler")), out = path.resolve(option("--out", "output/strategy-program-candidate-screen"));
 const replicas = integerOption("--replicas", 3, 3, 9), horizon = integerOption("--horizon", 2, 2, 2), maximumCandidates = integerOption("--max-candidates", 100, 1, 1000);
 const rawEvidence = read<StrategyProgramEvolutionAggregate>(path.join(sampler, "strategy-program-evidence.json")), manifest = read<SamplerManifest>(path.join(sampler, "strategy-program-sampler-manifest.json"));
-const evidenceOperator: StrategyProgramMutationOperator = rawEvidence.hypothesis === "compound-observed-boundary-two-season-program-operator-v2" ? "compound-observed-boundary-v2" : "observed-boundary-v1";
+const evidenceOperator: StrategyProgramMutationOperator = rawEvidence.hypothesis === "decision-margin-two-season-program-operator-v3" ? "decision-margin-v3" : rawEvidence.hypothesis === "compound-observed-boundary-two-season-program-operator-v2" ? "compound-observed-boundary-v2" : "observed-boundary-v1";
 const evidence = {...rawEvidence, samples: rawEvidence.samples.map(sample => ({...sample, operator: sample.operator ?? evidenceOperator}))};
 const candidates = selectBeneficialStrategyProgramSamples(evidence.samples).slice(0, maximumCandidates);
 fs.mkdirSync(out, {recursive: true});

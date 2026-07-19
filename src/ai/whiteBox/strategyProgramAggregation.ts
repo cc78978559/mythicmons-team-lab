@@ -1,7 +1,7 @@
 import type {StrategyProgramMutationOperator} from "../../draft/strategyProgram";
 
 export type StrategyProgramEvolutionConclusion = "blocked" | "insufficient-evidence" | "no-observed-effect" | "reject-operator" | "no-clear-benefit" | "candidate-for-bounded-active-review";
-export type StrategyProgramEvolutionHypothesis = "observed-boundary-two-season-program-operator-v1" | "compound-observed-boundary-two-season-program-operator-v2";
+export type StrategyProgramEvolutionHypothesis = "observed-boundary-two-season-program-operator-v1" | "compound-observed-boundary-two-season-program-operator-v2" | "decision-margin-two-season-program-operator-v3";
 
 export interface StrategyProgramCounterfactualSample {
   seed: string;
@@ -99,11 +99,11 @@ export function strategyProgramEvolutionMarkdown(value: StrategyProgramEvolution
 function validateSample(sample: StrategyProgramCounterfactualSample): void {
   if (!sample.seed || !sample.managerId || !Number.isInteger(sample.sourceSeason) || !Number.isInteger(sample.activationSeason) || !Number.isInteger(sample.evaluationSeason) || !Number.isInteger(sample.horizonSeasons) || sample.activationSeason !== sample.sourceSeason + 1 || sample.evaluationSeason !== sample.sourceSeason + sample.horizonSeasons || sample.horizonSeasons !== 2) throw new Error("Malformed strategy-program sample identity");
   if (!Array.isArray(sample.operatorMutations) || !sample.operatorMutations.some(mutation => mutation.startsWith("program."))) throw new Error(`Missing strategy-program operator identity for ${sample.seed}`);
-  if (sample.operator !== "observed-boundary-v1" && sample.operator !== "compound-observed-boundary-v2") throw new Error(`Unknown strategy-program operator for ${sample.seed}`);
+  if (sample.operator !== "observed-boundary-v1" && sample.operator !== "compound-observed-boundary-v2" && sample.operator !== "decision-margin-v3") throw new Error(`Unknown strategy-program operator for ${sample.seed}`);
   if (!Number.isFinite(sample.behaviorDistance) || !Number.isFinite(sample.opportunityDistance) || !Number.isFinite(sample.choicePotential) || sample.opportunityDistance < 0 || sample.choicePotential < 0 || !Object.values(sample.delta).every(Number.isFinite)) throw new Error(`Malformed strategy-program metrics for ${sample.seed}`);
   if (!sample.decisionEffects || !Object.values(sample.decisionEffects).every(value => Number.isInteger(value) && value >= 0)) throw new Error(`Missing decision-effect telemetry for ${sample.seed}`);
 }
-function hypothesisFor(operator: StrategyProgramMutationOperator): StrategyProgramEvolutionHypothesis { return operator === "compound-observed-boundary-v2" ? "compound-observed-boundary-two-season-program-operator-v2" : "observed-boundary-two-season-program-operator-v1"; }
+function hypothesisFor(operator: StrategyProgramMutationOperator): StrategyProgramEvolutionHypothesis { return operator === "decision-margin-v3" ? "decision-margin-two-season-program-operator-v3" : operator === "compound-observed-boundary-v2" ? "compound-observed-boundary-two-season-program-operator-v2" : "observed-boundary-two-season-program-operator-v1"; }
 function competitiveDirection(delta: StrategyProgramCounterfactualSample["delta"]): number { if (delta.titles !== 0) return Math.sign(delta.titles); if (delta.points !== 0) return Math.sign(delta.points); if (delta.rankImprovement !== 0) return Math.sign(delta.rankImprovement); return 0; }
 function groupedSeedDirections(samples: readonly StrategyProgramCounterfactualSample[], directions: readonly number[]): Map<string, number> { const grouped = new Map<string, number[]>(); samples.forEach((sample, index) => grouped.set(sample.seed, [...(grouped.get(sample.seed) ?? []), directions[index]])); return new Map([...grouped].map(([seed, values]) => [seed, Math.sign(mean(values))])); }
 function binomialUpperTail(successes: number, trials: number): number { const logs: number[] = []; let logProbability = -trials * Math.log(2); for (let k = 0; k <= trials; k += 1) { if (k >= successes) logs.push(logProbability); if (k < trials) logProbability += Math.log(trials - k) - Math.log(k + 1); } const maximum = Math.max(...logs); return Math.exp(maximum) * logs.reduce((sum, value) => sum + Math.exp(value - maximum), 0); }
