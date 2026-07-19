@@ -126,6 +126,10 @@ const marketFlowShadowValues = MARKET_FLOW_SHADOW_PARAMETERS.snapshot().values;
 const battleAssistApprovalPath=process.env.V3_BATTLE_ASSIST_APPROVAL||process.env.V4_BATTLE_ASSIST_APPROVAL||"";
 const battleAssistApproval=battleAssistApprovalPath?loadBattleAssistApproval(path.resolve(battleAssistApprovalPath)):null;
 const battleAssistScopes=battleAssistApproval?.payload.scopes.map(entry=>entry.scopeId)??[];
+const programDecisionExperimentPolicy=process.env.V4_PROGRAM_DECISION_POLICY||"";
+const programDecisionExperimentTarget=process.env.V4_PROGRAM_DECISION_TARGET||"";
+const programDecisionExperimentCandidate=process.env.V4_PROGRAM_DECISION_CANDIDATE||"";
+let programDecisionInterventions=0;
 
 const customSources = DRAFT_GENERATIONS.map(generation => process.env.V3_REGISTRY_DIR ? path.join(registryDirectory, path.basename(draftGenerationSource(generation))) : draftGenerationSource(generation));
 
@@ -195,6 +199,9 @@ function validateSettings(): void {
   if (!Number.isInteger(midseasonGrant) || midseasonGrant < 0 || midseasonGrant > 20) throw new Error("V3_MIDSEASON_GRANT must be 0..20");
   if (!Number.isFinite(tacticalMemoryConfidenceFloor) || tacticalMemoryConfidenceFloor < 0 || tacticalMemoryConfidenceFloor > 1) throw new Error("V3_TACTICAL_MEMORY_CONFIDENCE_FLOOR must be within 0..1");
   if (!["cumulative", "seasonal-decay"].includes(tacticalMemoryBehaviorPolicy)) throw new Error("V3_TACTICAL_MEMORY_BEHAVIOR_POLICY must be cumulative or seasonal-decay");
+  const experimentValues=[programDecisionExperimentPolicy,programDecisionExperimentTarget,programDecisionExperimentCandidate];
+  if(experimentValues.some(Boolean)&&experimentValues.some(value=>!value))throw new Error("Program-decision experiment requires policy, target, and candidate");
+  if(programDecisionExperimentPolicy&&programDecisionExperimentPolicy!=="forced-alternative-experiment")throw new Error(`Unsupported program-decision policy: ${programDecisionExperimentPolicy}`);
 }
 
 function loadManagerProfiles(): ManagerProfile[] {
@@ -715,7 +722,8 @@ function runSupplementalDraft(available: Map<string, Candidate>, dex: ReturnType
         const exploration = boundedDraftJitter(seed, `${manager.id}:explore:${candidate.id}`, overall) * manager.learning.exploration;
         return {candidate, completion, exploration, value: baseValue + completion + exploration};
       }).sort((a, b) => b.value - a.value || tie(a.candidate.id, overall) - tie(b.candidate.id, overall));
-      const selected = ranked[0];
+      const incumbent=ranked[0],intervention=programDecisionIntervention(programDecisionId,incumbent.candidate.id,ranked.map(entry=>entry.candidate.id));
+      const selected = intervention?ranked.find(entry=>entry.candidate.id===intervention.candidateId)!:incumbent;
       if (programEvolution) programOpportunities.recordDecision(manager.id, "acquire", programDecisionId, [selected.candidate.id], ranked.map(entry => ({id: entry.candidate.id, score: entry.value})));
       const whiteBoxCandidates = ranked.map(entry => {
         const candidate = acquisitionWhiteBoxCandidate(manager, entry.candidate, dex, {completionValue: entry.completion, exploration: entry.exploration});
@@ -725,7 +733,7 @@ function runSupplementalDraft(available: Map<string, Candidate>, dex: ReturnType
       });
       const whiteBoxTrace = evaluateWhiteBoxDecision({decisionId: programDecisionId, candidates: whiteBoxCandidates, reasonableBand: acquisitionShadowValues["acquire.reasonableband"], styleContributionLimit: acquisitionShadowValues["acquire.stylelimit"]});
       overall += 1;
-      const decision = ledger.add({stage: "draft", actor: manager.id, decision: `补强第${manager.roster.length + 1}人`, selected: selected.candidate.name, context: {overallPick: overall, remainingBudget: manager.budget, roster: manager.roster.map(entry => entry.candidate.name), scarcity: missingRoles(manager), whiteBoxShadow: summarizeWhiteBoxShadow(whiteBoxTrace, selected.candidate.id, 3)}, alternatives: ranked.slice(1, 5).map(entry => ({option: entry.candidate.name, score: entry.value, rejectedBecause: explainRejection(manager, entry.candidate)})), rationale: explainFit(manager, selected.candidate), expectedValue: selected.value, confidence: confidence(ranked[0].value, ranked[1]?.value)});
+      const decision = ledger.add({stage: "draft", actor: manager.id, decision: `补强第${manager.roster.length + 1}人`, selected: selected.candidate.name, context: {overallPick: overall, remainingBudget: manager.budget, roster: manager.roster.map(entry => entry.candidate.name), scarcity: missingRoles(manager), ...(intervention?{policy:"forced-alternative-experiment",programDecisionExperiment:intervention}:{}),whiteBoxShadow: summarizeWhiteBoxShadow(whiteBoxTrace, incumbent.candidate.id, 3)}, alternatives: ranked.filter(entry=>entry.candidate.id!==selected.candidate.id).slice(0,4).map(entry => ({option: entry.candidate.name, score: entry.value, rejectedBecause: explainRejection(manager, entry.candidate)})), rationale: explainFit(manager, selected.candidate), expectedValue: selected.value, confidence: confidence(ranked[0].value, ranked[1]?.value)});
       manager.roster.push(newRosterEntry(selected.candidate, "supplemental", 1, decision.id));
       manager.budget -= 1;
       available.delete(selected.candidate.id);
@@ -749,8 +757,10 @@ function runBackgroundRegistration(pool: Candidate[], dex: ReturnType<typeof Dex
         const publicAdjustment = publicPreference * .2;
         return {candidate: configured, exploration, publicAdjustment, value: managerValue(manager, configured, dex, {id: programDecisionId, candidateId: configured.id}) + exploration + publicAdjustment};
       }).sort((a, b) => b.value - a.value || a.candidate.family.localeCompare(b.candidate.family));
-      const selected = ranked[0];
-      if (!selected) throw new Error(`${manager.id} cannot complete a public registration roster`);
+      const incumbent=ranked[0];
+      if (!incumbent) throw new Error(`${manager.id} cannot complete a public registration roster`);
+      const intervention=programDecisionIntervention(programDecisionId,incumbent.candidate.id,ranked.map(entry=>entry.candidate.id));
+      const selected = intervention?ranked.find(entry=>entry.candidate.id===intervention.candidateId)!:incumbent;
       if (programEvolution) programOpportunities.recordDecision(manager.id, "acquire", programDecisionId, [selected.candidate.id], ranked.map(entry => ({id: entry.candidate.id, score: entry.value})));
       const whiteBoxCandidates = ranked.map(entry => {
         const candidate = acquisitionWhiteBoxCandidate(manager, entry.candidate, dex, {exploration: entry.exploration, publicPreference: entry.publicAdjustment});
@@ -759,7 +769,7 @@ function runBackgroundRegistration(pool: Candidate[], dex: ReturnType<typeof Dex
         return candidate;
       });
       const whiteBoxTrace = evaluateWhiteBoxDecision({decisionId: programDecisionId, candidates: whiteBoxCandidates, reasonableBand: registrationShadowValues["registration.reasonableband"], styleContributionLimit: registrationShadowValues["registration.stylelimit"]});
-      const decision = ledger.add({stage: "draft", actor: manager.id, decision: `自由注册第${manager.roster.length + 1}名成员`, selected: selected.candidate.name, context: {economicClass: "background", cost: 0, sharedPool: true, unlockGeneration, configuredSet: selected.candidate.set, whiteBoxShadow: summarizeWhiteBoxShadow(whiteBoxTrace, selected.candidate.id, 3)}, alternatives: ranked.slice(1, 5).map(entry => ({option: entry.candidate.name, score: entry.value})), rationale: [...explainFit(manager, selected.candidate), "普通品种不占合同、工资或交易资产空间"], expectedValue: selected.value, confidence: confidence(selected.value, ranked[1]?.value)});
+      const decision = ledger.add({stage: "draft", actor: manager.id, decision: `自由注册第${manager.roster.length + 1}名成员`, selected: selected.candidate.name, context: {economicClass: "background", cost: 0, sharedPool: true, unlockGeneration, configuredSet: selected.candidate.set,...(intervention?{policy:"forced-alternative-experiment",programDecisionExperiment:intervention}:{}),whiteBoxShadow: summarizeWhiteBoxShadow(whiteBoxTrace, incumbent.candidate.id, 3)}, alternatives: ranked.filter(entry=>entry.candidate.id!==selected.candidate.id).slice(0,4).map(entry => ({option: entry.candidate.name, score: entry.value})), rationale: [...explainFit(manager, selected.candidate), "普通品种不占合同、工资或交易资产空间"], expectedValue: selected.value, confidence: confidence(ranked[0].value, ranked[1]?.value)});
       manager.roster.push(newRosterEntry(selected.candidate, "registration", 0, decision.id));
       pick += 1;
     }
@@ -912,13 +922,16 @@ function chooseLineup(manager: Manager, opponent: Manager, dex: ReturnType<typeo
   const experiment=process.env.V4_LINEUP_POLICY==="whitebox-experiment"&&process.env.V4_LINEUP_POLICY_TARGET===decisionId;
   const experimentBand=experiment?boundedExperimentValue("V4_LINEUP_BAND",.5,0,5):whiteBoxTrace.reasonableBand,experimentStyleLimit=experiment?boundedExperimentValue("V4_LINEUP_STYLE_LIMIT",3,0,5):whiteBoxTrace.styleContributionLimit,experimentStyleScale=experiment?boundedExperimentValue("V4_LINEUP_STYLE_SCALE",1.1,0,2):1;
   const experimentTrace=experiment?evaluateWhiteBoxDecision({decisionId,candidates:whiteBoxCandidates.map(candidate=>({...candidate,style:candidate.style?.map(entry=>({...entry,value:entry.value*experimentStyleScale}))})),reasonableBand:experimentBand,styleContributionLimit:experimentStyleLimit}):null;
-  const experimental=experimentTrace?.selected?combinations.find(option=>lineupCandidateId(option.lineup.map(entry=>entry.candidate))===experimentTrace.selected):undefined,selected=experimental??incumbent,experimentGate=experimentTrace?evaluateLineupAssistGate(experimentTrace.candidates.find(candidate=>candidate.id===incumbentId),experimentTrace.candidates.find(candidate=>candidate.id===experimentTrace.selected)):null;
+  const intervention=programDecisionIntervention(decisionId,incumbentId,combinations.map(option=>option.candidateId));
+  if(intervention&&experiment)throw new Error(`Decision ${decisionId} cannot run two experiment policies`);
+  const experimental=intervention?combinations.find(option=>option.candidateId===intervention.candidateId):experimentTrace?.selected?combinations.find(option=>lineupCandidateId(option.lineup.map(entry=>entry.candidate))===experimentTrace.selected):undefined,selected=experimental??incumbent,experimentGate=experimentTrace?evaluateLineupAssistGate(experimentTrace.candidates.find(candidate=>candidate.id===incumbentId),experimentTrace.candidates.find(candidate=>candidate.id===experimentTrace.selected)):null;
   if (programEvolution) programOpportunities.recordDecision(manager.id, "lineup", decisionId, [selected.candidateId], combinations.map(option => ({id: option.candidateId, score: option.value})));
-  ledger.add({stage: "lineup", actor: manager.id, decision: `对阵${opponent.name}的8选6`, selected: selected.lineup.map(entry => entry.candidate.name), context: {seriesId, roles: [...new Set(selected.lineup.flatMap(entry => [...entry.candidate.roles]))], opponentRoster: opponent.roster.map(entry => entry.candidate.name), benched: manager.roster.filter(entry => !selected.lineup.includes(entry)).map(entry => entry.candidate.name), policy:experiment?"whitebox-experiment":"incumbent",whiteBoxShadow: summarizeWhiteBoxShadow(whiteBoxTrace, incumbentId, process.env.V4_WHITEBOX_FULL_LINEUP_TRACE==="true"?whiteBoxTrace.candidates.length:3),...(experimentTrace?{whiteBoxLineupExperiment:{band:experimentBand,styleLimit:experimentStyleLimit,styleScale:experimentStyleScale,gate:experimentGate,trace:summarizeWhiteBoxShadow(experimentTrace,incumbentId,experimentTrace.candidates.length)}}:{})}, alternatives: combinations.slice(1, 4).map(option => ({option: option.lineup.map(entry => entry.candidate.name).join("/"), score: option.value})), rationale: lineupReasons(selected.lineup, opponent, dex), expectedValue: selected.value, confidence: confidence(combinations[0].value, combinations[1]?.value)});
+  ledger.add({stage: "lineup", actor: manager.id, decision: `对阵${opponent.name}的8选6`, selected: selected.lineup.map(entry => entry.candidate.name), context: {seriesId, roles: [...new Set(selected.lineup.flatMap(entry => [...entry.candidate.roles]))], opponentRoster: opponent.roster.map(entry => entry.candidate.name), benched: manager.roster.filter(entry => !selected.lineup.includes(entry)).map(entry => entry.candidate.name), policy:intervention?"forced-alternative-experiment":experiment?"whitebox-experiment":"incumbent",...(intervention?{programDecisionExperiment:intervention}:{}),whiteBoxShadow: summarizeWhiteBoxShadow(whiteBoxTrace, incumbentId, process.env.V4_WHITEBOX_FULL_LINEUP_TRACE==="true"?whiteBoxTrace.candidates.length:3),...(experimentTrace?{whiteBoxLineupExperiment:{band:experimentBand,styleLimit:experimentStyleLimit,styleScale:experimentStyleScale,gate:experimentGate,trace:summarizeWhiteBoxShadow(experimentTrace,incumbentId,experimentTrace.candidates.length)}}:{})}, alternatives: combinations.filter(option=>option.candidateId!==selected.candidateId).slice(0,3).map(option => ({option: option.lineup.map(entry => entry.candidate.name).join("/"), score: option.value})), rationale: lineupReasons(selected.lineup, opponent, dex), expectedValue: selected.value, confidence: confidence(combinations[0].value, combinations[1]?.value)});
   return selected.lineup;
 }
 
 function boundedExperimentValue(name:string,fallback:number,minimum:number,maximum:number):number{const value=Number(process.env[name]??fallback);if(!Number.isFinite(value)||value<minimum||value>maximum)throw new Error(`${name} must be within ${minimum}..${maximum}`);return value;}
+function programDecisionIntervention(decisionId:string,incumbentId:string,candidateIds:readonly string[]):{decisionId:string;incumbentId:string;candidateId:string}|null{if(programDecisionExperimentPolicy!=="forced-alternative-experiment"||programDecisionExperimentTarget!==decisionId)return null;if(programDecisionInterventions)throw new Error(`Program-decision experiment matched more than once: ${decisionId}`);if(programDecisionExperimentCandidate===incumbentId)throw new Error(`Program-decision experiment candidate is already incumbent: ${decisionId}`);if(!candidateIds.includes(programDecisionExperimentCandidate))throw new Error(`Program-decision experiment candidate drifted from ${decisionId}: ${programDecisionExperimentCandidate}`);programDecisionInterventions+=1;return{decisionId,incumbentId,candidateId:programDecisionExperimentCandidate};}
 
 async function runSeason(format: string, dex: ReturnType<typeof Dex.mod>, available: Map<string, Candidate>) {
   const series = [];
@@ -1262,6 +1275,7 @@ function resolveAcquisitionOutcomes(champion: {id: string}): void {
 }
 
 function finish(season: unknown): void {
+  if(programDecisionExperimentPolicy&&programDecisionInterventions!==1)throw new Error(`Program-decision experiment target was not executed: ${programDecisionExperimentTarget}`);
   ledger.write(outDir);
   programOpportunities.write(path.join(outDir, "program-opportunities.json"), seasonNumber);
   const documented = typeof season === "object" && season !== null
