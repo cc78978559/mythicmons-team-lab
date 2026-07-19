@@ -126,9 +126,14 @@ const marketFlowShadowValues = MARKET_FLOW_SHADOW_PARAMETERS.snapshot().values;
 const battleAssistApprovalPath=process.env.V3_BATTLE_ASSIST_APPROVAL||process.env.V4_BATTLE_ASSIST_APPROVAL||"";
 const battleAssistApproval=battleAssistApprovalPath?loadBattleAssistApproval(path.resolve(battleAssistApprovalPath)):null;
 const battleAssistScopes=battleAssistApproval?.payload.scopes.map(entry=>entry.scopeId)??[];
-const programDecisionExperimentPolicy=process.env.V4_PROGRAM_DECISION_POLICY||"";
-const programDecisionExperimentTarget=process.env.V4_PROGRAM_DECISION_TARGET||"";
-const programDecisionExperimentCandidate=process.env.V4_PROGRAM_DECISION_CANDIDATE||"";
+const configuredProgramDecisionExperimentPolicy=process.env.V4_PROGRAM_DECISION_POLICY||"";
+const configuredProgramDecisionExperimentTarget=process.env.V4_PROGRAM_DECISION_TARGET||"";
+const configuredProgramDecisionExperimentCandidate=process.env.V4_PROGRAM_DECISION_CANDIDATE||"";
+const configuredProgramDecisionExperimentSeason=Number(process.env.V4_PROGRAM_DECISION_SEASON||seasonNumber);
+const programDecisionExperimentActive=configuredProgramDecisionExperimentPolicy!==""&&configuredProgramDecisionExperimentSeason===seasonNumber;
+const programDecisionExperimentPolicy=programDecisionExperimentActive?configuredProgramDecisionExperimentPolicy:"";
+const programDecisionExperimentTarget=programDecisionExperimentActive?configuredProgramDecisionExperimentTarget:"";
+const programDecisionExperimentCandidate=programDecisionExperimentActive?configuredProgramDecisionExperimentCandidate:"";
 let programDecisionInterventions=0;
 
 const customSources = DRAFT_GENERATIONS.map(generation => process.env.V3_REGISTRY_DIR ? path.join(registryDirectory, path.basename(draftGenerationSource(generation))) : draftGenerationSource(generation));
@@ -199,9 +204,10 @@ function validateSettings(): void {
   if (!Number.isInteger(midseasonGrant) || midseasonGrant < 0 || midseasonGrant > 20) throw new Error("V3_MIDSEASON_GRANT must be 0..20");
   if (!Number.isFinite(tacticalMemoryConfidenceFloor) || tacticalMemoryConfidenceFloor < 0 || tacticalMemoryConfidenceFloor > 1) throw new Error("V3_TACTICAL_MEMORY_CONFIDENCE_FLOOR must be within 0..1");
   if (!["cumulative", "seasonal-decay"].includes(tacticalMemoryBehaviorPolicy)) throw new Error("V3_TACTICAL_MEMORY_BEHAVIOR_POLICY must be cumulative or seasonal-decay");
-  const experimentValues=[programDecisionExperimentPolicy,programDecisionExperimentTarget,programDecisionExperimentCandidate];
+  const experimentValues=[configuredProgramDecisionExperimentPolicy,configuredProgramDecisionExperimentTarget,configuredProgramDecisionExperimentCandidate];
   if(experimentValues.some(Boolean)&&experimentValues.some(value=>!value))throw new Error("Program-decision experiment requires policy, target, and candidate");
-  if(programDecisionExperimentPolicy&&programDecisionExperimentPolicy!=="forced-alternative-experiment")throw new Error(`Unsupported program-decision policy: ${programDecisionExperimentPolicy}`);
+  if(configuredProgramDecisionExperimentPolicy&&configuredProgramDecisionExperimentPolicy!=="forced-alternative-experiment")throw new Error(`Unsupported program-decision policy: ${configuredProgramDecisionExperimentPolicy}`);
+  if(!Number.isInteger(configuredProgramDecisionExperimentSeason)||configuredProgramDecisionExperimentSeason<1)throw new Error("V4_PROGRAM_DECISION_SEASON must be positive");
 }
 
 function loadManagerProfiles(): ManagerProfile[] {

@@ -127,3 +127,11 @@ The compact result retains both candidates' real inputs and historical scores, t
 ```powershell
 npm run counterfactual:program-decision -- --source <dynasty> --out <experiment> --decision-id <id> --manager <manager-id> --candidate <candidate-id> --season <n> --followup 1
 ```
+
+`sample:program-decision-labels` scales this workflow across existing local dynasties. It recursively discovers source checkpoints, deduplicates them by league seed, keeps at most one case per independent source, seed-balances acquisition and lineup entrypoints when available, and selects a nearby retained alternative without looking at its future result. Its manifest is configuration-pinned and resumable. Failed case directories are removed only inside the sampler's own case root before retry, completed cases are never recomputed, output size is checked before each launch, and terminal control/experiment branches default to audit-summary retention.
+
+The resulting `label-archive.json` contains the real input vectors, historical score gap, matched branch deltas, and direction for every example. Feature-direction counts are deliberately descriptive; they are not mutation weights and cannot activate policy. A three-source engineering probe recovered cleanly from an interrupted first attempt and produced one better, one neutral, and one worse acquisition label. Two labels intervened in season one and continued through season two, covering the new season-scoped intervention guard. The sampler removed `18.46 MB` of terminal battle evidence and retained `30.09 MB`. This validates local collection and storage behavior only; three labels are far below any learning threshold.
+
+```powershell
+npm run sample:program-decision-labels -- --inputs <source-root> --out <label-run> --run --target-samples 10 --minimum-sources 5 --followup 1
+```
