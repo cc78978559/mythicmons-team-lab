@@ -45,6 +45,7 @@
     "counterfactual:shadow-program": "tsx src/cli/counterfactualShadowProgram.ts",
     "counterfactual:program-decision": "tsx src/cli/counterfactualProgramDecision.ts",
     "sample:program-decision-labels": "tsx src/cli/sampleProgramDecisionLabels.ts",
+    "generate:program-decision-sources": "tsx src/cli/generateProgramDecisionSources.ts",
     "learn:program-decision-labels": "tsx src/cli/learnProgramDecisionLabels.ts",
     "replicate:shadow-program": "tsx src/cli/replicateShadowProgram.ts",
     "screen:strategy-program-candidates": "tsx src/cli/screenStrategyProgramCandidates.ts",

@@ -145,3 +145,14 @@ The first real archive was expanded in place to all twenty formal v3 sources. It
 ```powershell
 npm run learn:program-decision-labels -- --archive <label-run>/label-archive.json --out <learning-run>
 ```
+
+`generate:program-decision-sources` creates the missing decision ecology locally. It produces resumable, configuration-pinned V12 sources with fixed eight-member rosters, rejects any completed source that retained no lineup alternatives, enforces output and free-disk limits, and compacts battle/roster evidence after validation. Targets may grow in place, while seasons, league settings, roster size, seed namespace, and registry remain immutable. The first thirty-source batch completed without failures, retained 432 lineup and 1,222 acquisition decision groups, removed `41.53 MB`, and occupied `88.6 MB`.
+
+The label sampler now accepts a replay-pinned `--entrypoint balanced|acquire|lineup`. Strict domains never fall back when a source lacks that decision type. Lineup labels also use finer credit assignment: the targeted series' pair margin, then game margin, determines the direct direction; full-season points, rank, titles, and cash remain recorded as long-term side effects. Existing compact cases can be upgraded from retained season summaries in seconds without replaying battles.
+
+Thirty strict lineup labels were collected and migrated to series-local outcomes. They produced four better, eighteen neutral, and eight worse direct results, compared with only four season-level changes before migration. Leave-one-source-out prediction covered all twelve decisive labels and correctly classified nine (`75%`, one-sided `p=.072998`), but its squared loss across decisive and neutral cases was still `3.9%` worse than the zero predictor. The fixed calibration gate therefore concluded `no-predictive-signal`; directional accuracy alone cannot authorize a shadow operator.
+
+```powershell
+npm run generate:program-decision-sources -- --out <sources> --run --target-sources 30
+npm run sample:program-decision-labels -- --inputs <sources>/sources --out <labels> --run --target-samples 30 --minimum-sources 30 --followup 0 --entrypoint lineup
+```

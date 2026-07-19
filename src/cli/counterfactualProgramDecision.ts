@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
 import {compareWhiteBoxBranches} from "../ai/whiteBox/counterfactual";
+import {readLineupLocalOutcome} from "../ai/whiteBox/programDecisionLocalOutcome";
 import {createRegistrySnapshot} from "../draft/registrySnapshot";
 import type {ProgramDecisionGroup,ProgramOpportunitySnapshot} from "../draft/strategyProgramOpportunity";
 
@@ -23,9 +24,9 @@ run(controlDir,false);run(experimentDir,true);
 verifyPrefix(controlDir,sourceState.completedSeason);verifyPrefix(experimentDir,interventionSeason-1);
 const intervention=findIntervention(experimentDir);
 const controlState=read<any>(path.join(controlDir,"dynasty-state.json")),experimentState=read<any>(path.join(experimentDir,"dynasty-state.json"));
-const comparison=compareWhiteBoxBranches(managerId,interventionSeason,controlState,experimentState),direction=competitiveDirection(comparison.delta);
+const comparison=compareWhiteBoxBranches(managerId,interventionSeason,controlState,experimentState),localOutcome=decision.entrypoint==="lineup"?readLineupLocalOutcome(controlDir,experimentDir,interventionSeason,decisionId,managerId):null,direction=localOutcome?.direction??competitiveDirection(comparison.delta),directionSource=localOutcome?"local-series":"season";
 const incumbent=decision.candidates.find(candidate=>candidate.id===decision.selectedIds[0])!,candidate=decision.candidates.find(entry=>entry.id===candidateId)!;
-const summary={schemaVersion:1,source,seed:sourceState.seed,decision:{id:decisionId,entrypoint:decision.entrypoint,managerId,season:interventionSeason,incumbent,candidate},followupSeasons,finalSeason,prefixVerified:true,intervention,comparison,direction};
+const summary={schemaVersion:1,source,seed:sourceState.seed,decision:{id:decisionId,entrypoint:decision.entrypoint,managerId,season:interventionSeason,incumbent,candidate},followupSeasons,finalSeason,prefixVerified:true,intervention,comparison,localOutcome,directionSource,direction};
 write(path.join(out,"counterfactual-summary.json"),summary);fs.writeFileSync(path.join(out,"counterfactual-report.md"),markdown(summary),"utf8");
 console.log(JSON.stringify({decisionId,entrypoint:decision.entrypoint,managerId,direction,delta:comparison.delta,report:path.join(out,"counterfactual-report.md")},null,2));
 
