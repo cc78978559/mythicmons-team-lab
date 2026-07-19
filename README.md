@@ -1,8 +1,18 @@
 # MythicMons Team Lab
 
-Phase 1 is a thin experiment harness around Pokémon Showdown. It does not reimplement battle mechanics.
+MythicMons Team Lab is a local-first Pokémon Showdown simulation, draft-league, and auditable AI evolution laboratory. It does not reimplement battle mechanics.
 
 Current production capabilities, unfinished AI domains, activation gates, and the next implementation sequence are tracked in [`docs/CURRENT_STATUS_AND_ROADMAP.md`](docs/CURRENT_STATUS_AND_ROADMAP.md).
+
+## Current Development Status
+
+- The persistent league supports 30 managers, scarce custom/legendary assets, ordinary background Pokémon, multi-season careers, promotion and relegation, a development league, Boss challenges, tactical memory, and auditable strategy-program evolution.
+- Expensive seasons, replays, counterfactuals, and learning evaluations run locally. Compact JSON/Markdown summaries are designed to be inspected without loading battle logs into an LLM context.
+- Program-decision evidence collection is resumable, disk-bounded, source-isolated, and protected by output-root workflow locks. Lineup labels use the directly affected series rather than distant season outcomes.
+- The current frozen lineup study contains 60 independent sources and 60 isolated labels: 9 better, 37 neutral, and 14 worse. Leave-one-source-out direction accuracy is 15/23, but total loss improves only 3.69% over the neutral baseline and decisiveness calibration is worse than baseline.
+- The learned lineup policy therefore remains inactive. Passing an evidence-count threshold never activates an AI operator by itself; predictive and safety gates must also pass.
+
+Detailed AI evidence and architecture notes are in [`docs/WHITE_BOX_AI.md`](docs/WHITE_BOX_AI.md) and [`docs/STRATEGY_PROGRAM_EVOLUTION.md`](docs/STRATEGY_PROGRAM_EVOLUTION.md).
 
 ## Commands
 
