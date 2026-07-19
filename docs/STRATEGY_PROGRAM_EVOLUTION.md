@@ -152,6 +152,8 @@ The label sampler now accepts a replay-pinned `--entrypoint balanced|acquire|lin
 
 Thirty strict lineup labels were collected and migrated to series-local outcomes. They produced four better, eighteen neutral, and eight worse direct results, compared with only four season-level changes before migration. Leave-one-source-out prediction covered all twelve decisive labels and correctly classified nine (`75%`, one-sided `p=.072998`), but its squared loss across decisive and neutral cases was still `3.9%` worse than the zero predictor. The fixed calibration gate therefore concluded `no-predictive-signal`; directional accuracy alone cannot authorize a shadow operator.
 
+The learner now separates two questions that have different symmetry. An absolute candidate-difference model estimates whether a replacement will change the affected result at all; an antisymmetric signed-difference model, trained only on decisive labels, estimates which candidate benefits. Their bounded product is the final prediction, and every component remains leave-one-source-out. On the same frozen thirty-label archive this changed total loss from `3.9%` worse than neutral to `3.9%` better. That is genuine improvement, but it remains below the precommitted `5%` gate, while decisiveness Brier loss (`0.2552`) is worse than the prevalence baseline (`0.2400`). The result therefore remains `no-predictive-signal` with no runtime activation.
+
 ```powershell
 npm run generate:program-decision-sources -- --out <sources> --run --target-sources 30
 npm run sample:program-decision-labels -- --inputs <sources>/sources --out <labels> --run --target-samples 30 --minimum-sources 30 --followup 0 --entrypoint lineup

@@ -3,8 +3,9 @@ import {aggregateProgramDecisionLabels,type ProgramDecisionLabel} from "../ai/wh
 import {learnProgramDecisionLabels} from "../ai/whiteBox/programDecisionLearning";
 
 const labels=Array.from({length:30},(_,index)=>label(index,index%2===0?1:-1)),archive=aggregateProgramDecisionLabels(labels),learned=learnProgramDecisionLabels(archive);
-assert.equal(learned.conclusion,"candidate-for-shadow-operator-review");assert.equal(learned.metrics.eligibleDomains,1);assert.equal(learned.models[0].entrypoint,"acquire");assert.equal(learned.models[0].metrics.directionalAccuracy,1);assert.equal(learned.models[0].metrics.coverage,1);assert(learned.models[0].metrics.lossImprovement>.5);assert(learned.crossValidation.every(entry=>entry.correct===true));
+assert.equal(learned.schemaVersion,2);assert.equal(learned.conclusion,"candidate-for-shadow-operator-review");assert.equal(learned.metrics.eligibleDomains,1);assert.equal(learned.models[0].entrypoint,"acquire");assert(learned.models[0].decisiveness.intercept>0);assert.equal(learned.models[0].direction.intercept,0);assert.equal(learned.models[0].metrics.directionalAccuracy,1);assert.equal(learned.models[0].metrics.coverage,1);assert(learned.models[0].metrics.lossImprovement>.5);assert(learned.crossValidation.every(entry=>entry.correct===true&&entry.decisiveProbability>=0&&entry.decisiveProbability<=1&&entry.prediction>=-1&&entry.prediction<=1));
 const sparse=learnProgramDecisionLabels(aggregateProgramDecisionLabels(labels.slice(0,3)));assert.equal(sparse.conclusion,"insufficient-evidence");assert.equal(sparse.metrics.eligibleDomains,0);
+const neutral=learnProgramDecisionLabels(aggregateProgramDecisionLabels(labels.map(entry=>({...entry,direction:"neutral" as const,delta:{...entry.delta,totalPoints:0,finalRank:0,finalPoints:0}}))));assert.equal(neutral.conclusion,"insufficient-evidence");assert.equal(neutral.models[0].metrics.decisive,0);assert(Object.values(neutral.models[0].direction.coefficients).every(value=>value===0));
 assert.throws(()=>aggregateProgramDecisionLabels([labels[0],labels[0]]),/Duplicate/);
 console.log("Program-decision leave-one-source-out learner smoke passed");
 
