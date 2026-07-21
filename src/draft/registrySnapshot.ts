@@ -38,7 +38,7 @@ export function createRegistrySnapshot(sourceDirectory: string, snapshotRoot: st
     try {
       for (const file of stable.files) fs.writeFileSync(path.join(temporary, file.name), file.contents);
       fs.writeFileSync(path.join(temporary, "registry-manifest.json"), `${JSON.stringify({...manifest, directory: "."}, null, 2)}\n`, "utf8");
-      try { fs.renameSync(temporary, directory); } catch (error) {
+      try { renameSnapshotDirectory(temporary, directory); } catch (error) {
         if (!fs.existsSync(directory)) throw error;
         fs.rmSync(temporary, {recursive: true, force: true});
       }
@@ -108,3 +108,15 @@ function validateRegistry(documents: SandboxTeam[]): void {
 function unique(values: Set<string>, id: string, label: string): void { if (!id || values.has(id)) throw new Error(`Duplicate or empty registry id: ${label}`); values.add(id); }
 function registryHash(files: Array<{name: string; contents: Buffer}>): string { const hash = crypto.createHash("sha256"); for (const file of files) hash.update(file.name).update("\0").update(file.contents).update("\0"); return hash.digest("hex"); }
 function sha256(contents: Buffer): string { return crypto.createHash("sha256").update(contents).digest("hex"); }
+
+function renameSnapshotDirectory(source: string, target: string): void {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try { fs.renameSync(source, target); return; }
+    catch (error) {
+      if (fs.existsSync(target)) return;
+      const code = (error as NodeJS.ErrnoException).code;
+      if (!(["EPERM", "EACCES", "EBUSY"] as Array<string | undefined>).includes(code) || attempt === 7) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10 * (attempt + 1));
+    }
+  }
+}
