@@ -11,7 +11,7 @@ import {AI_VERSION} from "../../showdown/choice";
 import {buildBattleAssistScope} from "./battleScope";
 
 export type UnifiedEvidenceStatus = "executable" | "requires-gate" | "archive-only";
-export type UnifiedEvidenceRunner = "general" | "lineup" | "battle" | "memory" | null;
+export type UnifiedEvidenceRunner = "general" | "lineup" | "battle" | "memory" | "learning" | null;
 export const UNIFIED_LINEUP_SCENARIO: WhiteBoxOpportunityScenario = {id: "cautious-lineup-assist-v1", band: .5, styleLimit: 3, styleScale: 1.1};
 
 export interface UnifiedBattleTarget {
@@ -24,6 +24,7 @@ export interface UnifiedBattleTarget {
 }
 
 export interface UnifiedMemoryTarget {sourceGame: string; playerId: "p1" | "p2"; incumbentPolicy: string; candidatePolicy: string; replaySha256: string}
+export interface UnifiedLearningTarget {managerId:string; season:number; policy:"no-learning-experiment"}
 
 export interface UnifiedEvidenceReplica {
   id: string;
@@ -42,6 +43,7 @@ export interface UnifiedEvidenceReplica {
   battleTarget?: UnifiedBattleTarget;
   battleScopeId?: string;
   memoryTarget?: UnifiedMemoryTarget;
+  learningTarget?:UnifiedLearningTarget;
 }
 
 export interface UnifiedEvidenceCase {
@@ -70,6 +72,7 @@ export interface UnifiedEvidenceCase {
   battleTarget?: UnifiedBattleTarget;
   battleScopeId?: string;
   memoryTarget?: UnifiedMemoryTarget;
+  learningTarget?:UnifiedLearningTarget;
   selected: boolean;
 }
 
@@ -77,7 +80,7 @@ export interface UnifiedEvidencePlan {
   schemaVersion: 3;
   createdAt: string;
   config: {maximumCases: number; maximumPerDomain: number; minimumImpact: number};
-  sources: Array<{root: string; seed: string; completedSeason: number; comparisons: number; agreements: number; differences: number; lineupCompleteComparisons: number; lineupIncompleteComparisons: number; lineupScenarioDifferences: number; lineupAssistApproved: number; battleTraceFiles: number; battleComparisons: number; battleDifferences: number; battleEvidence: "available" | "legacy-without-whitebox" | "not-retained"; memoryReplicas: number; memoryPolicies: number}>;
+  sources: Array<{root: string; seed: string; completedSeason: number; comparisons: number; agreements: number; differences: number; lineupCompleteComparisons: number; lineupIncompleteComparisons: number; lineupScenarioDifferences: number; lineupAssistApproved: number; battleTraceFiles: number; battleComparisons: number; battleDifferences: number; battleEvidence: "available" | "legacy-without-whitebox" | "not-retained"; memoryReplicas: number; memoryPolicies: number; learningReplicas:number}>;
   metrics: {
     scanned: number;
     afterImpactFilter: number;
@@ -110,8 +113,9 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
     const battle = collectBattleCases(input, seed, completedSeason);
     raw.push(...battle.cases);
     const memoryCases=collectMemoryCases(input, completedSeason);raw.push(...memoryCases);
+    const learningCases=collectLearningCases(input,seed,completedSeason,state);raw.push(...learningCases);
     const battleEvidence = battle.comparisons ? "available" : battle.files ? "legacy-without-whitebox" : "not-retained";
-    sources.push({root: input, seed, completedSeason, comparisons: review.comparisons, agreements: review.agreements, differences: review.cases.length, lineupCompleteComparisons: opportunity.completeByDomain.lineup ?? 0, lineupIncompleteComparisons: opportunity.incompleteByDomain.lineup ?? 0, lineupScenarioDifferences: lineupCases.length, lineupAssistApproved: lineupCases.filter(entry => entry.assistGate?.recommended).length, battleTraceFiles: battle.files, battleComparisons: battle.comparisons, battleDifferences: battle.cases.length, battleEvidence, memoryReplicas:memoryCases.length, memoryPolicies:new Set(memoryCases.map(entry=>entry.shadow)).size});
+    sources.push({root: input, seed, completedSeason, comparisons: review.comparisons, agreements: review.agreements, differences: review.cases.length, lineupCompleteComparisons: opportunity.completeByDomain.lineup ?? 0, lineupIncompleteComparisons: opportunity.incompleteByDomain.lineup ?? 0, lineupScenarioDifferences: lineupCases.length, lineupAssistApproved: lineupCases.filter(entry => entry.assistGate?.recommended).length, battleTraceFiles: battle.files, battleComparisons: battle.comparisons, battleDifferences: battle.cases.length, battleEvidence, memoryReplicas:memoryCases.length, memoryPolicies:new Set(memoryCases.map(entry=>entry.shadow)).size,learningReplicas:learningCases.length});
   }
   const filtered = raw.filter(entry => entry.impact >= minimumImpact);
   const grouped = new Map<string, UnifiedEvidenceCase[]>();
@@ -147,6 +151,8 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
     cases: unique,
   };
 }
+
+function collectLearningCases(root:string,seed:string,sourceSeason:number,state:any):UnifiedEvidenceCase[]{const cases:UnifiedEvidenceCase[]=[];for(const record of state.decisionRecords??[]){const trace=record.context?.learningWhiteBoxTrace,season=Number(record.context?.season),actor=String(record.actor??"");if(trace?.version!=="white-box-learning-v1"||!Number.isInteger(season)||season<1||!actor||!Array.isArray(trace.traits)||trace.traits.length!==6)continue;let valid=true,impact=0;const changed:string[]=[];for(const trait of trace.traits){if(trait.rollback?.trait!==trait.beforeTrait||JSON.stringify(trait.rollback?.posterior)!==JSON.stringify(trait.prior)){valid=false;break;}const delta=Math.abs(Number(trait.appliedDelta)||0);impact+=delta+Math.abs(Number(trait.posteriorAfter?.mean)-Number(trait.prior?.mean))*.25;if(delta>1e-12)changed.push(String(trait.trait));}if(!changed.length)continue;const status:UnifiedEvidenceStatus=valid?"executable":"archive-only",runner:UnifiedEvidenceRunner=valid?"learning":null,reasons=valid?[]:["learning-rollback-drift"],id=digest([root,actor,season,"no-learning"].join("|")),fingerprint=digest(["learning","no-learning-experiment",changed.sort().join(",")].join("|")),learningTarget:UnifiedLearningTarget={managerId:actor,season,policy:"no-learning-experiment"};cases.push({id,root,sourceSeed:seed,sourceSeason,reviewIndex:0,decisionId:`learning:${actor}:${season}`,domain:"learning",actor,season,classification:"reasonable-style-choice",incumbent:"season-learning-v1",shadow:"no-learning",impact:round(impact),priority:round((valid?140:0)+impact+season*.01),fingerprint,duplicates:1,duplicateCaseIds:[],replicas:[],status,runner,reasons,learningTarget,selected:false});}return cases;}
 
 function collectMemoryCases(root: string, sourceSeason: number): UnifiedEvidenceCase[] {
   const cases: UnifiedEvidenceCase[] = [];
@@ -246,7 +252,7 @@ function toEvidenceCase(root: string, seed: string, sourceSeason: number, entry:
   return {id, root, sourceSeed: seed, sourceSeason, reviewIndex, decisionId: entry.decisionId, domain, actor: entry.actor, season: entry.season, classification: entry.classification, incumbent: entry.incumbent, shadow: entry.shadow, impact, priority, fingerprint, duplicates: 1, duplicateCaseIds: [], replicas: [], status, runner, reasons, selected: false};
 }
 
-function replicaFor(entry: UnifiedEvidenceCase): UnifiedEvidenceReplica { return {id: entry.id, root: entry.root, sourceSeed: entry.sourceSeed, sourceSeason: entry.sourceSeason, reviewIndex: entry.reviewIndex, decisionId: entry.decisionId, shadow: entry.shadow, actor: entry.actor, season: entry.season, status: entry.status, runner: entry.runner, reasons: [...entry.reasons], ...(entry.lineupScenario ? {lineupScenario: {...entry.lineupScenario}} : {}), ...(entry.battleTarget ? {battleTarget: {...entry.battleTarget}} : {}), ...(entry.battleScopeId?{battleScopeId:entry.battleScopeId}:{}), ...(entry.memoryTarget?{memoryTarget:{...entry.memoryTarget}}:{})}; }
+function replicaFor(entry: UnifiedEvidenceCase): UnifiedEvidenceReplica { return {id: entry.id, root: entry.root, sourceSeed: entry.sourceSeed, sourceSeason: entry.sourceSeason, reviewIndex: entry.reviewIndex, decisionId: entry.decisionId, shadow: entry.shadow, actor: entry.actor, season: entry.season, status: entry.status, runner: entry.runner, reasons: [...entry.reasons], ...(entry.lineupScenario ? {lineupScenario: {...entry.lineupScenario}} : {}), ...(entry.battleTarget ? {battleTarget: {...entry.battleTarget}} : {}), ...(entry.battleScopeId?{battleScopeId:entry.battleScopeId}:{}), ...(entry.memoryTarget?{memoryTarget:{...entry.memoryTarget}}:{}),...(entry.learningTarget?{learningTarget:{...entry.learningTarget}}:{})}; }
 
 function detailedDomain(decisionId: string): string {
   if (decisionId.startsWith("lineup:")) return "lineup";

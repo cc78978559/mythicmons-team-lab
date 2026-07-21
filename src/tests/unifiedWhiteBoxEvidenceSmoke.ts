@@ -23,6 +23,7 @@ try {
     {id: "lineup-1", actor: "manager-03", decision: "lineup", context: {season: 2, whiteBoxShadow: lineupShadow()}},
     {id: "lineup-compact", actor: "manager-03", decision: "lineup", context: {season: 2, whiteBoxShadow: {...lineupShadow(), decisionId: "lineup:series-2:manager-03", candidateCount: 3}}},
     {id: "draft-1", actor: "manager-04", decision: "draft", context: {season: 2, whiteBoxShadow: shadow("acquire:supplemental:2:1:manager-04", "a", "b")}},
+    {id:"learning-1",stage:"review",actor:"manager-05",decision:"learning",context:{season:2,before:{risk:.5,stars:.5,synergy:.5,counter:.5,value:.5,flexibility:.5},learningWhiteBoxTrace:{version:"white-box-learning-v1",traits:["risk","stars","synergy","counter","value","flexibility"].map(trait=>({trait,beforeTrait:.5,prior:{mean:.5,confidence:0,effectiveSamples:2},appliedDelta:.05,posteriorAfter:{mean:.6,confidence:.1,effectiveSamples:3},rollback:{trait:.5,posterior:{mean:.5,confidence:0,effectiveSamples:2}}}))}}},
   ]}));
   const battleDir = path.join(root, "season-02", "battles", "game-1"); fs.mkdirSync(battleDir, {recursive: true});
   const battleShadow:any = shadow("battle:game-1:3:p1", "move 1", "switch 2"); battleShadow.candidates[1].rationalScore = 3; battleShadow.candidates[1].finalScore = 3.1;
@@ -32,13 +33,14 @@ try {
   fs.writeFileSync(path.join(battleDir, "ai-decisions.json.gz"), zlib.gzipSync(fs.readFileSync(path.join(battleDir, "ai-decisions.json"))));
   fs.rmSync(path.join(battleDir, "ai-decisions.json"));
   const plan = buildUnifiedEvidencePlan([root], {maximumCases: 10, maximumPerDomain: 2});
-  assert.equal(plan.metrics.scanned, 7);
-  assert.equal(plan.metrics.uniqueFingerprints, 5);
+  assert.equal(plan.metrics.scanned, 8);
+  assert.equal(plan.metrics.uniqueFingerprints, 6);
   assert.equal(plan.schemaVersion, 3);
   assert.equal(plan.sources[0].battleEvidence, "available");
   assert.equal(plan.sources[0].battleDifferences, 1);
   assert.equal(plan.sources[0].memoryReplicas,2);
   assert.equal(plan.sources[0].memoryPolicies,1);
+  assert.equal(plan.sources[0].learningReplicas,1);
   assert.equal(plan.cases.find(entry => entry.domain === "keeper")?.duplicates, 2);
   assert.equal(plan.cases.find(entry => entry.domain === "keeper")?.replicas.length, 2);
   assert.equal(plan.cases.find(entry => entry.domain === "keeper")?.status, "executable");
@@ -55,6 +57,9 @@ try {
   assert.equal(plan.cases.find(entry => entry.domain === "memory")?.runner, "memory");
   assert.equal(plan.cases.find(entry => entry.domain === "memory")?.duplicates, 2);
   assert.equal(plan.cases.find(entry => entry.domain === "memory")?.replicas[0].sourceSeed, "1-2-3-4");
+  assert.equal(plan.cases.find(entry=>entry.domain==="learning")?.status,"executable");
+  assert.equal(plan.cases.find(entry=>entry.domain==="learning")?.runner,"learning");
+  assert.equal(plan.cases.find(entry=>entry.domain==="learning")?.learningTarget?.managerId,"manager-05");
   assert.equal(plan.cases.find(entry => entry.domain === "acquisition")?.status, "archive-only");
   assert.match(unifiedEvidenceMarkdown(plan), /统一白箱反事实证据清单/);
   const output = path.join(root, "evidence-output");
@@ -65,7 +70,7 @@ try {
   }
   const manifest = JSON.parse(fs.readFileSync(path.join(output, "evidence-manifest.json"), "utf8"));
   assert.equal(manifest.schemaVersion, 3);
-  assert.equal(manifest.plan.metrics.scanned, 7);
+  assert.equal(manifest.plan.metrics.scanned, 8);
   assert.deepEqual(manifest.runs, []);
   assert.ok(fs.existsSync(path.join(output, "evidence-plan.md")));
   const second = path.join(root, "second"); fs.mkdirSync(second, {recursive: true});

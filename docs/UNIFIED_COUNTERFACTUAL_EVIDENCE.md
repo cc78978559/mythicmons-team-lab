@@ -112,7 +112,18 @@ npm run counterfactual:tactical-memory -- `
   --out output/tactical-memory-counterfactual
 ```
 
-Learning and evolution interventions remain unsupported by the unified runner.
+Cross-season personality learning is represented by a strict one-manager, one-season ablation. The candidate branch keeps season age, exploration decay, and style-history timing unchanged, but restores all six personality traits and all six strategy posteriors from the trace rollback payload. The incumbent branch must reproduce the stored source prefix, the candidate must match it through the intervention season, and exactly one experiment record must exist. Historical interventions only replay through the requested follow-up horizon, avoiding an unnecessary replay of every later archived season.
+
+```powershell
+npm run counterfactual:whitebox-learning -- `
+  --source output/official-era-02/league `
+  --manager manager-01 `
+  --season 12 `
+  --followup-seasons 1 `
+  --out output/learning-counterfactual
+```
+
+The unified planner pools these replicas under the explicit `season-learning-v1` versus `no-learning` hypothesis, while allowing at most one intervention from each independent league seed. A favorable no-learning result is evidence against the current learning rule, not permission to disable learning automatically. Evolution remains the final unsupported intervention family in the unified runner.
 
 ## Scoped battle assist activation
 

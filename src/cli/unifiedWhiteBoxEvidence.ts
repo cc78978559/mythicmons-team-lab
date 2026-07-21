@@ -68,11 +68,11 @@ function runExperiment(hypothesis: UnifiedEvidenceCase, replica: UnifiedEvidence
   const directory = path.join(out, "experiments", hypothesis.id, replica.id), startedAt = new Date().toISOString();
   if (fs.existsSync(directory)) throw new Error(`Untracked experiment directory exists: ${directory}`);
   try {
-    const command = replica.runner === "lineup" ? lineupCommand(replica, directory) : replica.runner === "battle" ? battleCommand(replica, directory) : replica.runner === "memory" ? memoryCommand(replica, directory) : [path.join(root, "src", "cli", "counterfactualWhiteBox.ts"), "--source", replica.root, "--out", directory, "--case-index", String(replica.reviewIndex), "--followup-seasons", String(followupSeasons)];
+    const command = replica.runner === "lineup" ? lineupCommand(replica, directory) : replica.runner === "battle" ? battleCommand(replica, directory) : replica.runner === "memory" ? memoryCommand(replica, directory) : replica.runner==="learning"?learningCommand(replica,directory): [path.join(root, "src", "cli", "counterfactualWhiteBox.ts"), "--source", replica.root, "--out", directory, "--case-index", String(replica.reviewIndex), "--followup-seasons", String(followupSeasons)];
     const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), ...command], {cwd: root, env: {...process.env}, encoding: "utf8", maxBuffer: 64 * 1024 * 1024});
     if (result.status !== 0) throw new Error(result.stderr || result.stdout || `Counterfactual exited ${result.status}`);
     if (replica.runner === "lineup") verifyLineupExperiment(directory, replica);
-    const retention = replica.runner === "battle" || replica.runner === "memory" ? undefined : [path.join(directory, "incumbent"), path.join(directory, "whitebox")].map(branch => compactWhiteBoxRun(branch));
+    const retention = replica.runner === "battle" || replica.runner === "memory" ? undefined : [path.join(directory, "incumbent"), path.join(directory,replica.runner==="learning"?"candidate":"whitebox")].map(branch => compactWhiteBoxRun(branch));
     manifest.runs.push({hypothesisId: hypothesis.id, replicaId: replica.id, seed: replica.sourceSeed, status: "complete", directory, startedAt, completedAt: new Date().toISOString(), retention});
     writePlan();
   } catch (error) {
@@ -83,6 +83,8 @@ function runExperiment(hypothesis: UnifiedEvidenceCase, replica: UnifiedEvidence
     throw error;
   }
 }
+
+function learningCommand(replica:UnifiedEvidenceReplica,directory:string):string[]{const target=replica.learningTarget;if(!target)throw new Error(`Executable learning replica is incomplete: ${replica.id}`);return[path.join(root,"src","cli","counterfactualWhiteBoxLearning.ts"),"--source",replica.root,"--out",directory,"--manager",target.managerId,"--season",String(target.season),"--followup-seasons",String(followupSeasons)];}
 
 function memoryCommand(replica: UnifiedEvidenceReplica, directory: string): string[] {
   const target=replica.memoryTarget;if(!target)throw new Error(`Executable memory replica is incomplete: ${replica.id}`);
