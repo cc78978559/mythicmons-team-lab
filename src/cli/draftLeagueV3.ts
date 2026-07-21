@@ -205,7 +205,6 @@ function validateSettings(): void {
   if (!['sequential', 'portfolio'].includes(auctionMode)) throw new Error("V3_AUCTION_MODE must be sequential or portfolio");
   if (bidCounterfactualPolicy && bidCounterfactualPolicy !== WHITE_BOX_BID_COUNTERFACTUAL_POLICY) throw new Error(`Unsupported V3 bid counterfactual policy: ${bidCounterfactualPolicy}`);
   if (Boolean(bidCounterfactualPolicy) !== Boolean(bidCounterfactualTarget)) throw new Error("V3 bid counterfactual policy and target must be provided together");
-  if (bidCounterfactualPolicy && auctionMode !== "sequential") throw new Error("Bid counterfactual experiments currently require sequential auction mode");
   if (!Number.isInteger(minimumRosterSize) || !Number.isInteger(maximumRosterSize) || minimumRosterSize < 6 || maximumRosterSize < minimumRosterSize || maximumRosterSize > 10) throw new Error("V3 roster limits must satisfy 6 <= min <= max <= 10");
   if (!Number.isInteger(midseasonGrant) || midseasonGrant < 0 || midseasonGrant > 20) throw new Error("V3_MIDSEASON_GRANT must be 0..20");
   if (!Number.isFinite(tacticalMemoryConfidenceFloor) || tacticalMemoryConfidenceFloor < 0 || tacticalMemoryConfidenceFloor > 1) throw new Error("V3_TACTICAL_MEMORY_CONFIDENCE_FLOOR must be within 0..1");
@@ -678,7 +677,7 @@ function runPortfolioAuction(available: Map<string, Candidate>, dex: ReturnType<
     const award = awardByAsset.get(candidate.id);
     const winner = award ? managers.find(manager => manager.id === award.managerId)! : null;
     const rankedBids = bids.filter(bid => bid.assetId === candidate.id && bid.bid > 0).sort((a, b) => b.bid - a.bid || b.utility - a.utility);
-    const auditedBids = rankedBids.map(bid => ({...bid, whiteBox: bidDetails.get(`${bid.managerId}:${candidate.id}`)?.whiteBoxTrace}));
+    const auditedBids = rankedBids.map(bid => { const detail = bidDetails.get(`${bid.managerId}:${candidate.id}`); return {...bid, whiteBox: detail?.whiteBoxTrace, ...(detail?.bidExperiment ? {bidExperiment: detail.bidExperiment} : {})}; });
     const decision = ledger.add({stage: "auction", actor: "portfolio-market", decision: `组合市场分配 ${candidate.name}`, selected: winner ? `${winner.name} ${award!.payment}` : "未成交", context: {lot: index + 1, family: candidate.family, assetId: candidate.assetId, mode: "portfolio", pricing: "critical-bid-approximation", referencePrice: candidate.market, submittedBids: rankedBids.length, winningBid: award?.bid ?? 0, criticalBidPrice: award?.payment ?? 0, runnerUpBid: award?.runnerUpBid ?? 0, bids: auditedBids}, alternatives: rankedBids.slice(0, 5).map(bid => ({option: bid.managerId, score: bid.utility, cost: bid.bid})), rationale: winner ? ["全体高级资产同时求解", "在预算、名单和唯一性约束下最大化组合效用", `使用透明临界报价近似支付${award!.payment}`] : ["没有可行的正报价分配"]});
     if (winner) {
       winner.budget -= award!.payment;

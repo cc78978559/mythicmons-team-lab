@@ -12,8 +12,8 @@ import {compactWhiteBoxRun, type WhiteBoxRetentionTrace} from "../ai/whiteBox/re
 type RunStatus = "complete" | "failed";
 interface ExperimentRun {hypothesisId: string; replicaId: string; seed: string; status: RunStatus; directory: string; startedAt: string; completedAt: string; retention?: WhiteBoxRetentionTrace[]; error?: string}
 interface Manifest {
-  schemaVersion: 3;
-  config: {inputs: string[]; maximumCases: number; maximumPerDomain: number; minimumImpact: number; maximumExperiments: number; maximumOutputMb: number; minimumFreeGb: number; followupSeasons: number; activationSamples: number; activationSeeds: number};
+  schemaVersion: 4;
+  config: {inputs: string[]; portfolioBidScreens:string[]; maximumCases: number; maximumPerDomain: number; minimumImpact: number; maximumExperiments: number; maximumOutputMb: number; minimumFreeGb: number; followupSeasons: number; activationSamples: number; activationSeeds: number};
   plan: UnifiedEvidencePlan;
   runs: ExperimentRun[];
   stopReason: string | null;
@@ -21,19 +21,20 @@ interface Manifest {
 
 const args = process.argv.slice(2), root = process.cwd();
 const inputs = option("--inputs", "output/draft-league-v12").split(",").map(value => path.resolve(value.trim())).filter(Boolean);
+const portfolioBidScreens=option("--portfolio-bid-screens","").split(",").map(value=>value.trim()).filter(Boolean).map(value=>path.resolve(value));
 const out = path.resolve(option("--out", "output/unified-whitebox-evidence"));
 const maximumCases = integerOption("--max-cases", 60, 1, 10000), maximumPerDomain = integerOption("--max-per-domain", 10, 1, 1000), minimumImpact = numberOption("--min-impact", 0, 0, 1e9);
 const maximumExperiments = integerOption("--max-experiments", 1, 1, 100), maximumOutputMb = integerOption("--max-output-mb", 1024, 10, 102400), minimumFreeGb = numberOption("--min-free-gb", 10, 0, 10000), followupSeasons = integerOption("--followup-seasons", 1, 1, 10);
 const activationSamples = integerOption("--activation-samples", 30, 10, 1000), activationSeeds = integerOption("--activation-seeds", 10, 5, activationSamples);
-const config = {inputs, maximumCases, maximumPerDomain, minimumImpact, maximumExperiments, maximumOutputMb, minimumFreeGb, followupSeasons, activationSamples, activationSeeds};
+const config = {inputs,portfolioBidScreens, maximumCases, maximumPerDomain, minimumImpact, maximumExperiments, maximumOutputMb, minimumFreeGb, followupSeasons, activationSamples, activationSeeds};
 fs.mkdirSync(out, {recursive: true});
 const manifestPath = path.join(out, "evidence-manifest.json"), previousRaw = fs.existsSync(manifestPath) ? read<any>(manifestPath) : null;
 if (previousRaw?.schemaVersion === 1 && previousRaw.runs?.length) throw new Error("Schema-v1 evidence manifest has experiment runs and cannot be migrated safely; use a new --out directory");
-if (previousRaw && ![2,3].includes(previousRaw.schemaVersion)) throw new Error(`Unsupported evidence manifest schema: ${previousRaw.schemaVersion}`);
-const previous = previousRaw?.schemaVersion === 2 || previousRaw?.schemaVersion === 3 ? previousRaw as Manifest : null;
+if (previousRaw && ![2,3,4].includes(previousRaw.schemaVersion)) throw new Error(`Unsupported evidence manifest schema: ${previousRaw.schemaVersion}`);
+const previous = [2,3,4].includes(previousRaw?.schemaVersion) ? previousRaw as Manifest : null;
 if (previous && JSON.stringify(previous.config) !== JSON.stringify(config)) throw new Error("Unified evidence configuration differs from the existing manifest; use a new --out directory");
-const plan = buildUnifiedEvidencePlan(inputs, {maximumCases, maximumPerDomain, minimumImpact});
-const manifest: Manifest = {schemaVersion: 3, config, plan, runs: previous?.runs ?? [], stopReason: null};
+const plan = buildUnifiedEvidencePlan(inputs, {maximumCases, maximumPerDomain, minimumImpact,portfolioBidScreens});
+const manifest: Manifest = {schemaVersion: 4, config, plan, runs: previous?.runs ?? [], stopReason: null};
 writePlan();
 
 if (args.includes("--run")) {

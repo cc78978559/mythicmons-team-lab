@@ -40,6 +40,7 @@
     "counterfactual:tactical-memory": "tsx src/cli/counterfactualTacticalMemory.ts",
     "counterfactual:whitebox-learning": "tsx src/cli/counterfactualWhiteBoxLearning.ts",
     "counterfactual:whitebox-bid": "tsx src/cli/counterfactualWhiteBoxBid.ts",
+    "screen:portfolio-bids": "tsx src/cli/screenPortfolioBids.ts",
     "counterfactual:whitebox-battle-sample": "tsx src/cli/sampleWhiteBoxBattle.ts",
     "generate:whitebox-battle-sources": "tsx src/cli/expandBattleShadowSources.ts",
     "sample:tactical-memory-ablation": "tsx src/cli/sampleTacticalMemoryAblation.ts",

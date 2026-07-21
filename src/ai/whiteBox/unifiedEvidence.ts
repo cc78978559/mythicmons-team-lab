@@ -12,6 +12,7 @@ import {buildBattleAssistScope} from "./battleScope";
 import {strategyProgramMutationOperator} from "../../draft/strategyProgram";
 import {evaluateWhiteBoxBidApproval, WHITE_BOX_BID_COUNTERFACTUAL_POLICY} from "./bidApproval";
 import type {WhiteBoxBidTrace} from "./auction";
+import {loadPortfolioBidReplayCapsule} from "./portfolioBidCounterfactual";
 
 export type UnifiedEvidenceStatus = "executable" | "requires-gate" | "archive-only";
 export type UnifiedEvidenceRunner = "general" | "lineup" | "battle" | "memory" | "learning" | "program-evolution" | "evolution" | "acquisition" | "bid" | null;
@@ -89,9 +90,9 @@ export interface UnifiedEvidenceCase {
 }
 
 export interface UnifiedEvidencePlan {
-  schemaVersion: 3;
+  schemaVersion: 4;
   createdAt: string;
-  config: {maximumCases: number; maximumPerDomain: number; minimumImpact: number};
+  config: {maximumCases: number; maximumPerDomain: number; minimumImpact: number; portfolioBidScreens:string[]};
   sources: Array<{root: string; seed: string; completedSeason: number; comparisons: number; agreements: number; differences: number; lineupCompleteComparisons: number; lineupIncompleteComparisons: number; lineupScenarioDifferences: number; lineupAssistApproved: number; battleTraceFiles: number; battleComparisons: number; battleDifferences: number; battleEvidence: "available" | "legacy-without-whitebox" | "not-retained"; memoryReplicas: number; memoryPolicies: number; learningReplicas:number; programEvolutionReplicas:number; fullEvolutionReplicas:number; bidReplicas:number; executableBidReplicas:number}>;
   metrics: {
     scanned: number;
@@ -108,10 +109,11 @@ export interface UnifiedEvidencePlan {
   cases: UnifiedEvidenceCase[];
 }
 
-export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {maximumCases?: number; maximumPerDomain?: number; minimumImpact?: number} = {}): UnifiedEvidencePlan {
+export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {maximumCases?: number; maximumPerDomain?: number; minimumImpact?: number; portfolioBidScreens?:readonly string[]} = {}): UnifiedEvidencePlan {
   const maximumCases = integer(options.maximumCases ?? 60, 1, 10000, "maximumCases");
   const maximumPerDomain = integer(options.maximumPerDomain ?? 10, 1, 1000, "maximumPerDomain");
   const minimumImpact = finite(options.minimumImpact ?? 0, 0, 1e9, "minimumImpact");
+  const portfolioBidScreens=[...new Set((options.portfolioBidScreens??[]).map(value=>path.resolve(value)))],screenEvidence=loadPortfolioScreenEvidence(portfolioBidScreens);
   if (!inputs.length) throw new Error("Unified evidence planning requires at least one dynasty root");
   const sources: UnifiedEvidencePlan["sources"] = [], raw: UnifiedEvidenceCase[] = [];
   for (const input of [...new Set(inputs.map(value => path.resolve(value)))]) {
@@ -127,7 +129,7 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
     const memoryCases=collectMemoryCases(input, completedSeason);raw.push(...memoryCases);
     const learningCases=collectLearningCases(input,seed,completedSeason,state);raw.push(...learningCases);
     const evolutionCases=collectEvolutionCases(input,seed,completedSeason,state);raw.push(...evolutionCases);
-    const bidCases=collectBidCases(input,seed,completedSeason,state);raw.push(...bidCases);
+    const bidCases=collectBidCases(input,seed,completedSeason,state,screenEvidence);raw.push(...bidCases);
     const battleEvidence = battle.comparisons ? "available" : battle.files ? "legacy-without-whitebox" : "not-retained";
     sources.push({root: input, seed, completedSeason, comparisons: review.comparisons, agreements: review.agreements, differences: review.cases.length, lineupCompleteComparisons: opportunity.completeByDomain.lineup ?? 0, lineupIncompleteComparisons: opportunity.incompleteByDomain.lineup ?? 0, lineupScenarioDifferences: lineupCases.length, lineupAssistApproved: lineupCases.filter(entry => entry.assistGate?.recommended).length, battleTraceFiles: battle.files, battleComparisons: battle.comparisons, battleDifferences: battle.cases.length, battleEvidence, memoryReplicas:memoryCases.length, memoryPolicies:new Set(memoryCases.map(entry=>entry.shadow)).size,learningReplicas:learningCases.length,programEvolutionReplicas:evolutionCases.filter(entry=>entry.domain==="program-evolution").length,fullEvolutionReplicas:evolutionCases.filter(entry=>entry.domain==="evolution").length,bidReplicas:bidCases.length,executableBidReplicas:bidCases.filter(entry=>entry.status==="executable").length});
   }
@@ -146,9 +148,9 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
     if (entry.selected) { selected += 1; domainCounts.set(entry.domain, count + 1); }
   }
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     createdAt: new Date().toISOString(),
-    config: {maximumCases, maximumPerDomain, minimumImpact},
+    config: {maximumCases, maximumPerDomain, minimumImpact,portfolioBidScreens},
     sources,
     metrics: {
       scanned: raw.length,
@@ -166,7 +168,9 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
   };
 }
 
-function collectBidCases(root:string,seed:string,sourceSeason:number,state:any):UnifiedEvidenceCase[]{
+function loadPortfolioScreenEvidence(files:readonly string[]):Map<string,any>{const evidence=new Map<string,any>();for(const input of files){const file=fs.existsSync(input)&&fs.statSync(input).isDirectory()?path.join(input,"portfolio-bid-screen.json"):input,value=readJson<any>(file);if(value.schemaVersion!==1||value.sourceVerified!==true||!Number.isInteger(value.season)||!Array.isArray(value.results))throw new Error(`Invalid portfolio bid screen: ${file}`);const root=path.resolve(value.source),capsule=loadPortfolioBidReplayCapsule(root,value.season);if(capsule.sourceHash!==value.sourceHash)throw new Error(`Portfolio bid screen source hash drifted: ${file}`);for(const result of value.results){const key=`${root}|${value.season}|${result.decisionId}`;if(evidence.has(key))throw new Error(`Duplicate portfolio bid screen result: ${result.decisionId}`);evidence.set(key,result);}}return evidence;}
+
+function collectBidCases(root:string,seed:string,sourceSeason:number,state:any,screenEvidence:Map<string,any>):UnifiedEvidenceCase[]{
   const cases:UnifiedEvidenceCase[]=[];
   const auctionMode=String(state.settings?.auctionMode??"sequential");
   for(let season=1;season<=sourceSeason;season+=1){
@@ -181,10 +185,10 @@ function collectBidCases(root:string,seed:string,sourceSeason:number,state:any):
         const trace=item.trace;if(!item.managerId||trace?.version!=="white-box-bid-v1"||trace.ceiling<=trace.bid||trace.shade<=0)continue;
         const highestCompetingBid=Math.max(0,...normalized.filter(entry=>entry.managerId!==item.managerId).map(entry=>entry.bid));
         const approval=evaluateWhiteBoxBidApproval({auctionMode,bidderId:item.managerId,incumbentWinnerId:winner?.managerId??null,highestCompetingBid,trace});
-        const status:UnifiedEvidenceStatus=auctionMode!=="sequential"?"requires-gate":approval.recommended?"executable":"archive-only";
+        const screened=screenEvidence.get(`${path.resolve(root)}|${season}|${trace.decisionId}`),status:UnifiedEvidenceStatus=auctionMode!=="sequential"?(screened?.status==="executable"?"executable":"requires-gate"):approval.recommended?"executable":"archive-only";
         const runner:UnifiedEvidenceRunner=status==="executable"?"bid":null;
-        const reasons=auctionMode!=="sequential"?["portfolio-auction-requires-dedicated-replay"]:[...approval.reasons];
-        const impact=round(trace.ceiling-trace.bid),id=digest([root,trace.decisionId,WHITE_BOX_BID_COUNTERFACTUAL_POLICY].join("|")),fingerprint=digest(["auction",WHITE_BOX_BID_COUNTERFACTUAL_POLICY,status,reasons.slice().sort().join(",")].join("|"));
+        const reasons=auctionMode!=="sequential"?(screened?.status==="executable"?[]:["portfolio-solver-screen-required"]):[...approval.reasons];
+        const impact=round(trace.ceiling-trace.bid+(screened?.changes?.length??0)),id=digest([root,trace.decisionId,WHITE_BOX_BID_COUNTERFACTUAL_POLICY].join("|")),screenShape=screened?.changes?.map((change:any)=>change.before?.managerId===change.after?.managerId?"payment":"assignment").sort().join(",")??"",fingerprint=digest(["auction",WHITE_BOX_BID_COUNTERFACTUAL_POLICY,status,reasons.slice().sort().join(","),screenShape].join("|"));
         const bidTarget:UnifiedBidTarget={managerId:item.managerId,season,decisionId:trace.decisionId,policy:WHITE_BOX_BID_COUNTERFACTUAL_POLICY};
         cases.push({id,root,sourceSeed:seed,sourceSeason,reviewIndex:0,decisionId:trace.decisionId,domain:"auction",actor:item.managerId,season,classification:"reasonable-style-choice",incumbent:String(trace.bid),shadow:String(trace.ceiling),impact,priority:round((status==="executable"?150:status==="requires-gate"?20:0)+impact+season*.01),fingerprint,duplicates:1,duplicateCaseIds:[],replicas:[],status,runner,reasons,bidTarget,selected:false});
       }

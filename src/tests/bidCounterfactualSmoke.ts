@@ -5,6 +5,8 @@ import path from "node:path";
 import {spawnSync} from "node:child_process";
 import {evaluateWhiteBoxBidApproval} from "../ai/whiteBox/bidApproval";
 import type {WhiteBoxBidTrace} from "../ai/whiteBox/auction";
+import {evaluatePortfolioBidCounterfactual,loadPortfolioBidReplayCapsule,precheckPortfolioBids} from "../ai/whiteBox/portfolioBidCounterfactual";
+import {buildUnifiedEvidencePlan} from "../ai/whiteBox/unifiedEvidence";
 
 const root=process.cwd(),directory=fs.mkdtempSync(path.join(os.tmpdir(),"bid-counterfactual-")),source=path.join(directory,"source"),out=path.join(directory,"result");
 try{
@@ -23,6 +25,15 @@ try{
   assert.equal(summary.intervention.incumbentBid,selected.approval.incumbentBid);assert.equal(summary.intervention.candidateBid,selected.approval.candidateBid);assert(summary.displacedManagerId);
   const experimentRecords=read<any>(path.join(out,"experiment","season-01","decision-ledger.json")).records??[],experiments=experimentRecords.flatMap((record:any)=>(record.context?.bids??[]).map((bid:any)=>bid.bidExperiment).filter(Boolean));
   assert.equal(experiments.length,1,"exactly one bid may change in the experiment branch");
+  const portfolioSource=path.join(directory,"portfolio-source"),portfolioOut=path.join(directory,"portfolio-result"),screenOut=path.join(directory,"portfolio-screen");
+  run(path.join(root,"src","cli","draftLeagueV12.ts"),[],{V12_OUT:portfolioSource,V12_SEED:"portfolio-bid-smoke",V12_SEASONS:"1",V12_MANAGER_LIMIT:"6",V12_PAIRS:"1",V12_POOL_SIZE:"100",V12_AUCTION_LOTS:"10",V12_REGULAR_ROUNDS:"1",V12_MAX_TURNS:"60",V12_MIN_ROSTER:"6",V12_MAX_ROSTER:"8",V12_AUCTION_MODE:"portfolio",V12_EVIDENCE_RETENTION:"compact",V12_EVIDENCE_SAMPLE_RATE:"0"});
+  const capsule=loadPortfolioBidReplayCapsule(portfolioSource,1);assert.equal(capsule.assetIds.length,10);assert.equal(capsule.limits.length,6);
+  const prechecks=precheckPortfolioBids(capsule).filter(entry=>entry.status==="screenable");assert(prechecks.length,"portfolio source must retain screenable shaded bids");
+  const portfolioSelected=prechecks.map(entry=>evaluatePortfolioBidCounterfactual(capsule,entry.decisionId)).find(entry=>entry.status==="executable");assert(portfolioSelected,"portfolio source must contain an allocation-changing bid");assert(portfolioSelected.changes.length);assert(portfolioSelected.affectedManagerIds.length);
+  run(path.join(root,"src","cli","screenPortfolioBids.ts"),["--source",portfolioSource,"--out",screenOut,"--max-candidates","2"],{});const screen=read<any>(path.join(screenOut,"portfolio-bid-screen.json"));assert.equal(screen.sourceVerified,true);assert.equal(screen.evaluated,2);const portfolioPlan=buildUnifiedEvidencePlan([portfolioSource],{portfolioBidScreens:[screenOut]});assert(portfolioPlan.cases.some(entry=>entry.domain==="auction"&&entry.status==="executable"&&entry.runner==="bid"));
+  run(path.join(root,"src","cli","counterfactualWhiteBoxBid.ts"),["--source",portfolioSource,"--out",portfolioOut,"--decision-id",portfolioSelected.decisionId,"--manager",portfolioSelected.managerId,"--season","1","--followup-seasons","0"],{});
+  const portfolioSummary=read<any>(path.join(portfolioOut,"counterfactual-summary.json"));assert.equal(portfolioSummary.auctionMode,"portfolio");assert.equal(portfolioSummary.auctionPrefixVerified,true);assert.equal(portfolioSummary.approval.status,"executable");assert(portfolioSummary.approval.changes.length);assert.deepEqual(portfolioSummary.affectedManagerIds,portfolioSelected.affectedManagerIds);
+  const portfolioRecords=read<any>(path.join(portfolioOut,"experiment","season-01","decision-ledger.json")).records??[],portfolioExperiments=portfolioRecords.flatMap((record:any)=>(record.context?.bids??[]).map((bid:any)=>bid.bidExperiment).filter(Boolean));assert.equal(portfolioExperiments.length,1,"portfolio branch must change exactly one submitted bid");
 }finally{fs.rmSync(directory,{recursive:true,force:true});}
 console.log("White-box bid counterfactual smoke test passed");
 

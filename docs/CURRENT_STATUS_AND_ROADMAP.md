@@ -117,4 +117,12 @@ npm run official-season-cycle -- `
 - Sequential auctions now support a gated, isolated `unshaded-ceiling-experiment`: only a source loser whose retained legal ceiling strictly beats the source leader is replayable, and the branch must contain exactly one changed bid.
 - A deterministic 6-manager smoke source produced 45 shaded bid cases; 5 were outcome-changing candidates. An exact `17 -> 19` replay passed source-prefix and one-intervention verification.
 - The retained formal S21 archive uses portfolio auctions. It contains 13,192 shaded bid replicas, all correctly classified `requires-gate`; no formal-season replay was launched.
-- Remaining auction work is portfolio-specific: replay the complete constrained allocation, verify every changed award/payment, and aggregate effects across all displaced managers. The sequential runner must not be reused for that task.
+- At that checkpoint, remaining auction work was portfolio-specific: replay the complete constrained allocation, verify every changed award/payment, and aggregate effects across all displaced managers. The sequential runner was not reused for that task; the update below records its dedicated implementation.
+
+## 2026-07-21 portfolio-bid evidence update
+
+- The portfolio-specific replay route is now implemented. It reconstructs source solver inputs from retained season files and rejects any source whose winners, prices, runner-up bids, budgets, or win limits do not reproduce exactly.
+- Deep screening is explicit and bounded. Unified planning consumes a source-hash-bound screen artifact instead of silently rerunning the global solver for thousands of bids.
+- Formal S21 season 12 reconstruction matched 60 assets, 1,783 positive bids, 30 manager limits, and 28 awards. The cheap gate found 176 screenable bids.
+- The first 5 prioritized deep screens completed in 11.948 seconds: 2 changed the global allocation and 3 were solver-confirmed no-ops. One change added a previously unawarded asset; the other caused a three-asset allocation chain.
+- Those 2 cases are now `executable` in unified evidence schema v4; the remaining 13,190 retained replicas stay `requires-gate`. No formal dynasty branch has been launched and no production bid policy has changed.

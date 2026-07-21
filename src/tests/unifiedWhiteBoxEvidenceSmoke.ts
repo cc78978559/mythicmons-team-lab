@@ -45,7 +45,7 @@ try {
   const plan = buildUnifiedEvidencePlan([root], {maximumCases: 10, maximumPerDomain: 2});
   assert.equal(plan.metrics.scanned, 11);
   assert.equal(plan.metrics.uniqueFingerprints, 9);
-  assert.equal(plan.schemaVersion, 3);
+  assert.equal(plan.schemaVersion, 4);
   assert.equal(plan.sources[0].battleEvidence, "available");
   assert.equal(plan.sources[0].battleDifferences, 1);
   assert.equal(plan.sources[0].memoryReplicas,2);
@@ -91,7 +91,7 @@ try {
     if (pass === 0) { const legacy = JSON.parse(fs.readFileSync(path.join(output, "evidence-manifest.json"), "utf8")); legacy.schemaVersion = 2; fs.writeFileSync(path.join(output, "evidence-manifest.json"), JSON.stringify(legacy)); }
   }
   const manifest = JSON.parse(fs.readFileSync(path.join(output, "evidence-manifest.json"), "utf8"));
-  assert.equal(manifest.schemaVersion, 3);
+  assert.equal(manifest.schemaVersion, 4);
   assert.equal(manifest.plan.metrics.scanned, 11);
   assert.deepEqual(manifest.runs, []);
   assert.ok(fs.existsSync(path.join(output, "evidence-plan.md")));

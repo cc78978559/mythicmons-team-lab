@@ -143,7 +143,28 @@ npm run counterfactual:whitebox-bid -- `
   --out output/bid-counterfactual
 ```
 
-Portfolio auctions remain a separate causal unit. One submitted bid can change several globally constrained awards, payments, budgets, and later roster choices. Their retained shaded bids are cataloged as `requires-gate`, but they are never sent through the sequential single-bid runner. A future portfolio route must replay the complete solver allocation and audit every displaced award before any such case becomes executable. The formal V12 default remains portfolio mode.
+Portfolio auctions remain a separate causal unit, but now have a dedicated two-stage route. The cheap stage reconstructs the complete source solver input from retained positive bids, utilities, starting budgets, keeper rosters, roster limits, and the exact seed. It refuses the source unless all reconstructed awards, winners, payments, and runner-up bids match the ledger. It then excludes bids that cannot directly clear the source award or cannot fit the source manager's remaining win and budget limits.
+
+The explicit deep screen reruns the full 600-wide constrained solver for a bounded number of prioritized bids. It writes a source-hash-bound artifact; ordinary unified planning never performs thousands of solver runs implicitly:
+
+```powershell
+npm run screen:portfolio-bids -- `
+  --source <dynasty-root> `
+  --season <season> `
+  --max-candidates 10 `
+  --out output/portfolio-bid-screen
+```
+
+Attach one or more verified screens to the unified catalog:
+
+```powershell
+npm run counterfactual:whitebox-unified -- `
+  --inputs <dynasty-root> `
+  --portfolio-bid-screens output/portfolio-bid-screen `
+  --out output/unified-evidence
+```
+
+Only solver-confirmed allocation or payment changes become `executable`; unscreened bids remain `requires-gate`. The exact dynasty runner changes one submitted bid, verifies the complete candidate allocation against the offline solver, proves that all other bid inputs and the pre-auction ledger prefix are unchanged, and reports every affected manager. The formal V12 default remains portfolio mode, and no evidence activates bidding behavior automatically.
 
 ## Scoped battle assist activation
 
