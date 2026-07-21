@@ -24,11 +24,23 @@ assert(first.academyBalanceDelta > 0);
 assert(first.affectedChildIds.includes("child-a"));
 assert.equal(first.evidenceScope, "contract-ledger-only");
 assert.equal(first.activationStatus, "shadow-only");
+assert.equal(first.screenStatus, "requires-competitive-replay");
 const released = screens.find(value => value.incumbentStatus === "released");
 if (released) {
   assert.equal(released.candidateStatus, "renewed");
   assert.equal(released.candidateOptionYears, 2);
 }
+
+const constrainedAcademy = createAcademyState("academy-b", "Academy B", profile, 2.5);
+const constrained = settleAcademyContracts([
+  {childId: "child-a", childName: "Child A", academyId: constrainedAcademy.academyId, optionYears: 0, annualSalary: 3.2, contractYears: 0, profile},
+  {childId: "child-b", childName: "Child B", academyId: constrainedAcademy.academyId, optionYears: 3, annualSalary: 3, contractYears: 1, profile},
+], [constrainedAcademy], new Set(), {...rules, cycleSeasons: 1});
+const blocked = screenAcademyContractConcessions(constrained).find(value => value.childId === "child-a")!;
+assert.equal(blocked.incumbentStatus, "released");
+assert.equal(blocked.accountingOutcome, "higher-arrears");
+assert.equal(blocked.screenStatus, "blocked-arrears-increase");
+assert.deepEqual(blocked.downstreamAffectedChildIds, ["child-b"]);
 
 const legacy = {...settlement, replayRules: undefined} as unknown as typeof settlement;
 assert.throws(() => reconstructAcademyContractSettlement(legacy), /lacks replayRules/);

@@ -22,9 +22,12 @@ export interface AcademyContractCounterfactualCase {
   candidateContractYears: number;
   candidateOptionYears: number;
   affectedChildIds: string[];
+  downstreamAffectedChildIds: string[];
   payrollDelta: number;
   arrearsDelta: number;
   academyBalanceDelta: number;
+  accountingOutcome: "lower-arrears" | "same-arrears" | "higher-arrears";
+  screenStatus: "blocked-arrears-increase" | "requires-competitive-replay";
   evidenceScope: "contract-ledger-only";
   activationStatus: "shadow-only";
 }
@@ -46,13 +49,17 @@ export function screenAcademyContractConcessions(source: AcademyContractSettleme
       const affectedChildIds = changedContracts(incumbent.contracts, candidate.contracts);
       if (!affectedChildIds.includes(contract.childId)) throw new Error(`Contract intervention did not change target ${contract.childId}`);
       const candidateContract = candidate.contracts.find(value => value.childId === contract.childId)!;
+      const arrearsDelta = candidate.arrears - incumbent.arrears;
       return {
         caseId: `academy-contract:${contract.childId}:accept-offer`, childId: contract.childId, childName: contract.childName,
         academyId: contract.academyId, incumbentStatus: contract.status, candidatePolicy: "accept-academy-offer" as const,
         incumbentSalary: contract.salaryAfter, candidateSalary: candidateContract.salaryAfter, candidateStatus: candidateContract.status,
         candidateContractYears: candidateContract.contractYearsAfter, candidateOptionYears: candidateContract.optionYearsAfter,
-        affectedChildIds, payrollDelta: candidate.payrollOutflow - incumbent.payrollOutflow, arrearsDelta: candidate.arrears - incumbent.arrears,
+        affectedChildIds, downstreamAffectedChildIds: affectedChildIds.filter(childId => childId !== contract.childId),
+        payrollDelta: candidate.payrollOutflow - incumbent.payrollOutflow, arrearsDelta,
         academyBalanceDelta: (candidate.balances[contract.academyId] ?? 0) - (incumbent.balances[contract.academyId] ?? 0),
+        accountingOutcome: arrearsDelta > EPSILON ? "higher-arrears" as const : arrearsDelta < -EPSILON ? "lower-arrears" as const : "same-arrears" as const,
+        screenStatus: arrearsDelta > EPSILON ? "blocked-arrears-increase" as const : "requires-competitive-replay" as const,
         evidenceScope: "contract-ledger-only" as const, activationStatus: "shadow-only" as const,
       };
     });
