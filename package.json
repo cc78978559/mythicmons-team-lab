@@ -37,6 +37,7 @@
     "counterfactual:whitebox": "tsx src/cli/counterfactualWhiteBox.ts",
     "counterfactual:whitebox-lineup": "tsx src/cli/counterfactualWhiteBoxLineup.ts",
     "counterfactual:whitebox-battle": "tsx src/cli/counterfactualWhiteBoxBattle.ts",
+    "counterfactual:tactical-memory": "tsx src/cli/counterfactualTacticalMemory.ts",
     "counterfactual:whitebox-battle-sample": "tsx src/cli/sampleWhiteBoxBattle.ts",
     "generate:whitebox-battle-sources": "tsx src/cli/expandBattleShadowSources.ts",
     "sample:tactical-memory-ablation": "tsx src/cli/sampleTacticalMemoryAblation.ts",

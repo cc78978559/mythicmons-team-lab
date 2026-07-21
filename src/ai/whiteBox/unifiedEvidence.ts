@@ -11,7 +11,7 @@ import {AI_VERSION} from "../../showdown/choice";
 import {buildBattleAssistScope} from "./battleScope";
 
 export type UnifiedEvidenceStatus = "executable" | "requires-gate" | "archive-only";
-export type UnifiedEvidenceRunner = "general" | "lineup" | "battle" | null;
+export type UnifiedEvidenceRunner = "general" | "lineup" | "battle" | "memory" | null;
 export const UNIFIED_LINEUP_SCENARIO: WhiteBoxOpportunityScenario = {id: "cautious-lineup-assist-v1", band: .5, styleLimit: 3, styleScale: 1.1};
 
 export interface UnifiedBattleTarget {
@@ -22,6 +22,8 @@ export interface UnifiedBattleTarget {
   expectedIncumbent: string;
   selected: string;
 }
+
+export interface UnifiedMemoryTarget {sourceGame: string; playerId: "p1" | "p2"; incumbentPolicy: string; candidatePolicy: string; replaySha256: string}
 
 export interface UnifiedEvidenceReplica {
   id: string;
@@ -39,6 +41,7 @@ export interface UnifiedEvidenceReplica {
   lineupScenario?: WhiteBoxOpportunityScenario;
   battleTarget?: UnifiedBattleTarget;
   battleScopeId?: string;
+  memoryTarget?: UnifiedMemoryTarget;
 }
 
 export interface UnifiedEvidenceCase {
@@ -66,6 +69,7 @@ export interface UnifiedEvidenceCase {
   lineupScenario?: WhiteBoxOpportunityScenario;
   battleTarget?: UnifiedBattleTarget;
   battleScopeId?: string;
+  memoryTarget?: UnifiedMemoryTarget;
   selected: boolean;
 }
 
@@ -73,7 +77,7 @@ export interface UnifiedEvidencePlan {
   schemaVersion: 3;
   createdAt: string;
   config: {maximumCases: number; maximumPerDomain: number; minimumImpact: number};
-  sources: Array<{root: string; seed: string; completedSeason: number; comparisons: number; agreements: number; differences: number; lineupCompleteComparisons: number; lineupIncompleteComparisons: number; lineupScenarioDifferences: number; lineupAssistApproved: number; battleTraceFiles: number; battleComparisons: number; battleDifferences: number; battleEvidence: "available" | "legacy-without-whitebox" | "not-retained"}>;
+  sources: Array<{root: string; seed: string; completedSeason: number; comparisons: number; agreements: number; differences: number; lineupCompleteComparisons: number; lineupIncompleteComparisons: number; lineupScenarioDifferences: number; lineupAssistApproved: number; battleTraceFiles: number; battleComparisons: number; battleDifferences: number; battleEvidence: "available" | "legacy-without-whitebox" | "not-retained"; memoryReplicas: number; memoryPolicies: number}>;
   metrics: {
     scanned: number;
     afterImpactFilter: number;
@@ -105,8 +109,9 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
     raw.push(...lineupCases.map(entry => toLineupEvidenceCase(input, seed, completedSeason, entry)));
     const battle = collectBattleCases(input, seed, completedSeason);
     raw.push(...battle.cases);
+    const memoryCases=collectMemoryCases(input, completedSeason);raw.push(...memoryCases);
     const battleEvidence = battle.comparisons ? "available" : battle.files ? "legacy-without-whitebox" : "not-retained";
-    sources.push({root: input, seed, completedSeason, comparisons: review.comparisons, agreements: review.agreements, differences: review.cases.length, lineupCompleteComparisons: opportunity.completeByDomain.lineup ?? 0, lineupIncompleteComparisons: opportunity.incompleteByDomain.lineup ?? 0, lineupScenarioDifferences: lineupCases.length, lineupAssistApproved: lineupCases.filter(entry => entry.assistGate?.recommended).length, battleTraceFiles: battle.files, battleComparisons: battle.comparisons, battleDifferences: battle.cases.length, battleEvidence});
+    sources.push({root: input, seed, completedSeason, comparisons: review.comparisons, agreements: review.agreements, differences: review.cases.length, lineupCompleteComparisons: opportunity.completeByDomain.lineup ?? 0, lineupIncompleteComparisons: opportunity.incompleteByDomain.lineup ?? 0, lineupScenarioDifferences: lineupCases.length, lineupAssistApproved: lineupCases.filter(entry => entry.assistGate?.recommended).length, battleTraceFiles: battle.files, battleComparisons: battle.comparisons, battleDifferences: battle.cases.length, battleEvidence, memoryReplicas:memoryCases.length, memoryPolicies:new Set(memoryCases.map(entry=>entry.shadow)).size});
   }
   const filtered = raw.filter(entry => entry.impact >= minimumImpact);
   const grouped = new Map<string, UnifiedEvidenceCase[]>();
@@ -141,6 +146,28 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
     },
     cases: unique,
   };
+}
+
+function collectMemoryCases(root: string, sourceSeason: number): UnifiedEvidenceCase[] {
+  const cases: UnifiedEvidenceCase[] = [];
+  for (const replayFile of findEvidenceFiles(root, "replay-input.json")) {
+    const sourceGame = path.dirname(replayFile);
+    if (!findEvidenceFiles(sourceGame, "ai-decisions.json").length) continue;
+    let capsule;
+    try { capsule = loadBattleReplayCapsule(replayFile); } catch { continue; }
+    if (capsule.input.aiVersion !== AI_VERSION || capsule.input.ai !== "search" || !capsule.input.traceAiDecisions || capsule.input.battleAssistScopes?.length) continue;
+    const shadows = capsule.input.aiOpponentModelShadows ?? {}, relative = path.relative(root, replayFile).replaceAll("\\", "/"), season = seasonFromPath(relative);
+    for (const [candidatePolicy, models] of Object.entries(shadows).sort(([a],[b])=>a.localeCompare(b))) for (const playerId of ["p1", "p2"] as const) {
+      const incumbentModel = capsule.input.aiOpponentModels[playerId], candidateModel = models[playerId];
+      if (!candidateModel || JSON.stringify(candidateModel) === JSON.stringify(incumbentModel)) continue;
+      const sourceSeed = capsule.input.seed.join("-"), incumbentPolicy = capsule.input.aiOpponentModelPolicy ?? "incumbent";
+      const impact = modelDistance(incumbentModel, candidateModel), id = digest([capsule.sha256, playerId, candidatePolicy].join("|"));
+      const fingerprint = digest(["memory", incumbentPolicy, candidatePolicy].join("|"));
+      const memoryTarget: UnifiedMemoryTarget = {sourceGame, playerId, incumbentPolicy, candidatePolicy, replaySha256: capsule.sha256};
+      cases.push({id, root, sourceSeed, sourceSeason, reviewIndex: 0, decisionId: `memory:${candidatePolicy}:${playerId}:${capsule.sha256.slice(0,12)}`, domain: "memory", actor: capsule.input.aiProfiles[playerId].id, season, classification: "reasonable-style-choice", incumbent: incumbentPolicy, shadow: candidatePolicy, impact, priority: round(140 + impact + Math.max(0, season ?? 0) * .01), fingerprint, duplicates: 1, duplicateCaseIds: [], replicas: [], status: "executable", runner: "memory", reasons: [], memoryTarget, selected: false});
+    }
+  }
+  return cases;
 }
 
 function collectBattleCases(root: string, seed: string, sourceSeason: number): {files: number; comparisons: number; cases: UnifiedEvidenceCase[]} {
@@ -219,7 +246,7 @@ function toEvidenceCase(root: string, seed: string, sourceSeason: number, entry:
   return {id, root, sourceSeed: seed, sourceSeason, reviewIndex, decisionId: entry.decisionId, domain, actor: entry.actor, season: entry.season, classification: entry.classification, incumbent: entry.incumbent, shadow: entry.shadow, impact, priority, fingerprint, duplicates: 1, duplicateCaseIds: [], replicas: [], status, runner, reasons, selected: false};
 }
 
-function replicaFor(entry: UnifiedEvidenceCase): UnifiedEvidenceReplica { return {id: entry.id, root: entry.root, sourceSeed: entry.sourceSeed, sourceSeason: entry.sourceSeason, reviewIndex: entry.reviewIndex, decisionId: entry.decisionId, shadow: entry.shadow, actor: entry.actor, season: entry.season, status: entry.status, runner: entry.runner, reasons: [...entry.reasons], ...(entry.lineupScenario ? {lineupScenario: {...entry.lineupScenario}} : {}), ...(entry.battleTarget ? {battleTarget: {...entry.battleTarget}} : {}), ...(entry.battleScopeId?{battleScopeId:entry.battleScopeId}:{})}; }
+function replicaFor(entry: UnifiedEvidenceCase): UnifiedEvidenceReplica { return {id: entry.id, root: entry.root, sourceSeed: entry.sourceSeed, sourceSeason: entry.sourceSeason, reviewIndex: entry.reviewIndex, decisionId: entry.decisionId, shadow: entry.shadow, actor: entry.actor, season: entry.season, status: entry.status, runner: entry.runner, reasons: [...entry.reasons], ...(entry.lineupScenario ? {lineupScenario: {...entry.lineupScenario}} : {}), ...(entry.battleTarget ? {battleTarget: {...entry.battleTarget}} : {}), ...(entry.battleScopeId?{battleScopeId:entry.battleScopeId}:{}), ...(entry.memoryTarget?{memoryTarget:{...entry.memoryTarget}}:{})}; }
 
 function detailedDomain(decisionId: string): string {
   if (decisionId.startsWith("lineup:")) return "lineup";
@@ -240,6 +267,7 @@ function choiceShape(value: string): string { if (value === "none" || value === 
 function findEvidenceFiles(directory: string, name: string): string[] { const files: string[] = []; if (!fs.existsSync(directory)) return files; const entries = fs.readdirSync(directory, {withFileTypes: true}); const names = new Set(entries.filter(entry => entry.isFile()).map(entry => entry.name)); if (names.has(name)) files.push(path.join(directory, name)); else if (names.has(`${name}.gz`)) files.push(path.join(directory, `${name}.gz`)); for (const entry of entries) if (entry.isDirectory()) files.push(...findEvidenceFiles(path.join(directory, entry.name), name)); return files; }
 function seasonFromPath(value: string): number | null { const match = value.match(/(?:^|\/)season-(\d+)(?:\/|$)/); return match ? Number(match[1]) : null; }
 function numericDelta(before: unknown, after: unknown): number | null { return typeof before === "number" && Number.isFinite(before) && typeof after === "number" && Number.isFinite(after) ? round(after - before) : null; }
+function modelDistance(left: unknown, right: unknown): number { const a=JSON.stringify(left),b=JSON.stringify(right);let changed=Math.abs(a.length-b.length);for(let index=0;index<Math.min(a.length,b.length);index+=1)if(a[index]!==b[index])changed+=1;return round(Math.min(100,changed/10)); }
 function readJson<T>(file: string): T { if (!fs.existsSync(file)) throw new Error(`Missing evidence input: ${file}`); const input = fs.readFileSync(file); const text = file.endsWith(".gz") ? zlib.gunzipSync(input).toString("utf8") : input.toString("utf8"); return JSON.parse(text) as T; }
 function integer(value: number, min: number, max: number, name: string): number { if (!Number.isInteger(value) || value < min || value > max) throw new Error(`${name} must be ${min}..${max}`); return value; }
 function finite(value: number, min: number, max: number, name: string): number { if (!Number.isFinite(value) || value < min || value > max) throw new Error(`${name} must be ${min}..${max}`); return value; }

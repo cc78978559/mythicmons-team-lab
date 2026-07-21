@@ -5,7 +5,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import {spawnSync} from "node:child_process";
 import {buildUnifiedEvidencePlan, unifiedEvidenceMarkdown} from "../ai/whiteBox/unifiedEvidence";
-import {aggregateUnifiedEvidence} from "../ai/whiteBox/unifiedAggregation";
+import {aggregateUnifiedEvidence, aggregateUnifiedMemoryEvidence} from "../ai/whiteBox/unifiedAggregation";
 import {createBattleReplayCapsule} from "../showdown/battle";
 import {AI_VERSION, DEFAULT_TACTICAL_PROFILE, EMPTY_OPPONENT_MODEL} from "../showdown/choice";
 
@@ -27,16 +27,18 @@ try {
   const battleDir = path.join(root, "season-02", "battles", "game-1"); fs.mkdirSync(battleDir, {recursive: true});
   const battleShadow:any = shadow("battle:game-1:3:p1", "move 1", "switch 2"); battleShadow.candidates[1].rationalScore = 3; battleShadow.candidates[1].finalScore = 3.1;
   fs.writeFileSync(path.join(battleDir, "ai-decisions.json"), JSON.stringify([{decisionOrdinal: 1, turn: 3, playerId: "p1", personalityId: "manager-05", battleContext: {ownSpecies: "alpha", opponentSpecies: "beta"}, whiteBoxShadow: {comparison: {incumbent: "move 1", shadow: "switch 2", agrees: false}, trace: battleShadow}}]));
-  const replay = createBattleReplayCapsule({schemaVersion: 1, aiVersion: AI_VERSION, format: "gen9customgame", teamA: "team-a", teamB: "team-b", seed: [1,2,3,4], maxTurns: 100, idleTimeoutMs: 5000, wallClockTimeoutMs: 30000, ai: "search", openTeamSheets: true, traceAiDecisions: true, aiProfiles: {p1: {...DEFAULT_TACTICAL_PROFILE,id:"manager-05"},p2: {...DEFAULT_TACTICAL_PROFILE,id:"manager-06"}}, aiOpponentModels: {p1: structuredClone(EMPTY_OPPONENT_MODEL),p2: structuredClone(EMPTY_OPPONENT_MODEL)}});
+  const replay = createBattleReplayCapsule({schemaVersion: 1, aiVersion: AI_VERSION, format: "gen9customgame", teamA: "team-a", teamB: "team-b", seed: [1,2,3,4], maxTurns: 100, idleTimeoutMs: 5000, wallClockTimeoutMs: 30000, ai: "search", openTeamSheets: true, traceAiDecisions: true, aiProfiles: {p1: {...DEFAULT_TACTICAL_PROFILE,id:"manager-05"},p2: {...DEFAULT_TACTICAL_PROFILE,id:"manager-06"}}, aiOpponentModels: {p1: structuredClone(EMPTY_OPPONENT_MODEL),p2: structuredClone(EMPTY_OPPONENT_MODEL)}, aiOpponentModelPolicy:"cumulative", aiOpponentModelShadows:{"seasonal-decay":{p1:{...structuredClone(EMPTY_OPPONENT_MODEL),confidence:.2},p2:{...structuredClone(EMPTY_OPPONENT_MODEL),confidence:.3}}}});
   fs.writeFileSync(path.join(battleDir, "replay-input.json"), JSON.stringify(replay));
   fs.writeFileSync(path.join(battleDir, "ai-decisions.json.gz"), zlib.gzipSync(fs.readFileSync(path.join(battleDir, "ai-decisions.json"))));
   fs.rmSync(path.join(battleDir, "ai-decisions.json"));
   const plan = buildUnifiedEvidencePlan([root], {maximumCases: 10, maximumPerDomain: 2});
-  assert.equal(plan.metrics.scanned, 5);
-  assert.equal(plan.metrics.uniqueFingerprints, 4);
+  assert.equal(plan.metrics.scanned, 7);
+  assert.equal(plan.metrics.uniqueFingerprints, 5);
   assert.equal(plan.schemaVersion, 3);
   assert.equal(plan.sources[0].battleEvidence, "available");
   assert.equal(plan.sources[0].battleDifferences, 1);
+  assert.equal(plan.sources[0].memoryReplicas,2);
+  assert.equal(plan.sources[0].memoryPolicies,1);
   assert.equal(plan.cases.find(entry => entry.domain === "keeper")?.duplicates, 2);
   assert.equal(plan.cases.find(entry => entry.domain === "keeper")?.replicas.length, 2);
   assert.equal(plan.cases.find(entry => entry.domain === "keeper")?.status, "executable");
@@ -49,6 +51,10 @@ try {
   assert.equal(plan.cases.find(entry => entry.domain === "battle")?.status, "executable");
   assert.equal(plan.cases.find(entry => entry.domain === "battle")?.runner, "battle");
   assert.equal(plan.cases.find(entry => entry.domain === "battle")?.battleTarget?.decisionOrdinal, 1);
+  assert.equal(plan.cases.find(entry => entry.domain === "memory")?.status, "executable");
+  assert.equal(plan.cases.find(entry => entry.domain === "memory")?.runner, "memory");
+  assert.equal(plan.cases.find(entry => entry.domain === "memory")?.duplicates, 2);
+  assert.equal(plan.cases.find(entry => entry.domain === "memory")?.replicas[0].sourceSeed, "1-2-3-4");
   assert.equal(plan.cases.find(entry => entry.domain === "acquisition")?.status, "archive-only");
   assert.match(unifiedEvidenceMarkdown(plan), /统一白箱反事实证据清单/);
   const output = path.join(root, "evidence-output");
@@ -59,7 +65,7 @@ try {
   }
   const manifest = JSON.parse(fs.readFileSync(path.join(output, "evidence-manifest.json"), "utf8"));
   assert.equal(manifest.schemaVersion, 3);
-  assert.equal(manifest.plan.metrics.scanned, 5);
+  assert.equal(manifest.plan.metrics.scanned, 7);
   assert.deepEqual(manifest.runs, []);
   assert.ok(fs.existsSync(path.join(output, "evidence-plan.md")));
   const second = path.join(root, "second"); fs.mkdirSync(second, {recursive: true});
@@ -80,6 +86,11 @@ try {
   assert.equal(aggregate.conclusion, "candidate-for-activation-review");
   assert.equal(aggregate.activationEligible, true);
   assert.equal(aggregateUnifiedEvidence("h", "keeper", [sample("bad", 1, false)]).conclusion, "blocked");
+  const memorySamples=Array.from({length:30},(_,index)=>({seed:`memory-${index%10}`,caseId:`memory-${index}`,playerId:"p1" as const,confidence:.4,candidatePolicy:"seasonal-decay",sourceVerified:true,firstDivergenceOrdinal:2,learned:{winner:"Team A",turns:10,ended:true,timeout:false,stalled:false,errors:[]},ablated:{winner:"Team B",turns:10,ended:true,timeout:false,stalled:false,errors:[]}}));
+  const memoryAggregate=aggregateUnifiedMemoryEvidence("memory-h",memorySamples);
+  assert.equal(memoryAggregate.stage,"formal-review");
+  assert.equal(memoryAggregate.conclusion,"candidate-for-activation-review");
+  assert.equal(memoryAggregate.activationEligible,true);
 } finally {
   fs.rmSync(root, {recursive: true, force: true});
 }

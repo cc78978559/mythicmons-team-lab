@@ -98,7 +98,21 @@ npm run counterfactual:whitebox-battle-sample -- `
 ```
 
 This is the first unified layer. It does not weaken existing domain-specific gates.
-The unified runner executes gate-approved lineup replicas and exact battle replicas through separate isolated routes. Battle branches retain only their two games and summary rather than using dynasty-directory compaction. Their multi-sample results use the battle-specific paired aggregate above. Learning, memory, and evolution interventions remain unsupported.
+The unified runner executes gate-approved lineup replicas, exact battle replicas, and named tactical-memory shadow replicas through separate isolated routes. Battle and memory branches retain only their two games and summary rather than using dynasty-directory compaction. Their multi-sample results use domain-specific paired aggregates.
+
+Tactical-memory hypotheses compare the manifest-bound incumbent policy with one named retained shadow policy, such as `seasonal-decay`. Each replica is bound to the replay-capsule hash, exact Showdown seed, and one acting side. The runner first reproduces the complete incumbent trace, then replaces only that side's opponent model. At most one side from an exact seed contributes to a hypothesis, preventing correlated sides from inflating the independent-seed count. Formal evidence uses the same outcome-changing pair, directional seed-cluster, and exact-binomial gates as the standalone memory sampler. Reaching the threshold only creates an activation-review candidate.
+
+The isolated memory command is also available directly:
+
+```powershell
+npm run counterfactual:tactical-memory -- `
+  --source-game <battle-directory> `
+  --player p1 `
+  --candidate-policy seasonal-decay `
+  --out output/tactical-memory-counterfactual
+```
+
+Learning and evolution interventions remain unsupported by the unified runner.
 
 ## Scoped battle assist activation
 
