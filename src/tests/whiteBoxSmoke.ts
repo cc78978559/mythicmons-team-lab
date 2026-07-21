@@ -5,6 +5,7 @@ import {evaluateBattleAssistGate} from "../ai/whiteBox/battle";
 import {buildKeeperPortfolioCandidate, keeperPortfolioId} from "../ai/whiteBox/keeper";
 import {buildAcquisitionWhiteBoxCandidate} from "../ai/whiteBox/acquisition";
 import {evaluateWhiteBoxBid} from "../ai/whiteBox/auction";
+import {evaluateWhiteBoxBidApproval} from "../ai/whiteBox/bidApproval";
 import {buildTradeWhiteBoxCandidate, evaluateMarketReplacement, evaluateTradeAssistGate, evaluateWaiverPriority} from "../ai/whiteBox/marketFlow";
 import {evaluateWhiteBoxLearning} from "../ai/whiteBox/learning";
 import {ACQUISITION_SHADOW_PARAMETERS, BATTLE_SHADOW_PARAMETERS, BID_SHADOW_PARAMETERS, EVOLUTION_SHADOW_PARAMETERS, KEEPER_SHADOW_PARAMETERS, LEARNING_SHADOW_PARAMETERS, LINEUP_SHADOW_PARAMETERS, MARKET_FLOW_SHADOW_PARAMETERS, MEMORY_SHADOW_PARAMETERS, REGISTRATION_SHADOW_PARAMETERS, WhiteBoxParameterRegistry} from "../ai/whiteBox/parameters";
@@ -125,6 +126,10 @@ const standardBid = evaluateWhiteBoxBid({
 assert.equal(standardBid.demandBeforeScarcity, 21.1);
 assert.equal(standardBid.ceiling, 21);
 assert.equal(standardBid.bid, 17);
+assert.equal(evaluateWhiteBoxBidApproval({auctionMode:"sequential",bidderId:"manager-a",incumbentWinnerId:"manager-b",highestCompetingBid:19,trace:standardBid}).recommended,true);
+assert.deepEqual(evaluateWhiteBoxBidApproval({auctionMode:"sequential",bidderId:"manager-a",incumbentWinnerId:"manager-a",highestCompetingBid:19,trace:standardBid}).reasons,["incumbent-already-wins"]);
+assert.deepEqual(evaluateWhiteBoxBidApproval({auctionMode:"sequential",bidderId:"manager-a",incumbentWinnerId:"manager-b",highestCompetingBid:21,trace:standardBid}).reasons,["candidate-does-not-strictly-win"]);
+assert.deepEqual(evaluateWhiteBoxBidApproval({auctionMode:"portfolio",bidderId:"manager-a",incumbentWinnerId:"manager-b",highestCompetingBid:19,trace:standardBid}).reasons,["portfolio-auction-requires-dedicated-replay"]);
 assert.deepEqual(standardBid, evaluateWhiteBoxBid({...standardBidInput(), decisionId: "bid:standard"}), "bid evaluation must be deterministic");
 const noMarketAnchorBid = evaluateWhiteBoxBid({...standardBidInput(), decisionId: "bid:no-market", parameters: {"bid.standard.marketweight": 0}});
 assert.equal(noMarketAnchorBid.ceiling, 8, "a bounded semantic parameter override must change the decomposed ceiling");

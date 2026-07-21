@@ -147,6 +147,8 @@ process.env.V4_STRATEGY_PROGRAM_OPERATOR = strategyProgramOperator;
 const baseBudget = integerSetting("V4_BASE_BUDGET", 100, 20, 120);
 const keeperCap = integerSetting("V4_KEEPER_CAP", 70, 40, 120);
 const auctionMode = process.env.V4_AUCTION_MODE || "sequential";
+const bidCounterfactualPolicy = process.env.V4_BID_COUNTERFACTUAL_POLICY || "";
+const bidCounterfactualTarget = process.env.V4_BID_COUNTERFACTUAL_TARGET || "";
 const minRoster = integerSetting("V4_MIN_ROSTER", 8, 6, 10);
 const maxRoster = integerSetting("V4_MAX_ROSTER", 8, minRoster, 10);
 const midseasonGrant = integerSetting("V4_MIDSEASON_GRANT", 0, 0, 20);
@@ -673,6 +675,8 @@ function runV3Season(season: number, seasonDir: string, profilePath: string, kee
       V3_BUDGETS: budgetPath,
       V3_ASSET_LEDGER: assetPath,
       V3_AUCTION_MODE: auctionMode,
+      V3_BID_COUNTERFACTUAL_POLICY: bidCounterfactualPolicy,
+      V3_BID_COUNTERFACTUAL_TARGET: bidCounterfactualTarget,
       V3_MIN_ROSTER: String(minRoster),
       V3_MAX_ROSTER: String(maxRoster),
       V3_MIDSEASON_GRANT: String(midseasonGrant),

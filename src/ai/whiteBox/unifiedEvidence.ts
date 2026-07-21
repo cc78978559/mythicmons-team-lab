@@ -10,9 +10,11 @@ import {loadBattleReplayCapsule} from "../../showdown/battle";
 import {AI_VERSION} from "../../showdown/choice";
 import {buildBattleAssistScope} from "./battleScope";
 import {strategyProgramMutationOperator} from "../../draft/strategyProgram";
+import {evaluateWhiteBoxBidApproval, WHITE_BOX_BID_COUNTERFACTUAL_POLICY} from "./bidApproval";
+import type {WhiteBoxBidTrace} from "./auction";
 
 export type UnifiedEvidenceStatus = "executable" | "requires-gate" | "archive-only";
-export type UnifiedEvidenceRunner = "general" | "lineup" | "battle" | "memory" | "learning" | "program-evolution" | "evolution" | "acquisition" | null;
+export type UnifiedEvidenceRunner = "general" | "lineup" | "battle" | "memory" | "learning" | "program-evolution" | "evolution" | "acquisition" | "bid" | null;
 export const UNIFIED_LINEUP_SCENARIO: WhiteBoxOpportunityScenario = {id: "cautious-lineup-assist-v1", band: .5, styleLimit: 3, styleScale: 1.1};
 
 export interface UnifiedBattleTarget {
@@ -28,6 +30,7 @@ export interface UnifiedMemoryTarget {sourceGame: string; playerId: "p1" | "p2";
 export interface UnifiedLearningTarget {managerId:string; season:number; policy:"no-learning-experiment"}
 export interface UnifiedEvolutionTarget {managerId:string; horizonSeasons:number; kind:"program"|"full-lineage"}
 export interface UnifiedAcquisitionTarget {managerId:string;season:number;decisionId:string;candidateId:string}
+export interface UnifiedBidTarget {managerId:string;season:number;decisionId:string;policy:typeof WHITE_BOX_BID_COUNTERFACTUAL_POLICY}
 
 export interface UnifiedEvidenceReplica {
   id: string;
@@ -49,6 +52,7 @@ export interface UnifiedEvidenceReplica {
   learningTarget?:UnifiedLearningTarget;
   evolutionTarget?:UnifiedEvolutionTarget;
   acquisitionTarget?:UnifiedAcquisitionTarget;
+  bidTarget?:UnifiedBidTarget;
 }
 
 export interface UnifiedEvidenceCase {
@@ -80,6 +84,7 @@ export interface UnifiedEvidenceCase {
   learningTarget?:UnifiedLearningTarget;
   evolutionTarget?:UnifiedEvolutionTarget;
   acquisitionTarget?:UnifiedAcquisitionTarget;
+  bidTarget?:UnifiedBidTarget;
   selected: boolean;
 }
 
@@ -87,7 +92,7 @@ export interface UnifiedEvidencePlan {
   schemaVersion: 3;
   createdAt: string;
   config: {maximumCases: number; maximumPerDomain: number; minimumImpact: number};
-  sources: Array<{root: string; seed: string; completedSeason: number; comparisons: number; agreements: number; differences: number; lineupCompleteComparisons: number; lineupIncompleteComparisons: number; lineupScenarioDifferences: number; lineupAssistApproved: number; battleTraceFiles: number; battleComparisons: number; battleDifferences: number; battleEvidence: "available" | "legacy-without-whitebox" | "not-retained"; memoryReplicas: number; memoryPolicies: number; learningReplicas:number; programEvolutionReplicas:number; fullEvolutionReplicas:number}>;
+  sources: Array<{root: string; seed: string; completedSeason: number; comparisons: number; agreements: number; differences: number; lineupCompleteComparisons: number; lineupIncompleteComparisons: number; lineupScenarioDifferences: number; lineupAssistApproved: number; battleTraceFiles: number; battleComparisons: number; battleDifferences: number; battleEvidence: "available" | "legacy-without-whitebox" | "not-retained"; memoryReplicas: number; memoryPolicies: number; learningReplicas:number; programEvolutionReplicas:number; fullEvolutionReplicas:number; bidReplicas:number; executableBidReplicas:number}>;
   metrics: {
     scanned: number;
     afterImpactFilter: number;
@@ -122,8 +127,9 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
     const memoryCases=collectMemoryCases(input, completedSeason);raw.push(...memoryCases);
     const learningCases=collectLearningCases(input,seed,completedSeason,state);raw.push(...learningCases);
     const evolutionCases=collectEvolutionCases(input,seed,completedSeason,state);raw.push(...evolutionCases);
+    const bidCases=collectBidCases(input,seed,completedSeason,state);raw.push(...bidCases);
     const battleEvidence = battle.comparisons ? "available" : battle.files ? "legacy-without-whitebox" : "not-retained";
-    sources.push({root: input, seed, completedSeason, comparisons: review.comparisons, agreements: review.agreements, differences: review.cases.length, lineupCompleteComparisons: opportunity.completeByDomain.lineup ?? 0, lineupIncompleteComparisons: opportunity.incompleteByDomain.lineup ?? 0, lineupScenarioDifferences: lineupCases.length, lineupAssistApproved: lineupCases.filter(entry => entry.assistGate?.recommended).length, battleTraceFiles: battle.files, battleComparisons: battle.comparisons, battleDifferences: battle.cases.length, battleEvidence, memoryReplicas:memoryCases.length, memoryPolicies:new Set(memoryCases.map(entry=>entry.shadow)).size,learningReplicas:learningCases.length,programEvolutionReplicas:evolutionCases.filter(entry=>entry.domain==="program-evolution").length,fullEvolutionReplicas:evolutionCases.filter(entry=>entry.domain==="evolution").length});
+    sources.push({root: input, seed, completedSeason, comparisons: review.comparisons, agreements: review.agreements, differences: review.cases.length, lineupCompleteComparisons: opportunity.completeByDomain.lineup ?? 0, lineupIncompleteComparisons: opportunity.incompleteByDomain.lineup ?? 0, lineupScenarioDifferences: lineupCases.length, lineupAssistApproved: lineupCases.filter(entry => entry.assistGate?.recommended).length, battleTraceFiles: battle.files, battleComparisons: battle.comparisons, battleDifferences: battle.cases.length, battleEvidence, memoryReplicas:memoryCases.length, memoryPolicies:new Set(memoryCases.map(entry=>entry.shadow)).size,learningReplicas:learningCases.length,programEvolutionReplicas:evolutionCases.filter(entry=>entry.domain==="program-evolution").length,fullEvolutionReplicas:evolutionCases.filter(entry=>entry.domain==="evolution").length,bidReplicas:bidCases.length,executableBidReplicas:bidCases.filter(entry=>entry.status==="executable").length});
   }
   const filtered = raw.filter(entry => entry.impact >= minimumImpact);
   const grouped = new Map<string, UnifiedEvidenceCase[]>();
@@ -158,6 +164,33 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
     },
     cases: unique,
   };
+}
+
+function collectBidCases(root:string,seed:string,sourceSeason:number,state:any):UnifiedEvidenceCase[]{
+  const cases:UnifiedEvidenceCase[]=[];
+  const auctionMode=String(state.settings?.auctionMode??"sequential");
+  for(let season=1;season<=sourceSeason;season+=1){
+    const file=path.join(root,`season-${String(season).padStart(2,"0")}`,"decision-ledger.json");
+    if(!fs.existsSync(file))continue;
+    let records:any[]=[];try{records=readJson<any>(file).records??[];}catch{continue;}
+    for(const record of records.filter(entry=>entry.stage==="auction")){
+      const bids=Array.isArray(record.context?.bids)?record.context.bids:[];
+      const normalized:Array<{entry:any;managerId:string;bid:number;trace:WhiteBoxBidTrace|undefined}>=bids.map((entry:any)=>({entry,managerId:String(entry.manager??entry.managerId??""),bid:Number(entry.bid)||0,trace:entry.whiteBox as WhiteBoxBidTrace|undefined}));
+      const winner=[...normalized].filter(entry=>entry.managerId&&entry.bid>0).sort((left,right)=>right.bid-left.bid)[0]??null;
+      for(const item of normalized){
+        const trace=item.trace;if(!item.managerId||trace?.version!=="white-box-bid-v1"||trace.ceiling<=trace.bid||trace.shade<=0)continue;
+        const highestCompetingBid=Math.max(0,...normalized.filter(entry=>entry.managerId!==item.managerId).map(entry=>entry.bid));
+        const approval=evaluateWhiteBoxBidApproval({auctionMode,bidderId:item.managerId,incumbentWinnerId:winner?.managerId??null,highestCompetingBid,trace});
+        const status:UnifiedEvidenceStatus=auctionMode!=="sequential"?"requires-gate":approval.recommended?"executable":"archive-only";
+        const runner:UnifiedEvidenceRunner=status==="executable"?"bid":null;
+        const reasons=auctionMode!=="sequential"?["portfolio-auction-requires-dedicated-replay"]:[...approval.reasons];
+        const impact=round(trace.ceiling-trace.bid),id=digest([root,trace.decisionId,WHITE_BOX_BID_COUNTERFACTUAL_POLICY].join("|")),fingerprint=digest(["auction",WHITE_BOX_BID_COUNTERFACTUAL_POLICY,status,reasons.slice().sort().join(",")].join("|"));
+        const bidTarget:UnifiedBidTarget={managerId:item.managerId,season,decisionId:trace.decisionId,policy:WHITE_BOX_BID_COUNTERFACTUAL_POLICY};
+        cases.push({id,root,sourceSeed:seed,sourceSeason,reviewIndex:0,decisionId:trace.decisionId,domain:"auction",actor:item.managerId,season,classification:"reasonable-style-choice",incumbent:String(trace.bid),shadow:String(trace.ceiling),impact,priority:round((status==="executable"?150:status==="requires-gate"?20:0)+impact+season*.01),fingerprint,duplicates:1,duplicateCaseIds:[],replicas:[],status,runner,reasons,bidTarget,selected:false});
+      }
+    }
+  }
+  return cases;
 }
 
 function collectLearningCases(root:string,seed:string,sourceSeason:number,state:any):UnifiedEvidenceCase[]{const cases:UnifiedEvidenceCase[]=[];for(const record of state.decisionRecords??[]){const trace=record.context?.learningWhiteBoxTrace,season=Number(record.context?.season),actor=String(record.actor??"");if(trace?.version!=="white-box-learning-v1"||!Number.isInteger(season)||season<1||!actor||!Array.isArray(trace.traits)||trace.traits.length!==6)continue;let valid=true,impact=0;const changed:string[]=[];for(const trait of trace.traits){if(trait.rollback?.trait!==trait.beforeTrait||JSON.stringify(trait.rollback?.posterior)!==JSON.stringify(trait.prior)){valid=false;break;}const delta=Math.abs(Number(trait.appliedDelta)||0);impact+=delta+Math.abs(Number(trait.posteriorAfter?.mean)-Number(trait.prior?.mean))*.25;if(delta>1e-12)changed.push(String(trait.trait));}if(!changed.length)continue;const status:UnifiedEvidenceStatus=valid?"executable":"archive-only",runner:UnifiedEvidenceRunner=valid?"learning":null,reasons=valid?[]:["learning-rollback-drift"],id=digest([root,actor,season,"no-learning"].join("|")),fingerprint=digest(["learning","no-learning-experiment",changed.sort().join(",")].join("|")),learningTarget:UnifiedLearningTarget={managerId:actor,season,policy:"no-learning-experiment"};cases.push({id,root,sourceSeed:seed,sourceSeason,reviewIndex:0,decisionId:`learning:${actor}:${season}`,domain:"learning",actor,season,classification:"reasonable-style-choice",incumbent:"season-learning-v1",shadow:"no-learning",impact:round(impact),priority:round((valid?140:0)+impact+season*.01),fingerprint,duplicates:1,duplicateCaseIds:[],replicas:[],status,runner,reasons,learningTarget,selected:false});}return cases;}
@@ -266,7 +299,7 @@ function toEvidenceCase(root: string, seed: string, sourceSeason: number, entry:
 
 function acquisitionReplayTarget(root:string,entry:WhiteBoxDifferenceCase):UnifiedAcquisitionTarget|null{if(entry.season===null)return null;const file=path.join(root,`season-${String(entry.season).padStart(2,"0")}`,"program-opportunities.json");if(!fs.existsSync(file))return null;let snapshot:any;try{snapshot=readJson<any>(file);}catch{return null;}const manager=(snapshot.managers??[]).find((value:any)=>value.managerId===entry.actor),matches=(manager?.decisions??[]).filter((value:any)=>value.id===entry.decisionId&&value.entrypoint==="acquire"&&value.selectedIds?.length===1&&value.selectedIds[0]===entry.incumbent&&value.candidates?.some((candidate:any)=>candidate.id===entry.shadow));return matches.length===1?{managerId:entry.actor,season:entry.season,decisionId:entry.decisionId,candidateId:entry.shadow}:null;}
 
-function replicaFor(entry: UnifiedEvidenceCase): UnifiedEvidenceReplica { return {id: entry.id, root: entry.root, sourceSeed: entry.sourceSeed, sourceSeason: entry.sourceSeason, reviewIndex: entry.reviewIndex, decisionId: entry.decisionId, shadow: entry.shadow, actor: entry.actor, season: entry.season, status: entry.status, runner: entry.runner, reasons: [...entry.reasons], ...(entry.lineupScenario ? {lineupScenario: {...entry.lineupScenario}} : {}), ...(entry.battleTarget ? {battleTarget: {...entry.battleTarget}} : {}), ...(entry.battleScopeId?{battleScopeId:entry.battleScopeId}:{}), ...(entry.memoryTarget?{memoryTarget:{...entry.memoryTarget}}:{}),...(entry.learningTarget?{learningTarget:{...entry.learningTarget}}:{}),...(entry.evolutionTarget?{evolutionTarget:{...entry.evolutionTarget}}:{}),...(entry.acquisitionTarget?{acquisitionTarget:{...entry.acquisitionTarget}}:{})}; }
+function replicaFor(entry: UnifiedEvidenceCase): UnifiedEvidenceReplica { return {id: entry.id, root: entry.root, sourceSeed: entry.sourceSeed, sourceSeason: entry.sourceSeason, reviewIndex: entry.reviewIndex, decisionId: entry.decisionId, shadow: entry.shadow, actor: entry.actor, season: entry.season, status: entry.status, runner: entry.runner, reasons: [...entry.reasons], ...(entry.lineupScenario ? {lineupScenario: {...entry.lineupScenario}} : {}), ...(entry.battleTarget ? {battleTarget: {...entry.battleTarget}} : {}), ...(entry.battleScopeId?{battleScopeId:entry.battleScopeId}:{}), ...(entry.memoryTarget?{memoryTarget:{...entry.memoryTarget}}:{}),...(entry.learningTarget?{learningTarget:{...entry.learningTarget}}:{}),...(entry.evolutionTarget?{evolutionTarget:{...entry.evolutionTarget}}:{}),...(entry.acquisitionTarget?{acquisitionTarget:{...entry.acquisitionTarget}}:{}),...(entry.bidTarget?{bidTarget:{...entry.bidTarget}}:{})}; }
 
 function detailedDomain(decisionId: string): string {
   if (decisionId.startsWith("lineup:")) return "lineup";

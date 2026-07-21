@@ -131,6 +131,20 @@ Both routes keep production evolution unchanged. Program evidence is grouped by 
 
 Supplemental drafting and public registration now use a conservative acquisition-assist gate. A white-box alternative must improve rational and final score, keep general-strength regression within `.05`, avoid aggregate regression across role fit, roster completion, and team-system fit, and improve at least two of those three structural signals. Personality style or exploration alone cannot admit an experiment. The planner also requires an exact single-selection group in the retained `program-opportunities.json`; missing or mismatched groups remain archive-only. Admitted cases reuse the isolated program-decision runner, which verifies the immutable prefix, candidate identity, and one-and-only-one intervention before producing a cross-season comparison.
 
+Sequential-auction bids now have a dedicated numeric counterfactual. The candidate policy, `unshaded-ceiling-experiment`, removes only the retained random bid shade and submits the already audited ceiling; it does not recompute valuation or exceed the budget remaining after the roster reserve. A case is executable only when the bidder lost the source auction and the ceiling strictly exceeds the highest competing bid. Existing winners, ties, hard rejections, and changes that cannot alter the source winner are screened without a league replay. The isolated runner reproduces the source prefix, changes exactly one bid, and reports effects for both the bidder and the displaced source winner:
+
+```powershell
+npm run counterfactual:whitebox-bid -- `
+  --source <dynasty-root> `
+  --decision-id <retained-bid-decision-id> `
+  --manager <manager-id> `
+  --season <season> `
+  --followup-seasons 1 `
+  --out output/bid-counterfactual
+```
+
+Portfolio auctions remain a separate causal unit. One submitted bid can change several globally constrained awards, payments, budgets, and later roster choices. Their retained shaded bids are cataloged as `requires-gate`, but they are never sent through the sequential single-bid runner. A future portfolio route must replay the complete solver allocation and audit every displaced award before any such case becomes executable. The formal V12 default remains portfolio mode.
+
 ## Scoped battle assist activation
 
 There is no global battle-assist boolean. An activation-eligible aggregate can export a hash-verified approval containing only its proven matchup/action scopes:

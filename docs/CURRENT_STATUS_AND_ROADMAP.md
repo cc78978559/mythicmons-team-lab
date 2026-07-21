@@ -112,3 +112,9 @@ npm run official-season-cycle -- `
 ```
 
 只有审阅后的运行代码发生变化时，才在首次续跑额外添加 `--allow-code-upgrade`。
+# 2026-07-21 bid-evidence update
+
+- Sequential auctions now support a gated, isolated `unshaded-ceiling-experiment`: only a source loser whose retained legal ceiling strictly beats the source leader is replayable, and the branch must contain exactly one changed bid.
+- A deterministic 6-manager smoke source produced 45 shaded bid cases; 5 were outcome-changing candidates. An exact `17 -> 19` replay passed source-prefix and one-intervention verification.
+- The retained formal S21 archive uses portfolio auctions. It contains 13,192 shaded bid replicas, all correctly classified `requires-gate`; no formal-season replay was launched.
+- Remaining auction work is portfolio-specific: replay the complete constrained allocation, verify every changed award/payment, and aggregate effects across all displaced managers. The sequential runner must not be reused for that task.
