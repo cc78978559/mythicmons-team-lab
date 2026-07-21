@@ -12,7 +12,7 @@ import {buildBattleAssistScope} from "./battleScope";
 import {strategyProgramMutationOperator} from "../../draft/strategyProgram";
 
 export type UnifiedEvidenceStatus = "executable" | "requires-gate" | "archive-only";
-export type UnifiedEvidenceRunner = "general" | "lineup" | "battle" | "memory" | "learning" | "program-evolution" | "evolution" | null;
+export type UnifiedEvidenceRunner = "general" | "lineup" | "battle" | "memory" | "learning" | "program-evolution" | "evolution" | "acquisition" | null;
 export const UNIFIED_LINEUP_SCENARIO: WhiteBoxOpportunityScenario = {id: "cautious-lineup-assist-v1", band: .5, styleLimit: 3, styleScale: 1.1};
 
 export interface UnifiedBattleTarget {
@@ -27,6 +27,7 @@ export interface UnifiedBattleTarget {
 export interface UnifiedMemoryTarget {sourceGame: string; playerId: "p1" | "p2"; incumbentPolicy: string; candidatePolicy: string; replaySha256: string}
 export interface UnifiedLearningTarget {managerId:string; season:number; policy:"no-learning-experiment"}
 export interface UnifiedEvolutionTarget {managerId:string; horizonSeasons:number; kind:"program"|"full-lineage"}
+export interface UnifiedAcquisitionTarget {managerId:string;season:number;decisionId:string;candidateId:string}
 
 export interface UnifiedEvidenceReplica {
   id: string;
@@ -47,6 +48,7 @@ export interface UnifiedEvidenceReplica {
   memoryTarget?: UnifiedMemoryTarget;
   learningTarget?:UnifiedLearningTarget;
   evolutionTarget?:UnifiedEvolutionTarget;
+  acquisitionTarget?:UnifiedAcquisitionTarget;
 }
 
 export interface UnifiedEvidenceCase {
@@ -77,6 +79,7 @@ export interface UnifiedEvidenceCase {
   memoryTarget?: UnifiedMemoryTarget;
   learningTarget?:UnifiedLearningTarget;
   evolutionTarget?:UnifiedEvolutionTarget;
+  acquisitionTarget?:UnifiedAcquisitionTarget;
   selected: boolean;
 }
 
@@ -249,6 +252,7 @@ function toEvidenceCase(root: string, seed: string, sourceSeason: number, entry:
   let runner: UnifiedEvidenceRunner = eligibility.eligible ? "general" : null;
   let reasons = [...eligibility.reasons];
   if (domain === "lineup") { status = "requires-gate"; runner = "lineup"; reasons = ["lineup-requires-scenario-and-assist-gate"]; }
+  else if(domain==="acquisition") {const target=acquisitionReplayTarget(root,entry);if(!eligibility.eligible){status="requires-gate";runner=null;}else if(!target){status="archive-only";runner=null;reasons=["missing-acquisition-replay-group"];}else{status="executable";runner="acquisition";reasons=[];}}
   else if (entry.classification === "missing-candidate") { status = "archive-only"; runner = null; reasons = ["incomplete-candidate-evidence"]; }
   const impact = round(Math.abs(entry.counterfactual.rationalDelta ?? 0) + Math.abs(entry.counterfactual.finalDelta ?? 0) * .5 + Math.min(5, entry.counterfactual.contributionDeltas.reduce((sum, value) => sum + Math.abs(value.delta), 0) * .2));
   const classWeight = entry.classification === "illegal-incumbent" ? 400 : entry.classification === "rational-correction" ? 200 : entry.classification === "reasonable-style-choice" ? 100 : 0;
@@ -256,10 +260,13 @@ function toEvidenceCase(root: string, seed: string, sourceSeason: number, entry:
   const priority = round(classWeight + statusWeight + impact + Math.max(0, entry.season ?? 0) * .01);
   const fingerprint = digest([domain, entry.classification, status, reasons.join(","), choiceShape(entry.incumbent), choiceShape(entry.shadow), `added:${entry.counterfactual.added.length}`, `removed:${entry.counterfactual.removed.length}`, entry.counterfactual.contributionDeltas.slice(0, 4).map(value => value.id).join(",")].join("|"));
   const id = digest([root, entry.decisionId, entry.actor, entry.incumbent, entry.shadow, entry.source].join("|"));
-  return {id, root, sourceSeed: seed, sourceSeason, reviewIndex, decisionId: entry.decisionId, domain, actor: entry.actor, season: entry.season, classification: entry.classification, incumbent: entry.incumbent, shadow: entry.shadow, impact, priority, fingerprint, duplicates: 1, duplicateCaseIds: [], replicas: [], status, runner, reasons, selected: false};
+  const acquisitionTarget=domain==="acquisition"?acquisitionReplayTarget(root,entry):null;
+  return {id, root, sourceSeed: seed, sourceSeason, reviewIndex, decisionId: entry.decisionId, domain, actor: entry.actor, season: entry.season, classification: entry.classification, incumbent: entry.incumbent, shadow: entry.shadow, impact, priority, fingerprint, duplicates: 1, duplicateCaseIds: [], replicas: [], status, runner, reasons,...(acquisitionTarget?{acquisitionTarget}:{}), selected: false};
 }
 
-function replicaFor(entry: UnifiedEvidenceCase): UnifiedEvidenceReplica { return {id: entry.id, root: entry.root, sourceSeed: entry.sourceSeed, sourceSeason: entry.sourceSeason, reviewIndex: entry.reviewIndex, decisionId: entry.decisionId, shadow: entry.shadow, actor: entry.actor, season: entry.season, status: entry.status, runner: entry.runner, reasons: [...entry.reasons], ...(entry.lineupScenario ? {lineupScenario: {...entry.lineupScenario}} : {}), ...(entry.battleTarget ? {battleTarget: {...entry.battleTarget}} : {}), ...(entry.battleScopeId?{battleScopeId:entry.battleScopeId}:{}), ...(entry.memoryTarget?{memoryTarget:{...entry.memoryTarget}}:{}),...(entry.learningTarget?{learningTarget:{...entry.learningTarget}}:{}),...(entry.evolutionTarget?{evolutionTarget:{...entry.evolutionTarget}}:{})}; }
+function acquisitionReplayTarget(root:string,entry:WhiteBoxDifferenceCase):UnifiedAcquisitionTarget|null{if(entry.season===null)return null;const file=path.join(root,`season-${String(entry.season).padStart(2,"0")}`,"program-opportunities.json");if(!fs.existsSync(file))return null;let snapshot:any;try{snapshot=readJson<any>(file);}catch{return null;}const manager=(snapshot.managers??[]).find((value:any)=>value.managerId===entry.actor),matches=(manager?.decisions??[]).filter((value:any)=>value.id===entry.decisionId&&value.entrypoint==="acquire"&&value.selectedIds?.length===1&&value.selectedIds[0]===entry.incumbent&&value.candidates?.some((candidate:any)=>candidate.id===entry.shadow));return matches.length===1?{managerId:entry.actor,season:entry.season,decisionId:entry.decisionId,candidateId:entry.shadow}:null;}
+
+function replicaFor(entry: UnifiedEvidenceCase): UnifiedEvidenceReplica { return {id: entry.id, root: entry.root, sourceSeed: entry.sourceSeed, sourceSeason: entry.sourceSeason, reviewIndex: entry.reviewIndex, decisionId: entry.decisionId, shadow: entry.shadow, actor: entry.actor, season: entry.season, status: entry.status, runner: entry.runner, reasons: [...entry.reasons], ...(entry.lineupScenario ? {lineupScenario: {...entry.lineupScenario}} : {}), ...(entry.battleTarget ? {battleTarget: {...entry.battleTarget}} : {}), ...(entry.battleScopeId?{battleScopeId:entry.battleScopeId}:{}), ...(entry.memoryTarget?{memoryTarget:{...entry.memoryTarget}}:{}),...(entry.learningTarget?{learningTarget:{...entry.learningTarget}}:{}),...(entry.evolutionTarget?{evolutionTarget:{...entry.evolutionTarget}}:{}),...(entry.acquisitionTarget?{acquisitionTarget:{...entry.acquisitionTarget}}:{})}; }
 
 function detailedDomain(decisionId: string): string {
   if (decisionId.startsWith("lineup:")) return "lineup";

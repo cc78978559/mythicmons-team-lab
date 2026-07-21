@@ -16,6 +16,7 @@ export function whiteBoxProductionEvidenceMinimum(targetSamples:number):number {
 
 export function whiteBoxExperimentEligibility(entry:WhiteBoxExperimentCase):WhiteBoxExperimentEligibility {
   if(entry.domain==="keeper")return{eligible:true,reasons:[]};
+  if(entry.decisionId.startsWith("acquire:")){if(!entry.experimentGate)return{eligible:false,reasons:["missing-acquisition-assist-gate"]};return entry.experimentGate.recommended?{eligible:true,reasons:[]}:{eligible:false,reasons:[...entry.experimentGate.hardRejections]};}
   if(entry.decisionId.startsWith("market:background-action:"))return{eligible:true,reasons:[]};
   if(entry.decisionId.startsWith("market:trade:")){
     if(!entry.experimentGate)return{eligible:false,reasons:["missing-trade-assist-gate"]};

@@ -129,6 +129,8 @@ Evolution uses two source-bound routes. A current-season `evolution-shadow-candi
 
 Both routes keep production evolution unchanged. Program evidence is grouped by mutation operator, while full-lineage evidence is stratified by its declared mutation structure. At most one replica per independent dynasty seed contributes to either hypothesis. A successful formal gate can only recommend bounded activation review.
 
+Supplemental drafting and public registration now use a conservative acquisition-assist gate. A white-box alternative must improve rational and final score, keep general-strength regression within `.05`, avoid aggregate regression across role fit, roster completion, and team-system fit, and improve at least two of those three structural signals. Personality style or exploration alone cannot admit an experiment. The planner also requires an exact single-selection group in the retained `program-opportunities.json`; missing or mismatched groups remain archive-only. Admitted cases reuse the isolated program-decision runner, which verifies the immutable prefix, candidate identity, and one-and-only-one intervention before producing a cross-season comparison.
+
 ## Scoped battle assist activation
 
 There is no global battle-assist boolean. An activation-eligible aggregate can export a hash-verified approval containing only its proven matchup/action scopes:

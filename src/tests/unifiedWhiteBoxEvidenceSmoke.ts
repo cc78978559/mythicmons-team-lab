@@ -8,6 +8,7 @@ import {buildUnifiedEvidencePlan, unifiedEvidenceMarkdown} from "../ai/whiteBox/
 import {aggregateUnifiedEvidence, aggregateUnifiedMemoryEvidence,aggregateUnifiedProgramEvolution} from "../ai/whiteBox/unifiedAggregation";
 import {createBattleReplayCapsule} from "../showdown/battle";
 import {AI_VERSION, DEFAULT_TACTICAL_PROFILE, EMPTY_OPPONENT_MODEL} from "../showdown/choice";
+import {evaluateAcquisitionAssistGate} from "../ai/whiteBox/acquisitionApproval";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "unified-whitebox-"));
 try {
@@ -17,15 +18,20 @@ try {
     {id: "a+b+c+d+e+f", eligible: true, reasonable: true, hardRejections: [], rationalScore: 2, rawStyleScore: 0, appliedStyleScore: 0, finalScore: 2, contributions: [{id: "lineup.strength", group: "strength", source: "competence", value: 2, reason: "strength"}, {id: "lineup.risk", group: "personality", source: "personality", value: 0, reason: "risk"}, {id: "lineup.counter", group: "matchup", source: "personality", value: 0, reason: "counter"}]},
     {id: "a+b+c+d+e+g", eligible: true, reasonable: true, hardRejections: [], rationalScore: 1.95, rawStyleScore: .1, appliedStyleScore: .1, finalScore: 2.05, contributions: [{id: "lineup.strength", group: "strength", source: "competence", value: 1.95, reason: "strength"}, {id: "lineup.risk", group: "personality", source: "personality", value: .05, reason: "risk"}, {id: "lineup.counter", group: "matchup", source: "personality", value: .05, reason: "counter"}]},
   ]});
+  const acquisitionCandidate=(id:string,strength:number,role:number,completion:number,system:number,style:number)=>({id,eligible:true,reasonable:true,hardRejections:[],rationalScore:strength+role+completion+system,rawStyleScore:style,appliedStyleScore:style,finalScore:strength+role+completion+system+style,contributions:[{id:"acquire.strength",group:"strength",source:"competence",value:strength,reason:"strength"},{id:"acquire.rolefit",group:"roles",source:"goal",value:role,reason:"role"},{id:"acquire.completion",group:"planning",source:"goal",value:completion,reason:"completion"},{id:"acquire.system",group:"strategy",source:"goal",value:system,reason:"system"}]});
+  const acquisitionShadow={version:"white-box-decision-v1",decisionId:"acquire:supplemental:2:1:manager-04",comparison:{incumbent:"a",shadow:"b",agrees:false},candidateCount:2,reasonableCount:2,hardRejectedCount:0,candidates:[acquisitionCandidate("a",1,.1,.1,.1,0),acquisitionCandidate("b",.98,.2,.2,.2,.05)]};
+  assert.equal(evaluateAcquisitionAssistGate(acquisitionShadow.candidates[0] as any,acquisitionShadow.candidates[1] as any).recommended,true);
+  const styleOnly=acquisitionCandidate("style-only",1,.1,.1,.1,.2);assert.equal(evaluateAcquisitionAssistGate(acquisitionShadow.candidates[0] as any,styleOnly as any).recommended,false);
   fs.writeFileSync(path.join(root, "dynasty-state.json"), JSON.stringify({seed: "unified-smoke", completedSeason: 2,fingerprint:{registryHash:"registry-smoke"},settings:{evolutionMode:"punctuated",strategyProgramOperator:"decision-margin-v3"},managers:[{id:"manager-06",lineage:{lineageId:"parent-06"}},{id:"manager-07",lineage:{lineageId:"parent-07"},pendingProfile:{id:"manager-07"},pendingLineage:{lineageId:"child-07",birthSeason:3,mutations:["traits.risk=0.6"]}}], decisionRecords: [
     {id: "keeper-1", actor: "manager-01", decision: "keeper", context: {season: 2, keeperWhiteBoxShadow: shadow("keeper:manager-01:2", "a+b", "a")}},
     {id: "keeper-2", actor: "manager-02", decision: "keeper", context: {season: 2, keeperWhiteBoxShadow: shadow("keeper:manager-02:2", "a+b", "a")}},
     {id: "lineup-1", actor: "manager-03", decision: "lineup", context: {season: 2, whiteBoxShadow: lineupShadow()}},
     {id: "lineup-compact", actor: "manager-03", decision: "lineup", context: {season: 2, whiteBoxShadow: {...lineupShadow(), decisionId: "lineup:series-2:manager-03", candidateCount: 3}}},
-    {id: "draft-1", actor: "manager-04", decision: "draft", context: {season: 2, whiteBoxShadow: shadow("acquire:supplemental:2:1:manager-04", "a", "b")}},
+    {id: "draft-1", actor: "manager-04", decision: "draft", context: {season: 2, whiteBoxShadow: acquisitionShadow}},
     {id:"learning-1",stage:"review",actor:"manager-05",decision:"learning",context:{season:2,before:{risk:.5,stars:.5,synergy:.5,counter:.5,value:.5,flexibility:.5},learningWhiteBoxTrace:{version:"white-box-learning-v1",traits:["risk","stars","synergy","counter","value","flexibility"].map(trait=>({trait,beforeTrait:.5,prior:{mean:.5,confidence:0,effectiveSamples:2},appliedDelta:.05,posteriorAfter:{mean:.6,confidence:.1,effectiveSamples:3},rollback:{trait:.5,posterior:{mean:.5,confidence:0,effectiveSamples:2}}}))}}},
   ]}));
   fs.mkdirSync(path.join(root,"season-02"),{recursive:true});fs.writeFileSync(path.join(root,"season-02","evolution-shadow-candidates.json"),JSON.stringify({schemaVersion:1,season:2,seed:"unified-smoke",registryHash:"registry-smoke",strategyProgramOperator:"decision-margin-v3",candidates:[{managerId:"manager-06",replacedLineageId:"parent-06",profile:{id:"manager-06"},lineage:{birthSeason:3},programBehaviorDistance:.4,programOpportunity:{choicePotential:.3}}]}));
+  fs.writeFileSync(path.join(root,"season-02","program-opportunities.json"),JSON.stringify({schemaVersion:2,season:2,sampleLimit:24,managers:[{managerId:"manager-04",entrypoints:{},decisions:[{id:"acquire:supplemental:2:1:manager-04",hash:"decision",entrypoint:"acquire",selectedIds:["a"],candidates:[{id:"a",hash:"a",inputs:{baseline:1},score:1},{id:"b",hash:"b",inputs:{baseline:1.1},score:1.1}]}]}]}));
   const battleDir = path.join(root, "season-02", "battles", "game-1"); fs.mkdirSync(battleDir, {recursive: true});
   const battleShadow:any = shadow("battle:game-1:3:p1", "move 1", "switch 2"); battleShadow.candidates[1].rationalScore = 3; battleShadow.candidates[1].finalScore = 3.1;
   fs.writeFileSync(path.join(battleDir, "ai-decisions.json"), JSON.stringify([{decisionOrdinal: 1, turn: 3, playerId: "p1", personalityId: "manager-05", battleContext: {ownSpecies: "alpha", opponentSpecies: "beta"}, whiteBoxShadow: {comparison: {incumbent: "move 1", shadow: "switch 2", agrees: false}, trace: battleShadow}}]));
@@ -67,7 +73,9 @@ try {
   assert.equal(plan.cases.find(entry=>entry.domain==="program-evolution")?.evolutionTarget?.kind,"program");
   assert.equal(plan.cases.find(entry=>entry.domain==="evolution")?.runner,"evolution");
   assert.equal(plan.cases.find(entry=>entry.domain==="evolution")?.evolutionTarget?.managerId,"manager-07");
-  assert.equal(plan.cases.find(entry => entry.domain === "acquisition")?.status, "archive-only");
+  assert.equal(plan.cases.find(entry => entry.domain === "acquisition")?.status, "executable");
+  assert.equal(plan.cases.find(entry => entry.domain === "acquisition")?.runner, "acquisition");
+  assert.equal(plan.cases.find(entry => entry.domain === "acquisition")?.acquisitionTarget?.candidateId, "b");
   assert.match(unifiedEvidenceMarkdown(plan), /统一白箱反事实证据清单/);
   const output = path.join(root, "evidence-output");
   for (let pass = 0; pass < 2; pass += 1) {
