@@ -63,6 +63,7 @@ const academyMarketMaximumSalary = integerOption("--academy-market-max-salary", 
 const academyMarketOfferPercent = integerOption("--academy-market-offer-percent", 115, 50, 200);
 const academyContractYears = integerOption("--academy-contract-years", 3, 1, 12);
 const academyArbitrationDemandPercent = integerOption("--academy-arbitration-demand-percent", 60, 0, 100);
+const academyContractAcceptOfferChild = option("--academy-contract-accept-offer-child", "").trim();
 const academyMarketMaximumTransactions = integerOption("--academy-market-max-transactions", 2, 0, 10);
 const academySigningFee = integerOption("--academy-signing-fee", 8, 0, 10000);
 const academyTransferFee = integerOption("--academy-transfer-fee", 15, 0, 10000);
@@ -105,7 +106,7 @@ const academyContracts = settleAcademyContracts(entrants.map(entrant => {
   const manager = checkpointManagers.find(value => value.id === entrant.slotId)!;
   const previousRow = lifecycle.continuing.find(value => value.childId === entrant.childId);
   return {childId: entrant.childId, childName: entrant.childName, academyId: entrant.rightsHolderId, optionYears: entrant.optionYears, annualSalary: entrant.annualSalary, contractYears: entrant.contractYears, profile: manager.currentProfile, averageRank: previousRow?.averageRank, capacity: previous?.entrants.capacity ?? entrantCount};
-}), academyStates, new Set(academyTalentMarket.transactions.filter(transaction => transaction.status === "executed").map(transaction => transaction.childId)), {policy: academyMarketContractPolicy, cycleSeasons: seasons, renewalYears: academyContractYears, baseSalary: academyMarketBaseSalary, maximumSalary: academyMarketMaximumSalary, arbitrationDemandWeight: academyArbitrationDemandPercent / 100, cycle});
+}), academyStates, new Set(academyTalentMarket.transactions.filter(transaction => transaction.status === "executed").map(transaction => transaction.childId)), {policy: academyMarketContractPolicy, cycleSeasons: seasons, renewalYears: academyContractYears, baseSalary: academyMarketBaseSalary, maximumSalary: academyMarketMaximumSalary, arbitrationDemandWeight: academyArbitrationDemandPercent / 100, cycle}, academyContractAcceptOfferChild ? {childId: academyContractAcceptOfferChild, action: "accept-offer"} : undefined);
 for (const academy of academyStates) academy.treasury = academyContracts.balances[academy.academyId] ?? academy.treasury;
 for (const entrant of entrants) { const assignment = academyContracts.assignments[entrant.childId]; if (assignment) { entrant.annualSalary = assignment.annualSalary; entrant.contractYears = assignment.contractYears; entrant.optionYears = assignment.optionYears; } }
 const salaryDebts = [...academyGuarantees.remainingDebts, ...academyContracts.newDebts];

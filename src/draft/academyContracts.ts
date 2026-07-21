@@ -12,6 +12,7 @@ export interface AcademyContractRules {
   policy: ContractNegotiationPolicy; cycleSeasons: number; renewalYears: number;
   baseSalary: number; maximumSalary: number; arbitrationDemandWeight: number; cycle?: number;
 }
+export interface AcademyContractIntervention {childId: string; action: "accept-offer"}
 export interface SalaryGuaranteeDebt {academyId: string; childId: string; childName: string; amount: number; originCycle: number}
 export interface SalaryGuaranteePayment extends SalaryGuaranteeDebt {paid: number; remaining: number}
 export interface SalaryGuaranteeSettlement {payments: SalaryGuaranteePayment[]; remainingDebts: SalaryGuaranteeDebt[]; balances: Record<string, number>; paid: number; openingDebt: number; closingDebt: number; budgetBefore: number; budgetAfter: number; conservationError: number}
@@ -35,6 +36,7 @@ export interface AcademyContractSettlement {
   newDebts: SalaryGuaranteeDebt[];
   payrollOutflow: number; arrears: number; budgetBefore: number; budgetAfter: number; conservationError: number;
   replayRules: AcademyContractRules;
+  experiment?: {childId: string; action: "accept-offer"; incumbentStatus: "arbitrated" | "released"; candidateStatus: "renewed"};
 }
 
 export function settleSalaryGuarantees(debts: readonly SalaryGuaranteeDebt[], academies: readonly AcademyState[]): SalaryGuaranteeSettlement {
@@ -75,9 +77,10 @@ export function academyRecoveryRecords(controls: readonly AcademyFinancialContro
   });
 }
 
-export function settleAcademyContracts(candidates: readonly AcademyContractCandidate[], academies: readonly AcademyState[], prepaidChildIds: ReadonlySet<string>, rules: AcademyContractRules): AcademyContractSettlement {
+export function settleAcademyContracts(candidates: readonly AcademyContractCandidate[], academies: readonly AcademyState[], prepaidChildIds: ReadonlySet<string>, rules: AcademyContractRules, intervention?: AcademyContractIntervention): AcademyContractSettlement {
   const original = Object.fromEntries(academies.map(academy => [academy.academyId, academy.treasury])), balances = {...original};
   const contracts: AcademyContractEvidence[] = [], assignments: AcademyContractSettlement["assignments"] = {};
+  let experiment: AcademyContractSettlement["experiment"];
   for (const candidate of [...candidates].sort((a, b) => a.childId.localeCompare(b.childId))) {
     if (prepaidChildIds.has(candidate.childId)) {
       assignments[candidate.childId] = {annualSalary: candidate.annualSalary, contractYears: candidate.contractYears, optionYears: candidate.optionYears};
@@ -101,7 +104,12 @@ export function settleAcademyContracts(candidates: readonly AcademyContractCandi
       if (offer + 1e-9 >= demand || rules.policy === "ignore") { salary = offer; years = rules.renewalYears; status = "renewed"; }
       else {
         award = Math.min(rules.maximumSalary, demand * rules.arbitrationDemandWeight + offer * (1 - rules.arbitrationDemandWeight));
-        if (award * rules.cycleSeasons <= available + 1e-9) { salary = award; years = rules.renewalYears; status = "arbitrated"; }
+        const incumbentStatus = award * rules.cycleSeasons <= available + 1e-9 ? "arbitrated" as const : "released" as const;
+        if (intervention?.childId === candidate.childId && intervention.action === "accept-offer") {
+          salary = offer; years = rules.renewalYears; status = "renewed";
+          experiment = {childId: candidate.childId, action: intervention.action, incumbentStatus, candidateStatus: "renewed"};
+        }
+        else if (incumbentStatus === "arbitrated") { salary = award; years = rules.renewalYears; status = "arbitrated"; }
         else {
           assignments[candidate.childId] = {annualSalary: candidate.annualSalary, contractYears: 0, optionYears: 0};
           contracts.push(evidence(candidate, "released", candidate.annualSalary, 0, 0, demand, offer, offerCeiling, award, 0, 0));
@@ -119,7 +127,8 @@ export function settleAcademyContracts(candidates: readonly AcademyContractCandi
   const payrollOutflow = contracts.reduce((sum, contract) => sum + contract.paid, 0), arrears = contracts.reduce((sum, contract) => sum + contract.arrears, 0);
   const newDebts = contracts.filter(contract => contract.arrears > 1e-9).map(contract => ({academyId: contract.academyId, childId: contract.childId, childName: contract.childName, amount: contract.arrears, originCycle: rules.cycle ?? 0}));
   const budgetBefore = sum(Object.values(original)), budgetAfter = sum(Object.values(balances));
-  return {contracts, balances, assignments, newDebts, payrollOutflow, arrears, budgetBefore, budgetAfter, conservationError: budgetBefore - payrollOutflow - budgetAfter, replayRules: {...rules}};
+  if (intervention && !experiment) throw new Error(`Academy contract intervention was not applicable: ${intervention.childId}`);
+  return {contracts, balances, assignments, newDebts, payrollOutflow, arrears, budgetBefore, budgetAfter, conservationError: budgetBefore - payrollOutflow - budgetAfter, replayRules: {...rules}, experiment};
 }
 
 export function academyFinancialHealth(academies: readonly AcademyState[], guarantees: SalaryGuaranteeSettlement, contracts: AcademyContractSettlement, reserveTarget: number): AcademyFinancialHealth[] {

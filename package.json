@@ -43,6 +43,7 @@
     "counterfactual:whitebox-bid": "tsx src/cli/counterfactualWhiteBoxBid.ts",
     "screen:portfolio-bids": "tsx src/cli/screenPortfolioBids.ts",
     "screen:academy-contracts": "tsx src/cli/screenAcademyContracts.ts",
+    "counterfactual:academy-contract": "tsx src/cli/counterfactualAcademyContract.ts",
     "counterfactual:whitebox-battle-sample": "tsx src/cli/sampleWhiteBoxBattle.ts",
     "generate:whitebox-battle-sources": "tsx src/cli/expandBattleShadowSources.ts",
     "sample:tactical-memory-ablation": "tsx src/cli/sampleTacticalMemoryAblation.ts",

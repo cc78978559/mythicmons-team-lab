@@ -25,6 +25,13 @@ assert(first.affectedChildIds.includes("child-a"));
 assert.equal(first.evidenceScope, "contract-ledger-only");
 assert.equal(first.activationStatus, "shadow-only");
 assert.equal(first.screenStatus, "requires-competitive-replay");
+const intervened = settleAcademyContracts([
+  {childId: "child-a", childName: "Child A", academyId: academy.academyId, optionYears: 2, annualSalary: 20, contractYears: 0, profile},
+  {childId: "child-b", childName: "Child B", academyId: academy.academyId, optionYears: 2, annualSalary: 2, contractYears: 0, profile},
+], [academy], new Set(), rules, {childId: "child-a", action: "accept-offer"});
+assert.deepEqual(intervened.experiment, {childId: "child-a", action: "accept-offer", incumbentStatus: "arbitrated", candidateStatus: "renewed"});
+assert.equal(intervened.contracts.find(value => value.childId === "child-a")?.status, "renewed");
+assert.throws(() => settleAcademyContracts([{childId: "paid", childName: "Paid", academyId: academy.academyId, optionYears: 2, annualSalary: 2, contractYears: 3, profile}], [academy], new Set(), rules, {childId: "paid", action: "accept-offer"}), /not applicable/);
 const released = screens.find(value => value.incumbentStatus === "released");
 if (released) {
   assert.equal(released.candidateStatus, "renewed");
