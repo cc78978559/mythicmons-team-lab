@@ -209,6 +209,13 @@ try {
   assert.equal(promotionPackage.candidates.length, 1);
   assert(promotionPackage.candidates[0].currentProfile);
   assert(fs.existsSync(path.join(output, "development-report.md")));
+  const contractScreenOut = path.join(workspace, "contract-screen");
+  const contractScreen = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "screenAcademyContracts.ts"), "--source", output, "--out", contractScreenOut], {cwd: root, encoding: "utf8"});
+  assert.equal(contractScreen.status, 0, contractScreen.stderr || contractScreen.stdout);
+  const contractScreens = read<any>(path.join(contractScreenOut, "academy-contract-screens.json"));
+  assert.equal(contractScreens.validation.sourceReconstructed, true);
+  assert.equal(contractScreens.validation.contractCount, 6);
+  assert.equal(contractScreens.cases.length, 0);
 
   const firstLeagueState = read<any>(path.join(output, "league", "dynasty-state.json"));
   fs.cpSync(source, relocatedSource, {recursive: true});
