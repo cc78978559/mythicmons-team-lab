@@ -19,6 +19,7 @@
     "draft-league-v11": "tsx src/cli/draftLeagueV11.ts",
     "draft-league-v12": "tsx src/cli/draftLeagueV12.ts",
     "development-league": "tsx src/cli/developmentLeague.ts",
+    "compact:development-league": "tsx src/cli/compactDevelopmentLeague.ts",
     "soak:development-league": "tsx src/cli/developmentLeagueSoak.ts",
     "calibrate:development-league": "tsx src/cli/calibrateDevelopmentLeague.ts",
     "validate:development-ecology-seeds": "tsx src/cli/validateDevelopmentEcologySeeds.ts",

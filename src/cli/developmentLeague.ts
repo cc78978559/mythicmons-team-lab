@@ -124,7 +124,7 @@ console.log(JSON.stringify({cycle, capacity: entrantCount, returning: entrants.f
 function loadPrevious(directory: string) {
   const entrants = read<PreviousEntrants>(path.join(directory, "entrants.json"));
   const summary = read<PreviousSummary>(path.join(directory, "development-summary.json"));
-  const state = read<{managers: DevelopmentManager[]}>(path.join(directory, "league", "dynasty-state.json"));
+  const state = loadPreviousState(directory);
   const recordedSource = path.resolve(entrants.source.root);
   if (recordedSource !== source) {
     const recordedStatePath = path.join(recordedSource, "dynasty-state.json");
@@ -139,6 +139,18 @@ function loadPrevious(directory: string) {
     if (!sameJourney && !authorizedPromotionTransition(entrants, recordedSource, recordedState, recordedStatePath)) throw new Error("Previous development cycle belongs to a different major-league source");
   }
   return {entrants, summary, state};
+}
+
+function loadPreviousState(directory: string): {managers: DevelopmentManager[]} {
+  const compactManifest = path.join(directory, "development-final-state.json");
+  if (!fs.existsSync(compactManifest)) return read<{managers: DevelopmentManager[]}>(path.join(directory, "league", "dynasty-state.json"));
+  const manifest = read<{schemaVersion: number; archive: string; sha256: string; managers: number}>(compactManifest);
+  if (manifest.schemaVersion !== 1 || !manifest.archive || path.basename(manifest.archive) !== manifest.archive || !/^[a-f0-9]{64}$/.test(manifest.sha256)) throw new Error("Invalid compact development final-state manifest");
+  const bytes = zlib.gunzipSync(fs.readFileSync(path.join(directory, manifest.archive)));
+  if (crypto.createHash("sha256").update(bytes).digest("hex") !== manifest.sha256) throw new Error("Compact development final-state hash mismatch");
+  const state = JSON.parse(bytes.toString("utf8")) as {schemaVersion: number; managers: DevelopmentManager[]};
+  if (state.schemaVersion !== 1 || state.managers.length !== manifest.managers) throw new Error("Compact development final-state manager count mismatch");
+  return state;
 }
 
 function authorizedPromotionTransition(entrants: PreviousEntrants, recordedSource: string, recordedState: SourceState, recordedStatePath: string): boolean {
