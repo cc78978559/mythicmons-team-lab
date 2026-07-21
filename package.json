@@ -45,6 +45,7 @@
     "screen:academy-contracts": "tsx src/cli/screenAcademyContracts.ts",
     "counterfactual:academy-contract": "tsx src/cli/counterfactualAcademyContract.ts",
     "sample:academy-contracts": "tsx src/cli/sampleAcademyContractCounterfactuals.ts",
+    "curate:academy-contract-personality": "tsx src/cli/curateAcademyContractPersonalityEvidence.ts",
     "counterfactual:whitebox-battle-sample": "tsx src/cli/sampleWhiteBoxBattle.ts",
     "generate:whitebox-battle-sources": "tsx src/cli/expandBattleShadowSources.ts",
     "sample:tactical-memory-ablation": "tsx src/cli/sampleTacticalMemoryAblation.ts",

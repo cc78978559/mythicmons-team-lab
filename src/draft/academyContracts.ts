@@ -2,6 +2,7 @@ import type {AcademyState} from "./academyEnvironment";
 import type {ManagerProfile} from "./managerProfiles";
 import {personalitySimilarity} from "./personalitySimilarity";
 import {managerMarketPreferences, type ContractNegotiationPolicy} from "./academyTalentMarket";
+import {evaluateAcademyContractConcession} from "../ai/whiteBox/academyContractConcession";
 
 export interface AcademyContractCandidate {
   childId: string; childName: string; academyId: string; optionYears: number;
@@ -22,12 +23,14 @@ export interface AcademyFinancialControl {academyId: string; triggerStatus: Acad
 export type AcademyRecoveryState = "normal" | "active" | "exit-pending";
 export interface AcademyRecoveryRecord {academyId: string; state: AcademyRecoveryState; enteredCycle?: number; consecutiveRecoveryCycles: number; trusteeshipCycles: number; leadershipAction: "normal-operations" | "reserve-rebuild" | "cost-restructuring" | "trustee-control"; emergencySaleEligible: boolean; exitEligible: boolean; exitAssessment: {noGuaranteedDebt: boolean; fullCurrentPayroll: boolean; reserveCoverageMet: boolean}}
 export type AcademyContractStatus = "prepaid" | "paid" | "renewed" | "arbitrated" | "released" | "defaulted";
+export interface AcademyContractConcessionShadow {version: "academy-contract-concession-v1"; decisionId: string; incumbentStatus: "arbitrated" | "released"; selected: "accept-offer" | "incumbent"; agrees: boolean; demand: number; offer: number; maximumSalary: number; minimumAcceptableSalary: number; relativeGap: number; concessionRate: number; academyFit: number; preferences: {loyalty: number; ambition: number; opportunityNeed: number; cultureTolerance: number}; components: {base: number; loyalty: number; cultureFit: number; security: number; opportunity: number; ambitionPenalty: number}}
 export interface AcademyContractEvidence {
   childId: string; childName: string; academyId: string; status: AcademyContractStatus;
   salaryBefore: number; salaryAfter: number; contractYearsBefore: number; contractYearsAfter: number; optionYearsBefore: number;
   optionYearsAfter: number; demand: number; offer: number; arbitrationAward?: number;
   offerCeiling: number;
   due: number; paid: number; arrears: number; released: boolean;
+  concessionWhiteBoxShadow?: AcademyContractConcessionShadow;
 }
 export interface AcademyContractSettlement {
   contracts: AcademyContractEvidence[];
@@ -94,7 +97,7 @@ export function settleAcademyContracts(candidates: readonly AcademyContractCandi
       continue;
     }
     const available = Math.max(0, balances[candidate.academyId] ?? 0), renewal = candidate.contractYears < rules.cycleSeasons;
-    let salary = candidate.annualSalary, years = candidate.contractYears, status: AcademyContractStatus = "paid", demand = salary, offer = salary, offerCeiling = salary, award: number | undefined;
+    let salary = candidate.annualSalary, years = candidate.contractYears, status: AcademyContractStatus = "paid", demand = salary, offer = salary, offerCeiling = salary, award: number | undefined, concessionWhiteBoxShadow: AcademyContractConcessionShadow | undefined;
     if (renewal) {
       const preferences = managerMarketPreferences({...candidate, rightsHolderId: candidate.academyId}), fit = personalitySimilarity(candidate.profile, academy.tradition).similarity;
       const performance = candidate.capacity && candidate.capacity > 1 && candidate.averageRank ? 1 - (candidate.averageRank - 1) / (candidate.capacity - 1) : .5;
@@ -105,6 +108,7 @@ export function settleAcademyContracts(candidates: readonly AcademyContractCandi
       else {
         award = Math.min(rules.maximumSalary, demand * rules.arbitrationDemandWeight + offer * (1 - rules.arbitrationDemandWeight));
         const incumbentStatus = award * rules.cycleSeasons <= available + 1e-9 ? "arbitrated" as const : "released" as const;
+        concessionWhiteBoxShadow = evaluateAcademyContractConcession({decisionId: `academy-contract:${candidate.childId}:cycle-${rules.cycle ?? 0}`, incumbentStatus, demand, offer, maximumSalary: rules.maximumSalary, academyFit: fit, preferences});
         if (intervention?.childId === candidate.childId && intervention.action === "accept-offer") {
           salary = offer; years = rules.renewalYears; status = "renewed";
           experiment = {childId: candidate.childId, action: intervention.action, incumbentStatus, candidateStatus: "renewed"};
@@ -112,7 +116,7 @@ export function settleAcademyContracts(candidates: readonly AcademyContractCandi
         else if (incumbentStatus === "arbitrated") { salary = award; years = rules.renewalYears; status = "arbitrated"; }
         else {
           assignments[candidate.childId] = {annualSalary: candidate.annualSalary, contractYears: 0, optionYears: 0};
-          contracts.push(evidence(candidate, "released", candidate.annualSalary, 0, 0, demand, offer, offerCeiling, award, 0, 0));
+          contracts.push(evidence(candidate, "released", candidate.annualSalary, 0, 0, demand, offer, offerCeiling, award, 0, 0, concessionWhiteBoxShadow));
           continue;
         }
       }
@@ -122,7 +126,7 @@ export function settleAcademyContracts(candidates: readonly AcademyContractCandi
     if (arrears > 1e-9) { status = "defaulted"; years = 0; }
     const optionYears = arrears > 1e-9 ? 0 : candidate.optionYears;
     assignments[candidate.childId] = {annualSalary: salary, contractYears: years, optionYears};
-    contracts.push(evidence(candidate, status, salary, years, optionYears, demand, offer, offerCeiling, award, due, paid));
+    contracts.push(evidence(candidate, status, salary, years, optionYears, demand, offer, offerCeiling, award, due, paid, concessionWhiteBoxShadow));
   }
   const payrollOutflow = contracts.reduce((sum, contract) => sum + contract.paid, 0), arrears = contracts.reduce((sum, contract) => sum + contract.arrears, 0);
   const newDebts = contracts.filter(contract => contract.arrears > 1e-9).map(contract => ({academyId: contract.academyId, childId: contract.childId, childName: contract.childName, amount: contract.arrears, originCycle: rules.cycle ?? 0}));
@@ -141,8 +145,8 @@ export function academyFinancialHealth(academies: readonly AcademyState[], guara
   });
 }
 
-function evidence(candidate: AcademyContractCandidate, status: AcademyContractStatus, salaryAfter: number, contractYearsAfter: number, optionYearsAfter: number, demand: number, offer: number, offerCeiling: number, arbitrationAward: number | undefined, due: number, paid: number): AcademyContractEvidence {
+function evidence(candidate: AcademyContractCandidate, status: AcademyContractStatus, salaryAfter: number, contractYearsAfter: number, optionYearsAfter: number, demand: number, offer: number, offerCeiling: number, arbitrationAward: number | undefined, due: number, paid: number, concessionWhiteBoxShadow?: AcademyContractConcessionShadow): AcademyContractEvidence {
   const arrears = due - paid;
-  return {childId: candidate.childId, childName: candidate.childName, academyId: candidate.academyId, status, salaryBefore: candidate.annualSalary, salaryAfter, contractYearsBefore: candidate.contractYears, contractYearsAfter, optionYearsBefore: candidate.optionYears, optionYearsAfter, demand, offer, offerCeiling, arbitrationAward, due, paid, arrears, released: status === "released" || status === "defaulted"};
+  return {childId: candidate.childId, childName: candidate.childName, academyId: candidate.academyId, status, salaryBefore: candidate.annualSalary, salaryAfter, contractYearsBefore: candidate.contractYears, contractYearsAfter, optionYearsBefore: candidate.optionYears, optionYearsAfter, demand, offer, offerCeiling, arbitrationAward, due, paid, arrears, released: status === "released" || status === "defaulted", concessionWhiteBoxShadow};
 }
 function sum(values: number[]): number { return values.reduce((total, value) => total + value, 0); }
