@@ -1,6 +1,7 @@
 import {evaluateWhiteBoxCounterfactualBatch, type WhiteBoxCounterfactualBatch, type WhiteBoxCounterfactualSample} from "./counterfactualBatch";
 import {aggregateBattleCounterfactuals, battleCounterfactualAggregateMarkdown, type BattleCounterfactualAggregate, type BattleCounterfactualSample} from "./battleAggregation";
 import {aggregateTacticalMemoryAblations, tacticalMemoryAblationMarkdown, type TacticalMemoryAblationAggregate, type TacticalMemoryAblationSample} from "./tacticalMemoryAblation";
+import {aggregateStrategyProgramEvolution,strategyProgramEvolutionMarkdown,type StrategyProgramCounterfactualSample,type StrategyProgramEvolutionAggregate} from "./strategyProgramAggregation";
 
 export type UnifiedEvidenceStage = "workflow-validation" | "preliminary" | "extended-validation" | "formal-review";
 export type UnifiedEvidenceConclusion = "blocked" | "continue-sampling" | "reject-hypothesis" | "candidate-for-activation-review";
@@ -38,7 +39,9 @@ export interface UnifiedMemoryEvidenceAggregate {
   memoryBatch: TacticalMemoryAblationAggregate;
 }
 
-export type AnyUnifiedEvidenceAggregate = UnifiedEvidenceAggregate | UnifiedBattleEvidenceAggregate | UnifiedMemoryEvidenceAggregate;
+export interface UnifiedProgramEvolutionAggregate {schemaVersion:1;hypothesisId:string;domain:"program-evolution";thresholds:{workflowSamples:3;preliminarySamples:10;preliminarySeeds:5;activationSamples:number;activationSeeds:number};stage:UnifiedEvidenceStage;conclusion:UnifiedEvidenceConclusion;activationEligible:boolean;programBatch:StrategyProgramEvolutionAggregate}
+
+export type AnyUnifiedEvidenceAggregate = UnifiedEvidenceAggregate | UnifiedBattleEvidenceAggregate | UnifiedMemoryEvidenceAggregate | UnifiedProgramEvolutionAggregate;
 
 export function aggregateUnifiedEvidence(hypothesisId: string, domain: string, samples: readonly WhiteBoxCounterfactualSample[], options: {activationSamples?: number; activationSeeds?: number} = {}): UnifiedEvidenceAggregate {
   const activationSamples = integer(options.activationSamples ?? 30, 10, 1000, "activationSamples"), activationSeeds = integer(options.activationSeeds ?? 10, 5, activationSamples, "activationSeeds");
@@ -73,9 +76,12 @@ export function aggregateUnifiedMemoryEvidence(hypothesisId: string, samples: re
   return {schemaVersion:1,hypothesisId,domain:"memory",thresholds:{workflowSamples:3,preliminarySamples:10,preliminarySeeds:5,activationSamples,activationSeeds},stage,conclusion,activationEligible,memoryBatch};
 }
 
+export function aggregateUnifiedProgramEvolution(hypothesisId:string,samples:readonly StrategyProgramCounterfactualSample[],options:{activationSamples?:number;activationSeeds?:number}={}):UnifiedProgramEvolutionAggregate{const activationSamples=integer(options.activationSamples??30,10,1000,"activationSamples"),activationSeeds=integer(options.activationSeeds??10,5,activationSamples,"activationSeeds"),programBatch=aggregateStrategyProgramEvolution(samples,{minimumSamples:activationSamples,minimumSeeds:activationSeeds,minimumDecisivePairs:Math.min(10,activationSamples),minimumDecisiveSeeds:Math.min(5,activationSeeds),maximumOneSidedP:.1}),count=programBatch.metrics.samples,seeds=programBatch.metrics.seeds,stage:UnifiedEvidenceStage=count<3?"workflow-validation":count<10||seeds<5?"preliminary":count<activationSamples||seeds<activationSeeds?"extended-validation":"formal-review",fatal=programBatch.issues.some(issue=>issue.severity==="fatal"),enough=count>=activationSamples&&seeds>=activationSeeds,activationEligible=!fatal&&enough&&programBatch.conclusion==="candidate-for-bounded-active-review",conclusion:UnifiedEvidenceConclusion=fatal?"blocked":enough&&programBatch.conclusion==="reject-operator"?"reject-hypothesis":activationEligible?"candidate-for-activation-review":"continue-sampling";return{schemaVersion:1,hypothesisId,domain:"program-evolution",thresholds:{workflowSamples:3,preliminarySamples:10,preliminarySeeds:5,activationSamples,activationSeeds},stage,conclusion,activationEligible,programBatch};}
+
 export function unifiedEvidenceAggregateMarkdown(value: AnyUnifiedEvidenceAggregate): string {
   if ("battleBatch" in value) return `# Unified battle evidence: ${value.hypothesisId}\n\n- Stage: ${value.stage}\n- Conclusion: ${value.conclusion}\n- Formal gate: ${value.thresholds.activationSamples} samples, ${value.thresholds.activationSeeds} seeds, ${value.thresholds.decisivePairs} decisive pairs, ${value.thresholds.decisiveSeeds} directional seed clusters\n\n${battleCounterfactualAggregateMarkdown(value.battleBatch)}`;
   if ("memoryBatch" in value) return `# Unified tactical-memory evidence: ${value.hypothesisId}\n\n- Stage: ${value.stage}\n- Conclusion: ${value.conclusion}\n- Formal gate: ${value.thresholds.activationSamples} samples, ${value.thresholds.activationSeeds} seeds\n\n${tacticalMemoryAblationMarkdown(value.memoryBatch)}`;
+  if("programBatch" in value)return `# Unified strategy-program evolution evidence: ${value.hypothesisId}\n\n- Stage: ${value.stage}\n- Conclusion: ${value.conclusion}\n- Formal gate: ${value.thresholds.activationSamples} samples, ${value.thresholds.activationSeeds} seeds\n\n${strategyProgramEvolutionMarkdown(value.programBatch)}`;
   const metrics = value.batch.metrics;
   return ["# 统一反事实假设聚合", "", `- 假设：${value.hypothesisId}`, `- 领域：${value.domain}`, `- 阶段：${value.stage}`, `- 结论：${value.conclusion}`, `- 样本/种子：${metrics.samples}/${metrics.seeds}`, `- 更好/持平/更差：${metrics.better}/${metrics.neutral}/${metrics.worse}`, `- 平均积分差：${signed(metrics.meanPointsDelta)}`, `- 平均排名改善：${signed(metrics.meanRankImprovement)}`, `- 正式门槛：${value.thresholds.activationSamples}例且${value.thresholds.activationSeeds}种子`, "", "该结论只针对一个去重后的决策假设。不同领域或不同选择结构不会混合聚合，也不会自动激活正式行为。", ""].join("\n");
 }

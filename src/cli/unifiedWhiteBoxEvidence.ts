@@ -2,10 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
 import {buildUnifiedEvidencePlan, unifiedEvidenceMarkdown, type UnifiedEvidenceCase, type UnifiedEvidencePlan, type UnifiedEvidenceReplica} from "../ai/whiteBox/unifiedEvidence";
-import {aggregateUnifiedBattleEvidence, aggregateUnifiedEvidence, aggregateUnifiedMemoryEvidence, unifiedEvidenceAggregateMarkdown, type AnyUnifiedEvidenceAggregate} from "../ai/whiteBox/unifiedAggregation";
+import {aggregateUnifiedBattleEvidence, aggregateUnifiedEvidence, aggregateUnifiedMemoryEvidence,aggregateUnifiedProgramEvolution, unifiedEvidenceAggregateMarkdown, type AnyUnifiedEvidenceAggregate} from "../ai/whiteBox/unifiedAggregation";
 import type {WhiteBoxCounterfactualSample} from "../ai/whiteBox/counterfactualBatch";
 import type {BattleCounterfactualSample} from "../ai/whiteBox/battleAggregation";
 import type {TacticalMemoryAblationSample} from "../ai/whiteBox/tacticalMemoryAblation";
+import type {StrategyProgramCounterfactualSample} from "../ai/whiteBox/strategyProgramAggregation";
 import {compactWhiteBoxRun, type WhiteBoxRetentionTrace} from "../ai/whiteBox/retention";
 
 type RunStatus = "complete" | "failed";
@@ -68,11 +69,11 @@ function runExperiment(hypothesis: UnifiedEvidenceCase, replica: UnifiedEvidence
   const directory = path.join(out, "experiments", hypothesis.id, replica.id), startedAt = new Date().toISOString();
   if (fs.existsSync(directory)) throw new Error(`Untracked experiment directory exists: ${directory}`);
   try {
-    const command = replica.runner === "lineup" ? lineupCommand(replica, directory) : replica.runner === "battle" ? battleCommand(replica, directory) : replica.runner === "memory" ? memoryCommand(replica, directory) : replica.runner==="learning"?learningCommand(replica,directory): [path.join(root, "src", "cli", "counterfactualWhiteBox.ts"), "--source", replica.root, "--out", directory, "--case-index", String(replica.reviewIndex), "--followup-seasons", String(followupSeasons)];
+    const command = replica.runner === "lineup" ? lineupCommand(replica, directory) : replica.runner === "battle" ? battleCommand(replica, directory) : replica.runner === "memory" ? memoryCommand(replica, directory) : replica.runner==="learning"?learningCommand(replica,directory):replica.runner==="program-evolution"?programEvolutionCommand(replica,directory):replica.runner==="evolution"?evolutionCommand(replica,directory): [path.join(root, "src", "cli", "counterfactualWhiteBox.ts"), "--source", replica.root, "--out", directory, "--case-index", String(replica.reviewIndex), "--followup-seasons", String(followupSeasons)];
     const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), ...command], {cwd: root, env: {...process.env}, encoding: "utf8", maxBuffer: 64 * 1024 * 1024});
     if (result.status !== 0) throw new Error(result.stderr || result.stdout || `Counterfactual exited ${result.status}`);
     if (replica.runner === "lineup") verifyLineupExperiment(directory, replica);
-    const retention = replica.runner === "battle" || replica.runner === "memory" ? undefined : [path.join(directory, "incumbent"), path.join(directory,replica.runner==="learning"?"candidate":"whitebox")].map(branch => compactWhiteBoxRun(branch));
+    const retention = replica.runner === "battle" || replica.runner === "memory" ? undefined : replica.runner==="program-evolution"||replica.runner==="evolution"?[path.join(directory,"experiment"),path.join(directory,"control")].map(branch=>compactWhiteBoxRun(branch)):[path.join(directory, "incumbent"), path.join(directory,replica.runner==="learning"?"candidate":"whitebox")].map(branch => compactWhiteBoxRun(branch));
     manifest.runs.push({hypothesisId: hypothesis.id, replicaId: replica.id, seed: replica.sourceSeed, status: "complete", directory, startedAt, completedAt: new Date().toISOString(), retention});
     writePlan();
   } catch (error) {
@@ -85,6 +86,8 @@ function runExperiment(hypothesis: UnifiedEvidenceCase, replica: UnifiedEvidence
 }
 
 function learningCommand(replica:UnifiedEvidenceReplica,directory:string):string[]{const target=replica.learningTarget;if(!target)throw new Error(`Executable learning replica is incomplete: ${replica.id}`);return[path.join(root,"src","cli","counterfactualWhiteBoxLearning.ts"),"--source",replica.root,"--out",directory,"--manager",target.managerId,"--season",String(target.season),"--followup-seasons",String(followupSeasons)];}
+function programEvolutionCommand(replica:UnifiedEvidenceReplica,directory:string):string[]{const target=replica.evolutionTarget;if(!target||target.kind!=="program")throw new Error(`Executable program-evolution replica is incomplete: ${replica.id}`);return[path.join(root,"src","cli","counterfactualShadowProgram.ts"),"--source",replica.root,"--out",directory,"--manager",target.managerId,"--horizon",String(target.horizonSeasons)];}
+function evolutionCommand(replica:UnifiedEvidenceReplica,directory:string):string[]{const target=replica.evolutionTarget;if(!target||target.kind!=="full-lineage")throw new Error(`Executable evolution replica is incomplete: ${replica.id}`);return[path.join(root,"src","cli","counterfactualPunctuatedEvolution.ts"),"--source",replica.root,"--out",directory,"--manager",target.managerId];}
 
 function memoryCommand(replica: UnifiedEvidenceReplica, directory: string): string[] {
   const target=replica.memoryTarget;if(!target)throw new Error(`Executable memory replica is incomplete: ${replica.id}`);
@@ -123,18 +126,20 @@ function refreshAggregates(): AnyUnifiedEvidenceAggregate[] {
   for (const hypothesis of plan.cases) {
     const runs = manifest.runs.filter(run => run.status === "complete" && run.hypothesisId === hypothesis.id);
     if (!runs.length) continue;
-    const aggregate = hypothesis.domain === "battle" ? aggregateUnifiedBattleEvidence(hypothesis.id, runs.map(run => battleSample(run))) : hypothesis.domain === "memory" ? aggregateUnifiedMemoryEvidence(hypothesis.id,runs.map(run=>memorySample(run)),{activationSamples,activationSeeds}) : aggregateUnifiedEvidence(hypothesis.id, hypothesis.domain, runs.map(run => managementSample(run)), {activationSamples, activationSeeds});
+    const aggregate = hypothesis.domain === "battle" ? aggregateUnifiedBattleEvidence(hypothesis.id, runs.map(run => battleSample(run))) : hypothesis.domain === "memory" ? aggregateUnifiedMemoryEvidence(hypothesis.id,runs.map(run=>memorySample(run)),{activationSamples,activationSeeds}):hypothesis.domain==="program-evolution"?aggregateUnifiedProgramEvolution(hypothesis.id,runs.map(run=>programEvolutionSample(run)),{activationSamples,activationSeeds}) : aggregateUnifiedEvidence(hypothesis.id, hypothesis.domain, runs.map(run => hypothesis.domain==="evolution"?evolutionSample(run):managementSample(run)), {activationSamples, activationSeeds});
     aggregates.push(aggregate);
     write(path.join(aggregateRoot, `${hypothesis.id}.json`), aggregate);
     fs.writeFileSync(path.join(aggregateRoot, `${hypothesis.id}.md`), unifiedEvidenceAggregateMarkdown(aggregate), "utf8");
   }
-  write(path.join(out, "aggregate-index.json"), {schemaVersion: 1, hypotheses: aggregates.map(value => { const metrics = "battleBatch" in value ? value.battleBatch.metrics : "memoryBatch" in value ? value.memoryBatch.metrics : value.batch.metrics; return {id: value.hypothesisId, domain: value.domain, stage: value.stage, conclusion: value.conclusion, samples: metrics.samples, seeds: metrics.seeds, activationEligible: value.activationEligible}; })});
+  write(path.join(out, "aggregate-index.json"), {schemaVersion: 1, hypotheses: aggregates.map(value => { const metrics = "battleBatch" in value ? value.battleBatch.metrics : "memoryBatch" in value ? value.memoryBatch.metrics : "programBatch" in value?value.programBatch.metrics:value.batch.metrics; return {id: value.hypothesisId, domain: value.domain, stage: value.stage, conclusion: value.conclusion, samples: metrics.samples, seeds: metrics.seeds, activationEligible: value.activationEligible}; })});
   return aggregates;
 }
 
 function managementSample(run: ExperimentRun): WhiteBoxCounterfactualSample { const summary = read<any>(path.join(run.directory, "counterfactual-summary.json")); return {seed: run.seed, caseId: run.replicaId, prefixVerified: Boolean(summary.prefixVerified), comparison: summary.comparison}; }
 function battleSample(run: ExperimentRun): BattleCounterfactualSample { const summary = read<any>(path.join(run.directory, "counterfactual-summary.json")); return {seed: run.seed, caseId: run.replicaId, sourceVerified: Boolean(summary.sourceVerified), prefixVerified: Boolean(summary.prefixVerified), playerId: summary.intervention?.playerId, incumbent: summary.incumbent, whitebox: summary.whitebox}; }
 function memorySample(run:ExperimentRun):TacticalMemoryAblationSample { const sample=read<TacticalMemoryAblationSample>(path.join(run.directory,"tactical-memory-ablation-sample.json"));return {...sample,seed:run.seed,caseId:run.replicaId}; }
+function programEvolutionSample(run:ExperimentRun):StrategyProgramCounterfactualSample{const value=read<any>(path.join(run.directory,"counterfactual-summary.json"));return{seed:run.seed,managerId:value.isolatedDifference.managerId,operator:value.isolatedDifference.operator,sourceSeason:value.sourceSeason,activationSeason:value.activationSeason,evaluationSeason:value.evaluationSeason,horizonSeasons:value.horizonSeasons,sourceVerified:Boolean(value.sourceVerified),prefixVerified:Boolean(value.prefixVerified),parentProgramHash:value.isolatedDifference.parentProgramHash,candidateProgramHash:value.isolatedDifference.candidateProgramHash,behaviorDistance:value.isolatedDifference.behaviorDistance,opportunityDistance:value.isolatedDifference.opportunityDistance,choicePotential:value.isolatedDifference.choicePotential,operatorMutations:value.isolatedDifference.operatorMutations,decisionEffects:value.decisionEffects,delta:value.delta};}
+function evolutionSample(run:ExperimentRun):WhiteBoxCounterfactualSample{const value=read<any>(path.join(run.directory,"counterfactual-summary.json")),c=value.comparison,branch=(entry:any)=>({id:c.managerId,cash:entry.cash,contracts:0,payroll:0,titles:entry.titles,totalPoints:entry.points,finalRank:entry.rank,finalPoints:entry.points,finalChampion:Boolean(entry.champion)});return{seed:run.seed,caseId:run.replicaId,prefixVerified:Boolean(value.isolatedDifferenceVerified),comparison:{managerId:c.managerId,interventionSeason:c.activationSeason,finalSeason:c.activationSeason,incumbent:branch(c.control),whitebox:branch(c.experiment),delta:{cash:c.delta.cash,contracts:0,payroll:0,titles:c.delta.titles,totalPoints:c.delta.points,finalRank:-c.delta.rankImprovement,finalPoints:c.delta.points},champions:{incumbent:c.control.champion?[c.managerId]:[],whitebox:c.experiment.champion?[c.managerId]:[]}}};}
 
 function oneReplicaPerSeed(hypothesis: UnifiedEvidenceCase): UnifiedEvidenceReplica[] { const seen = new Set<string>(); return hypothesis.replicas.filter(replica => { if (seen.has(replica.sourceSeed)) return false; seen.add(replica.sourceSeed); return true; }); }
 function writePlan(): void { write(manifestPath, manifest); fs.writeFileSync(path.join(out, "evidence-plan.md"), unifiedEvidenceMarkdown(plan), "utf8"); }

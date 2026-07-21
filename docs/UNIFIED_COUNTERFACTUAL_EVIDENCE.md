@@ -123,7 +123,11 @@ npm run counterfactual:whitebox-learning -- `
   --out output/learning-counterfactual
 ```
 
-The unified planner pools these replicas under the explicit `season-learning-v1` versus `no-learning` hypothesis, while allowing at most one intervention from each independent league seed. A favorable no-learning result is evidence against the current learning rule, not permission to disable learning automatically. Evolution remains the final unsupported intervention family in the unified runner.
+The unified planner pools these replicas under the explicit `season-learning-v1` versus `no-learning` hypothesis, while allowing at most one intervention from each independent league seed. A favorable no-learning result is evidence against the current learning rule, not permission to disable learning automatically.
+
+Evolution uses two source-bound routes. A current-season `evolution-shadow-candidates.json` package contributes only semantic strategy-program candidates with positive observed choice potential; these run through the existing two-season program-only counterfactual and the operator-specific aggregate. A full-personality candidate is executable only when the source dynasty genuinely contains a matching pending profile and lineage for the next season; it runs through the existing activation-versus-suppression replay. The planner never reconstructs discarded mutations or turns an ordinary shadow report into a synthetic candidate.
+
+Both routes keep production evolution unchanged. Program evidence is grouped by mutation operator, while full-lineage evidence is stratified by its declared mutation structure. At most one replica per independent dynasty seed contributes to either hypothesis. A successful formal gate can only recommend bounded activation review.
 
 ## Scoped battle assist activation
 

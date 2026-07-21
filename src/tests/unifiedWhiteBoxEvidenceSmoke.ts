@@ -5,7 +5,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import {spawnSync} from "node:child_process";
 import {buildUnifiedEvidencePlan, unifiedEvidenceMarkdown} from "../ai/whiteBox/unifiedEvidence";
-import {aggregateUnifiedEvidence, aggregateUnifiedMemoryEvidence} from "../ai/whiteBox/unifiedAggregation";
+import {aggregateUnifiedEvidence, aggregateUnifiedMemoryEvidence,aggregateUnifiedProgramEvolution} from "../ai/whiteBox/unifiedAggregation";
 import {createBattleReplayCapsule} from "../showdown/battle";
 import {AI_VERSION, DEFAULT_TACTICAL_PROFILE, EMPTY_OPPONENT_MODEL} from "../showdown/choice";
 
@@ -17,7 +17,7 @@ try {
     {id: "a+b+c+d+e+f", eligible: true, reasonable: true, hardRejections: [], rationalScore: 2, rawStyleScore: 0, appliedStyleScore: 0, finalScore: 2, contributions: [{id: "lineup.strength", group: "strength", source: "competence", value: 2, reason: "strength"}, {id: "lineup.risk", group: "personality", source: "personality", value: 0, reason: "risk"}, {id: "lineup.counter", group: "matchup", source: "personality", value: 0, reason: "counter"}]},
     {id: "a+b+c+d+e+g", eligible: true, reasonable: true, hardRejections: [], rationalScore: 1.95, rawStyleScore: .1, appliedStyleScore: .1, finalScore: 2.05, contributions: [{id: "lineup.strength", group: "strength", source: "competence", value: 1.95, reason: "strength"}, {id: "lineup.risk", group: "personality", source: "personality", value: .05, reason: "risk"}, {id: "lineup.counter", group: "matchup", source: "personality", value: .05, reason: "counter"}]},
   ]});
-  fs.writeFileSync(path.join(root, "dynasty-state.json"), JSON.stringify({seed: "unified-smoke", completedSeason: 2, decisionRecords: [
+  fs.writeFileSync(path.join(root, "dynasty-state.json"), JSON.stringify({seed: "unified-smoke", completedSeason: 2,fingerprint:{registryHash:"registry-smoke"},settings:{evolutionMode:"punctuated",strategyProgramOperator:"decision-margin-v3"},managers:[{id:"manager-06",lineage:{lineageId:"parent-06"}},{id:"manager-07",lineage:{lineageId:"parent-07"},pendingProfile:{id:"manager-07"},pendingLineage:{lineageId:"child-07",birthSeason:3,mutations:["traits.risk=0.6"]}}], decisionRecords: [
     {id: "keeper-1", actor: "manager-01", decision: "keeper", context: {season: 2, keeperWhiteBoxShadow: shadow("keeper:manager-01:2", "a+b", "a")}},
     {id: "keeper-2", actor: "manager-02", decision: "keeper", context: {season: 2, keeperWhiteBoxShadow: shadow("keeper:manager-02:2", "a+b", "a")}},
     {id: "lineup-1", actor: "manager-03", decision: "lineup", context: {season: 2, whiteBoxShadow: lineupShadow()}},
@@ -25,6 +25,7 @@ try {
     {id: "draft-1", actor: "manager-04", decision: "draft", context: {season: 2, whiteBoxShadow: shadow("acquire:supplemental:2:1:manager-04", "a", "b")}},
     {id:"learning-1",stage:"review",actor:"manager-05",decision:"learning",context:{season:2,before:{risk:.5,stars:.5,synergy:.5,counter:.5,value:.5,flexibility:.5},learningWhiteBoxTrace:{version:"white-box-learning-v1",traits:["risk","stars","synergy","counter","value","flexibility"].map(trait=>({trait,beforeTrait:.5,prior:{mean:.5,confidence:0,effectiveSamples:2},appliedDelta:.05,posteriorAfter:{mean:.6,confidence:.1,effectiveSamples:3},rollback:{trait:.5,posterior:{mean:.5,confidence:0,effectiveSamples:2}}}))}}},
   ]}));
+  fs.mkdirSync(path.join(root,"season-02"),{recursive:true});fs.writeFileSync(path.join(root,"season-02","evolution-shadow-candidates.json"),JSON.stringify({schemaVersion:1,season:2,seed:"unified-smoke",registryHash:"registry-smoke",strategyProgramOperator:"decision-margin-v3",candidates:[{managerId:"manager-06",replacedLineageId:"parent-06",profile:{id:"manager-06"},lineage:{birthSeason:3},programBehaviorDistance:.4,programOpportunity:{choicePotential:.3}}]}));
   const battleDir = path.join(root, "season-02", "battles", "game-1"); fs.mkdirSync(battleDir, {recursive: true});
   const battleShadow:any = shadow("battle:game-1:3:p1", "move 1", "switch 2"); battleShadow.candidates[1].rationalScore = 3; battleShadow.candidates[1].finalScore = 3.1;
   fs.writeFileSync(path.join(battleDir, "ai-decisions.json"), JSON.stringify([{decisionOrdinal: 1, turn: 3, playerId: "p1", personalityId: "manager-05", battleContext: {ownSpecies: "alpha", opponentSpecies: "beta"}, whiteBoxShadow: {comparison: {incumbent: "move 1", shadow: "switch 2", agrees: false}, trace: battleShadow}}]));
@@ -33,14 +34,16 @@ try {
   fs.writeFileSync(path.join(battleDir, "ai-decisions.json.gz"), zlib.gzipSync(fs.readFileSync(path.join(battleDir, "ai-decisions.json"))));
   fs.rmSync(path.join(battleDir, "ai-decisions.json"));
   const plan = buildUnifiedEvidencePlan([root], {maximumCases: 10, maximumPerDomain: 2});
-  assert.equal(plan.metrics.scanned, 8);
-  assert.equal(plan.metrics.uniqueFingerprints, 6);
+  assert.equal(plan.metrics.scanned, 10);
+  assert.equal(plan.metrics.uniqueFingerprints, 8);
   assert.equal(plan.schemaVersion, 3);
   assert.equal(plan.sources[0].battleEvidence, "available");
   assert.equal(plan.sources[0].battleDifferences, 1);
   assert.equal(plan.sources[0].memoryReplicas,2);
   assert.equal(plan.sources[0].memoryPolicies,1);
   assert.equal(plan.sources[0].learningReplicas,1);
+  assert.equal(plan.sources[0].programEvolutionReplicas,1);
+  assert.equal(plan.sources[0].fullEvolutionReplicas,1);
   assert.equal(plan.cases.find(entry => entry.domain === "keeper")?.duplicates, 2);
   assert.equal(plan.cases.find(entry => entry.domain === "keeper")?.replicas.length, 2);
   assert.equal(plan.cases.find(entry => entry.domain === "keeper")?.status, "executable");
@@ -60,6 +63,10 @@ try {
   assert.equal(plan.cases.find(entry=>entry.domain==="learning")?.status,"executable");
   assert.equal(plan.cases.find(entry=>entry.domain==="learning")?.runner,"learning");
   assert.equal(plan.cases.find(entry=>entry.domain==="learning")?.learningTarget?.managerId,"manager-05");
+  assert.equal(plan.cases.find(entry=>entry.domain==="program-evolution")?.runner,"program-evolution");
+  assert.equal(plan.cases.find(entry=>entry.domain==="program-evolution")?.evolutionTarget?.kind,"program");
+  assert.equal(plan.cases.find(entry=>entry.domain==="evolution")?.runner,"evolution");
+  assert.equal(plan.cases.find(entry=>entry.domain==="evolution")?.evolutionTarget?.managerId,"manager-07");
   assert.equal(plan.cases.find(entry => entry.domain === "acquisition")?.status, "archive-only");
   assert.match(unifiedEvidenceMarkdown(plan), /统一白箱反事实证据清单/);
   const output = path.join(root, "evidence-output");
@@ -70,7 +77,7 @@ try {
   }
   const manifest = JSON.parse(fs.readFileSync(path.join(output, "evidence-manifest.json"), "utf8"));
   assert.equal(manifest.schemaVersion, 3);
-  assert.equal(manifest.plan.metrics.scanned, 8);
+  assert.equal(manifest.plan.metrics.scanned, 10);
   assert.deepEqual(manifest.runs, []);
   assert.ok(fs.existsSync(path.join(output, "evidence-plan.md")));
   const second = path.join(root, "second"); fs.mkdirSync(second, {recursive: true});
@@ -96,6 +103,8 @@ try {
   assert.equal(memoryAggregate.stage,"formal-review");
   assert.equal(memoryAggregate.conclusion,"candidate-for-activation-review");
   assert.equal(memoryAggregate.activationEligible,true);
+  const programSamples=Array.from({length:30},(_,index)=>({seed:`program-${index%10}`,managerId:`manager-${index}`,operator:"decision-margin-v3" as const,sourceSeason:2,activationSeason:3,evaluationSeason:4,horizonSeasons:2,sourceVerified:true,prefixVerified:true,parentProgramHash:`parent-${index}`,candidateProgramHash:`child-${index}`,behaviorDistance:.4,opportunityDistance:.3,choicePotential:.2,operatorMutations:["program.decision-margin-v3[test]"],decisionEffects:{ledgerCompared:1,ledgerSelectionDifferences:1,ledgerRecordSetDifferences:0,programSignalsCompared:1,programSignalDifferences:1,battleCompared:1,battleChoiceDifferences:1,battleRecordSetDifferences:0},delta:{points:3,rankImprovement:1,titles:0,cash:0}}));
+  const programAggregate=aggregateUnifiedProgramEvolution("program-h",programSamples);assert.equal(programAggregate.stage,"formal-review");assert.equal(programAggregate.conclusion,"candidate-for-activation-review");assert.equal(programAggregate.activationEligible,true);
 } finally {
   fs.rmSync(root, {recursive: true, force: true});
 }
