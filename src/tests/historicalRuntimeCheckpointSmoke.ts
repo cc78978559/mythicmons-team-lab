@@ -45,6 +45,7 @@ function copyRuntimeProject(): void {
   fs.mkdirSync(runtimeProject, {recursive: true});
   for (const directory of ["src", path.join("benchmarks", "gen9expanded")]) fs.cpSync(path.join(project, directory), path.join(runtimeProject, directory), {recursive: true});
   for (const file of ["package.json", "package-lock.json", "tsconfig.json"]) fs.copyFileSync(path.join(project, file), path.join(runtimeProject, file));
+  fs.symlinkSync(path.join(project, "node_modules"), path.join(runtimeProject, "node_modules"), "junction");
 }
 function run(script: string, cwd: string, env: Record<string, string>): void { const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), script], {cwd, env: {...process.env, ...env}, encoding: "utf8", maxBuffer: 64 * 1024 * 1024}); assert.equal(result.status, 0, result.stderr || result.stdout); }
 function read<T = any>(file: string): T { return JSON.parse(fs.readFileSync(file, "utf8")) as T; }
