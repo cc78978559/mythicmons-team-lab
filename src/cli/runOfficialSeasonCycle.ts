@@ -11,6 +11,7 @@ interface CycleManifest {
   schemaVersion: 1; cycleId: string; status: "running" | "complete"; majorRoot: string; developmentOut: string; previousDevelopment?: string;
   boundary: {internalSeason: number; globalSeason: number; stateSha256: string; seed: string}; promotionSlots: number;
   storage?: {minimumFreeGb: number; maximumDevelopmentOutputMb: number};
+  configuration?: {globalSeasonOffset: number; historyLedger?: string; developmentSeasons: string; developmentRounds: string; developmentMaxTurns: string};
   stages: Record<string, {status: "complete"; at: string; evidence: Record<string, unknown>}>;
 }
 
@@ -19,6 +20,8 @@ const majorRoot = path.resolve(requiredOption("--major-source")), developmentOut
 const previousDevelopment = option("--previous-development", "") ? path.resolve(option("--previous-development", "")) : undefined;
 const promotionSlots = integerOption("--promotion-slots", 3, 1, 5), offset = integerOption("--global-season-offset", 0, 0, 100000);
 const storagePolicy = {minimumFreeGb: numberOption("--min-free-gb", 10, 0, 10000), maximumDevelopmentOutputMb: integerOption("--max-development-output-mb", 2048, 1, 102400)};
+const historyLedger = option("--history-ledger", "") ? path.resolve(option("--history-ledger", "")) : undefined;
+const cycleConfiguration = {globalSeasonOffset: offset, ...(historyLedger ? {historyLedger} : {}), developmentSeasons: option("--development-seasons", "1"), developmentRounds: option("--development-rounds", "1"), developmentMaxTurns: option("--development-max-turns", "40")};
 const workflowLock = acquireNamedRunLock(majorRoot, ".official-season-cycle.lock", {workflow: "official-season-cycle"});
 process.once("exit", () => workflowLock.release());
 const cycleId = option("--cycle-id", "") || runningCycleId() || `after-s${String(readState().completedSeason).padStart(2, "0")}`;
@@ -52,7 +55,7 @@ function development(): void {
   if (manifest.stages.development) return;
   if (!developmentComplete()) {
     const managerCount = initialState.managers.length, formalScale = managerCount >= 30;
-    const command = ["--source", majorRoot, "--out", developmentOut, "--capacity", String(managerCount), "--parent-limit", String(managerCount), "--seasons", option("--development-seasons", "1"), "--promotion-slots", String(promotionSlots), "--elimination-slots", String(promotionSlots), "--regular-rounds", option("--development-rounds", "1"), "--max-turns", option("--development-max-turns", "40"), "--development-parent-percent", "50", "--max-founder-share-percent", "50", "--kinship-depth", "2", "--max-parent-similarity-percent", "90", "--academy-influence-percent", "15", "--academy-evolution-percent", "10", "--academy-initial-budget", "30", "--academy-grant-pool", String(Math.round(managerCount * 17.5)), "--academy-grant-load-percent", formalScale ? "100" : "0", "--academy-payroll-reserve-percent", formalScale ? "100" : "0", "--academy-max-cycle-spend", "30", "--academy-performance-revenue", "10", "--academy-market-policy", "shadow", "--academy-market-consent-policy", "enforce", "--academy-market-contract-policy", "enforce", "--academy-market-max-transactions", formalScale ? "10" : "2"];
+    const command = ["--source", majorRoot, "--out", developmentOut, "--capacity", String(managerCount), "--parent-limit", String(managerCount), "--seasons", cycleConfiguration.developmentSeasons, "--promotion-slots", String(promotionSlots), "--elimination-slots", String(promotionSlots), "--regular-rounds", cycleConfiguration.developmentRounds, "--max-turns", cycleConfiguration.developmentMaxTurns, "--development-parent-percent", "50", "--max-founder-share-percent", "50", "--kinship-depth", "2", "--max-parent-similarity-percent", "90", "--academy-influence-percent", "15", "--academy-evolution-percent", "10", "--academy-initial-budget", "30", "--academy-grant-pool", String(Math.round(managerCount * 17.5)), "--academy-grant-load-percent", formalScale ? "100" : "0", "--academy-payroll-reserve-percent", formalScale ? "100" : "0", "--academy-max-cycle-spend", "30", "--academy-performance-revenue", "10", "--academy-market-policy", "shadow", "--academy-market-consent-policy", "enforce", "--academy-market-contract-policy", "enforce", "--academy-market-max-transactions", formalScale ? "10" : "2"];
     if (previousDevelopment) command.push("--previous", previousDevelopment);
     run("src/cli/developmentLeague.ts", command, process.env, "development league");
   }
@@ -102,9 +105,8 @@ function nextSeason(): void {
 }
 
 function updateHistory(): void {
-  const configured = option("--history-ledger", "");
-  if (!configured || manifest.stages.history) return;
-  const ledgerPath = path.resolve(configured), ledger = read<any>(ledgerPath), internalSeason = manifest.boundary.internalSeason + 1, globalSeason = internalSeason + offset;
+  if (!historyLedger || manifest.stages.history) return;
+  const ledgerPath = historyLedger, ledger = read<any>(ledgerPath), internalSeason = manifest.boundary.internalSeason + 1, globalSeason = internalSeason + offset;
   const existing = ledger.seasons?.find((entry: any) => entry.globalSeason === globalSeason);
   const season = read<any>(path.join(majorRoot, `season-${String(internalSeason).padStart(2, "0")}`, "season.json")), auditSummary = read<any>(path.join(majorRoot, "audit-summary.json"));
   const row = {globalSeason, internalSeason, eraRoot: majorRoot, champion: season.champion?.name, championId: season.champion?.id, stateSha256: fileHash(path.join(majorRoot, "dynasty-state.json")), auditInputSignature: auditSummary.inputSignature, cycleId};
@@ -124,12 +126,12 @@ function preflight(): never {
   const auditMatchesCurrentRuntime = Boolean(auditClean && auditSummary.inputSignature === auditV12Signature(majorRoot, state.completedSeason));
   const developmentStatus = !fs.existsSync(developmentOut) ? "absent" : developmentComplete() ? "complete" : "incomplete";
   const previousStatus = !previousDevelopment ? "not-configured" : validPreviousDevelopment(previousDevelopment) ? "verified" : "invalid";
-  const historyPath = option("--history-ledger", ""), history = historyPath && fs.existsSync(path.resolve(historyPath)) ? read<any>(path.resolve(historyPath)) : null;
+  const historyPath = historyLedger, history = historyPath && fs.existsSync(historyPath) ? read<any>(historyPath) : null;
   const expectedGlobalSeason = state.completedSeason + offset, historyLatest = history ? Math.max(0, ...(history.seasons ?? []).map((entry: any) => Number(entry.globalSeason))) : null;
   const historyStatus = !historyPath ? "not-configured" : !history ? "missing" : historyLatest === expectedGlobalSeason ? "current" : `expected-${expectedGlobalSeason}-found-${historyLatest}`;
   const storage = storageGate("preflight", developmentStatus === "complete" ? developmentOut : undefined), codeUpgradeRequested = args.includes("--allow-code-upgrade");
   const ready = auditClean && (auditMatchesCurrentRuntime || codeUpgradeRequested) && developmentStatus !== "incomplete" && previousStatus !== "invalid" && historyStatus === (historyPath ? "current" : "not-configured");
-  const result = {ready, cycleId, boundary: {internalSeason: state.completedSeason, globalSeason: expectedGlobalSeason, nextInternalSeason: state.completedSeason + 1, nextGlobalSeason: expectedGlobalSeason + 1}, audit: {clean: auditClean, matchesCurrentRuntime: auditMatchesCurrentRuntime, codeUpgradeRequested}, development: {target: developmentOut, status: developmentStatus, previous: previousDevelopment ?? null, previousStatus}, history: {path: historyPath ? path.resolve(historyPath) : null, status: historyStatus}, storage};
+  const result = {ready, cycleId, boundary: {internalSeason: state.completedSeason, globalSeason: expectedGlobalSeason, nextInternalSeason: state.completedSeason + 1, nextGlobalSeason: expectedGlobalSeason + 1}, audit: {clean: auditClean, matchesCurrentRuntime: auditMatchesCurrentRuntime, codeUpgradeRequested}, development: {target: developmentOut, status: developmentStatus, previous: previousDevelopment ?? null, previousStatus}, history: {path: historyPath ?? null, status: historyStatus}, storage};
   fs.writeSync(process.stdout.fd, `${JSON.stringify(result, null, 2)}\n`, undefined, "utf8"); process.exit(ready ? 0 : 2);
 }
 
@@ -142,10 +144,12 @@ function loadOrCreateManifest(): CycleManifest {
   if (fs.existsSync(manifestPath)) {
     const saved = read<CycleManifest>(manifestPath);
     if (saved.majorRoot !== majorRoot || saved.developmentOut !== developmentOut || saved.boundary.seed !== initialState.seed || saved.promotionSlots !== promotionSlots) throw new Error("Cycle id already belongs to different inputs");
+    if (saved.previousDevelopment !== previousDevelopment || saved.boundary.globalSeason !== saved.boundary.internalSeason + offset) throw new Error("Cycle inputs differ from the existing manifest");
     if (saved.storage && JSON.stringify(saved.storage) !== JSON.stringify(storagePolicy)) throw new Error("Cycle storage policy differs from the existing manifest");
+    if (saved.configuration && JSON.stringify(saved.configuration) !== JSON.stringify(cycleConfiguration)) throw new Error("Cycle configuration differs from the existing manifest");
     return {...saved, storage: saved.storage ?? storagePolicy};
   }
-  return {schemaVersion: 1, cycleId, status: "running", majorRoot, developmentOut, previousDevelopment, boundary: {internalSeason: initialState.completedSeason, globalSeason: initialState.completedSeason + offset, stateSha256: initialHash, seed: initialState.seed}, promotionSlots, storage: storagePolicy, stages: {}};
+  return {schemaVersion: 1, cycleId, status: "running", majorRoot, developmentOut, previousDevelopment, boundary: {internalSeason: initialState.completedSeason, globalSeason: initialState.completedSeason + offset, stateSha256: initialHash, seed: initialState.seed}, promotionSlots, storage: storagePolicy, configuration: cycleConfiguration, stages: {}};
 }
 function verifyComplete(): void { const state = readState(), audit = read<any>(path.join(majorRoot, "audit-summary.json")); if (state.completedSeason !== manifest.boundary.internalSeason + 1 || audit.completedSeasons !== state.completedSeason || audit.inputSignature !== auditV12Signature(majorRoot, state.completedSeason) || audit.fatalCount || audit.warningCount) throw new Error("Completed cycle manifest no longer matches the league"); }
 function finish(reused: boolean): never { console.log(JSON.stringify({cycleId, status: manifest.status, reused, internalSeason: manifest.boundary.internalSeason + 1, globalSeason: manifest.boundary.internalSeason + 1 + offset, manifest: manifestPath}, null, 2)); process.exit(0); }

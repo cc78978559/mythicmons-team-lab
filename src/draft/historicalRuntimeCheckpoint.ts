@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
-import {loadDynastyState, loadDynastyStateCore, type DynastyStateStorage} from "./dynastyStateStore";
+import {loadDynastyState, loadDynastyStateCore, verifyDynastyStateStorage, type DynastyStateStorage} from "./dynastyStateStore";
 import {loadRegistrySnapshot} from "./registrySnapshot";
 
 export interface HistoricalRuntimeFingerprint {
@@ -58,7 +58,8 @@ export function captureHistoricalDynastyCheckpoint(projectRoot: string, dynastyR
   if (boundary.completedSeason !== completedSeason || !boundary.registry?.snapshot) throw new Error("Historical checkpoint boundary does not match the persisted dynasty state");
   const stateBytes = fs.readFileSync(stateFile), stateSha256 = digest(stateBytes);
   const captureKey = `${dynasty}\0${completedSeason}\0${stateSha256}`, cached = capturedCheckpoints.get(captureKey);
-  if (cached) return cached;
+  if (cached) return verifyHistoricalDynastyCheckpoint(dynasty, completedSeason);
+  verifyDynastyStateStorage(stateFile, boundary.stateStorage);
   const compressed = zlib.gzipSync(stateBytes, {level: 9});
   const runtime = ensureRuntimeBundle(project, dynasty, boundary.fingerprint);
   const directory = checkpointDirectory(dynasty, completedSeason), archiveName = `dynasty-state.${stateSha256}.json.gz`, archive = path.join(directory, archiveName);
@@ -89,6 +90,8 @@ export function verifyHistoricalDynastyCheckpoint(dynastyRoot: string, completed
   if (stateBytes.length !== checkpoint.state.stateBytes || digest(stateBytes) !== checkpoint.state.stateSha256) throw new Error("Historical dynasty checkpoint state hash mismatch");
   const state = JSON.parse(stateBytes.toString("utf8")) as StoredBoundary;
   if (state.completedSeason !== completedSeason || JSON.stringify(state.fingerprint) !== JSON.stringify(checkpoint.fingerprint) || normalize(state.registry?.snapshot ?? "") !== checkpoint.registrySnapshot || state.registry?.hash !== checkpoint.fingerprint.registryHash || JSON.stringify(state.stateStorage ?? null) !== JSON.stringify(checkpoint.stateStorage ?? null)) throw new Error("Historical dynasty checkpoint state binding mismatch");
+  try { verifyDynastyStateStorage(path.join(dynasty, "dynasty-state.json"), checkpoint.stateStorage); }
+  catch (error) { throw new Error(`Historical dynasty checkpoint state archive invalid: ${error instanceof Error ? error.message : String(error)}`); }
   verifyRuntimeBundle(dynasty, checkpoint.runtime, checkpoint.fingerprint);
   const registry = resolveWithin(dynasty, checkpoint.registrySnapshot);
   if (!fs.existsSync(path.join(registry, "registry-manifest.json"))) throw new Error("Historical dynasty checkpoint registry snapshot is missing");
@@ -177,7 +180,7 @@ function ensureRuntimeBundle(project: string, dynasty: string, fingerprint: Hist
   const identity = {codeHash: fingerprint.codeHash, benchmarkHash: fingerprint.benchmarkHash, dependencyHash: fingerprint.dependencyHash, pokemonShowdownVersion: fingerprint.pokemonShowdownVersion};
   const runtimeId = digest(Buffer.from(JSON.stringify(identity), "utf8")), directory = path.join(dynasty, ".runtime-bundles", runtimeId), manifestFile = path.join(directory, "runtime-manifest.json");
   const cacheKey = `${manifestFile}\0${JSON.stringify(identity)}`, cached = ensuredRuntimes.get(cacheKey);
-  if (cached) return cached;
+  if (cached) { verifyRuntimeBundle(dynasty, cached, fingerprint); return cached; }
   if (!fs.existsSync(manifestFile)) {
     const temporary = `${directory}.${process.pid}.${crypto.randomBytes(6).toString("hex")}.tmp`, workspace = path.join(temporary, "workspace");
     fs.mkdirSync(workspace, {recursive: true});

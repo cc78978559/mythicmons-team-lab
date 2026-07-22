@@ -39,6 +39,10 @@ try {
   assert.match(repeated.stdout, /"reused": true/); assert.equal(hash(fs.readFileSync(path.join(league, "dynasty-state.json"))), beforeRerun);
   const changedPolicy = execute("src/cli/runOfficialSeasonCycle.ts", cycleArgs.map((value, index) => cycleArgs[index - 1] === "--max-development-output-mb" ? "2048" : value));
   assert.notEqual(changedPolicy.status, 0); assert.match(changedPolicy.stderr, /storage policy differs/); assert.equal(hash(fs.readFileSync(path.join(league, "dynasty-state.json"))), beforeRerun);
+  const changedOffset = execute("src/cli/runOfficialSeasonCycle.ts", [...cycleArgs, "--global-season-offset", "9"]);
+  assert.notEqual(changedOffset.status, 0); assert.match(changedOffset.stderr, /inputs differ/); assert.equal(hash(fs.readFileSync(path.join(league, "dynasty-state.json"))), beforeRerun);
+  const changedDevelopment = execute("src/cli/runOfficialSeasonCycle.ts", [...cycleArgs, "--development-seasons", "2"]);
+  assert.notEqual(changedDevelopment.status, 0); assert.match(changedDevelopment.stderr, /configuration differs/); assert.equal(hash(fs.readFileSync(path.join(league, "dynasty-state.json"))), beforeRerun);
   console.log("Official season cycle smoke passed: audited development, atomic promotion, next-season resume, final audit, and idempotent rerun");
 } finally { fs.rmSync(workspace, {recursive: true, force: true}); }
 

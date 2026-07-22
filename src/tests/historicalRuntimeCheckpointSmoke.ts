@@ -37,6 +37,13 @@ try {
   for (const segment of segments) run(path.join(segment.runtimeWorkspace, "src", "cli", "draftLeagueV12.ts"), segment.runtimeWorkspace, {...common, NODE_PATH: segment.nodePath, V12_OUT: replayRoot, V12_SEASONS: String(segment.lastSeason), V12_RESUME: "true", V12_ALLOW_CODE_UPGRADE: "true", V12_REGISTRY_SOURCE: materialized.registrySource, V12_REGISTRY_REVISION: final.registry.revision, V12_AUCTION_MODE: String(settings.auctionMode ?? "sequential")});
   for (const season of [1, 2]) assert.deepEqual(essential(read(path.join(replayRoot, `season-${String(season).padStart(2, "0")}`, "season.json"))), essential(read(path.join(source, `season-${String(season).padStart(2, "0")}`, "season.json"))), `segmented historical replay must reproduce source season ${season}`);
 
+  const stateArchive = path.resolve(source, seasonZero.stateStorage!.decisionRecords!.file), originalStateArchive = fs.readFileSync(stateArchive);
+  fs.writeFileSync(stateArchive, Buffer.concat([originalStateArchive, Buffer.from("tamper")]));
+  assert.throws(() => verifyHistoricalDynastyCheckpoint(source, 0), /state archive invalid/);
+  const stateArchiveInspection = inspectHistoricalReplayPlan(source, 1, 2); assert(!stateArchiveInspection.ready); assert.equal(stateArchiveInspection.issue, "checkpoint-invalid");
+  assert(auditV12Output(source).issues.some(issue => issue.code === "invalid-historical-checkpoint" && issue.severity === "fatal"));
+  fs.writeFileSync(stateArchive, originalStateArchive);
+
   const archive = path.join(source, ".season-checkpoints", "season-00", seasonZero.state.archive), original = fs.readFileSync(archive);
   fs.writeFileSync(archive, Buffer.concat([original, Buffer.from("tamper")]));
   assert.throws(() => verifyHistoricalDynastyCheckpoint(source, 0), /archive hash mismatch/);

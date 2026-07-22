@@ -76,6 +76,14 @@ export function persistDynastyState<T extends object>(stateFile: string, state: 
   return prepared;
 }
 
+/** Verifies every external archive referenced by a split dynasty state. */
+export function verifyDynastyStateStorage(stateFile: string, storage: DynastyStateStorage | undefined): void {
+  if (!storage) return;
+  if (storage.schemaVersion !== DYNASTY_STATE_STORAGE_SCHEMA_VERSION) throw new Error(`Unsupported dynasty state storage schema ${storage.schemaVersion}`);
+  if (storage.decisionRecords) loadArchive(stateFile, storage.decisionRecords, "decisionRecords");
+  if (storage.evolutionArchive) loadArchive(stateFile, storage.evolutionArchive, "evolutionArchive");
+}
+
 function writeArchive(stateFile: string, label: string, value: unknown[]): DynastyStateArchiveReference {
   const payload = Buffer.from(JSON.stringify(value), "utf8");
   const payloadSha256 = digest(payload);
