@@ -3,6 +3,7 @@ import path from "node:path";
 import type {WhiteBoxCandidateTrace, WhiteBoxShadowSummary} from "./decision";
 import {whiteBoxExperimentEligibility} from "./sampling";
 import {evaluateAcquisitionAssistGate} from "./acquisitionApproval";
+import {loadDynastyState} from "../../draft/dynastyStateStore";
 
 export interface WhiteBoxDifferenceCase {
   id: string; decisionId: string; domain: string; actor: string; season: number | null; decision: string; source: string; incumbent: string; shadow: string;
@@ -18,7 +19,7 @@ export interface WhiteBoxDifferenceReview {
 }
 
 export function reviewWhiteBoxDifferences(rootDirectory: string): WhiteBoxDifferenceReview {
-  const root = path.resolve(rootDirectory), state = read<any>(path.join(root, "dynasty-state.json"));
+  const root = path.resolve(rootDirectory), state = loadDynastyState<any>(path.join(root, "dynasty-state.json"));
   const sources:Array<{source:string;records:any[]}>= [{source:"dynasty-state.json",records:state.decisionRecords??[]}];
   for(const entry of fs.readdirSync(root,{withFileTypes:true}).filter(entry=>entry.isDirectory()&&/^season-\d+$/.test(entry.name)).sort((a,b)=>a.name.localeCompare(b.name))){const file=path.join(root,entry.name,"decision-ledger.json");if(fs.existsSync(file))sources.push({source:`${entry.name}/decision-ledger.json`,records:read<any>(file).records??[]});}
   const cases: WhiteBoxDifferenceCase[] = [];

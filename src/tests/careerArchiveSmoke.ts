@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
+import {loadDynastyState} from "../draft/dynastyStateStore";
 import {buildCareerArchive, loadCareerMemoryCheckpoint, readCareerPortrait} from "../draft/careerArchive";
 
 const root = process.cwd(), temporary = fs.mkdtempSync(path.join(os.tmpdir(), "mythicmons-career-"));
@@ -27,7 +28,7 @@ try {
   assert.match(portrait.introduction, /我是经理 01/);
 
   runLeague(next, "career-next", archive.checkpointManifest);
-  const sourceState = read<any>(path.join(source, "dynasty-state.json")), nextState = read<any>(path.join(next, "dynasty-state.json"));
+  const sourceState = loadDynastyState<any>(path.join(source, "dynasty-state.json")), nextState = loadDynastyState<any>(path.join(next, "dynasty-state.json"));
   assert.equal(nextState.completedSeason, 1);
   assert.equal(nextState.managers.reduce((sum: number, manager: any) => sum + manager.titles, 0), 1, "old titles must not carry into the new journey");
   assert.ok(nextState.managers.every((manager: any, index: number) => manager.currentProfile.development.seasons >= sourceState.managers[index].currentProfile.development.seasons));

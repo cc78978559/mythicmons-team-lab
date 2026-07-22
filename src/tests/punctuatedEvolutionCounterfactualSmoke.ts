@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
+import {loadDynastyState} from "../draft/dynastyStateStore";
 
 const root = process.cwd();
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "mythic-punctuated-cf-"));
@@ -17,7 +18,7 @@ try {
     maxBuffer: 64 * 1024 * 1024,
   });
   assert.equal(baseline.status, 0, baseline.stderr || baseline.stdout);
-  const sourceState = read<any>(path.join(source, "dynasty-state.json"));
+  const sourceState = loadDynastyState<any>(path.join(source, "dynasty-state.json"));
   assert(sourceState.managers.some((manager: any) => manager.pendingLineage?.birthSeason === 3));
 
   const counterfactual = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "counterfactualPunctuatedEvolution.ts"), "--source", source, "--out", output], {cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024});
@@ -29,7 +30,7 @@ try {
   assert.notEqual(summary.comparison.experiment.lineageId, summary.comparison.control.lineageId);
   assert.equal(typeof summary.comparison.delta.points, "number");
   assert.equal(typeof summary.comparison.delta.rankImprovement, "number");
-  const control = read<any>(path.join(output, "control", "dynasty-state.json"));
+  const control = loadDynastyState<any>(path.join(output, "control", "dynasty-state.json"));
   assert.equal(control.decisionRecords.filter((record: any) => record.decision?.includes("隔离反事实抑制新生谱系")).length, 1);
   console.log("Punctuated evolution isolated counterfactual smoke passed");
 } finally {

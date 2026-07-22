@@ -29,7 +29,7 @@ export function compactWhiteBoxRun(rootDirectory: string): WhiteBoxRetentionTrac
     removedPaths.push(relative.replaceAll("\\", "/"));
   }
   const afterBytes = directorySize(root);
-  return {version: WHITE_BOX_RETENTION_VERSION, policy: "audit-summary", root, beforeBytes, afterBytes, removedBytes: beforeBytes - afterBytes, removedPaths, retainedPaths: ["dynasty-state.json", "config-snapshots/**", "season-*/season.json", "season-*/decision-ledger.json"]};
+  return {version: WHITE_BOX_RETENTION_VERSION, policy: "audit-summary", root, beforeBytes, afterBytes, removedBytes: beforeBytes - afterBytes, removedPaths, retainedPaths: ["dynasty-state.json", ".dynasty-state/**", "config-snapshots/**", "season-*/season.json", "season-*/decision-ledger.json"]};
 }
 
 export const compactIneligibleWhiteBoxRun = compactWhiteBoxRun;

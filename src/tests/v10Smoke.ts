@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
+import {loadDynastyState} from "../draft/dynastyStateStore";
 
 const root = process.cwd();
 const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "mythic-v10-smoke-"));
@@ -15,7 +16,7 @@ try {
     maxBuffer: 32 * 1024 * 1024,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  const state = read<any>(path.join(outDir, "dynasty-state.json"));
+  const state = loadDynastyState<any>(path.join(outDir, "dynasty-state.json"));
   assert.equal(state.version, 10);
   assert.equal(state.completedSeason, 4);
   assert.equal(state.settings.contractModel, "sports-market");

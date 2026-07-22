@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
+import {loadDynastyState} from "../draft/dynastyStateStore";
 import {evaluateWhiteBoxBidApproval} from "../ai/whiteBox/bidApproval";
 import type {WhiteBoxBidTrace} from "../ai/whiteBox/auction";
 import {evaluatePortfolioBidCounterfactual,loadPortfolioBidReplayCapsule,precheckPortfolioBids} from "../ai/whiteBox/portfolioBidCounterfactual";
@@ -37,7 +38,7 @@ try{
   fs.rmSync(path.join(portfolioOut,"counterfactual-summary.json"));fs.rmSync(path.join(portfolioOut,"counterfactual-report.md"));
   run(path.join(root,"src","cli","counterfactualWhiteBoxBid.ts"),["--source",portfolioSource,"--out",portfolioOut,"--decision-id",portfolioSelected.decisionId,"--manager",portfolioSelected.managerId,"--season","1","--followup-seasons","0","--resume"],{});
   assert.equal(read<any>(path.join(portfolioOut,"counterfactual-summary.json")).prefixVerified,true,"completed portfolio branches must resume into a verified summary");
-  const transitioned=read<any>(path.join(portfolioSource,"dynasty-state.json"));transitioned.decisionRecords.push({decision:"显式采用联盟代码升级",context:{}},{decision:"启动王朝第1季",context:{season:1}});fs.writeFileSync(path.join(portfolioSource,"dynasty-state.json"),JSON.stringify(transitioned));
+  const transitioned=loadDynastyState<any>(path.join(portfolioSource,"dynasty-state.json"));transitioned.decisionRecords.push({decision:"显式采用联盟代码升级",context:{}},{decision:"启动王朝第1季",context:{season:1}});delete transitioned.stateStorage;fs.writeFileSync(path.join(portfolioSource,"dynasty-state.json"),JSON.stringify(transitioned));
   const transitionedPlan=buildUnifiedEvidencePlan([portfolioSource],{portfolioBidScreens:[screenOut]}),transitionedBids=transitionedPlan.cases.filter(entry=>entry.domain==="auction"&&entry.reasons.includes("historical-runtime-transition-checkpoint-required"));assert(transitionedBids.length);assert(transitionedBids.every(entry=>entry.status!=="executable"));
 }finally{fs.rmSync(directory,{recursive:true,force:true});}
 console.log("White-box bid counterfactual smoke test passed");

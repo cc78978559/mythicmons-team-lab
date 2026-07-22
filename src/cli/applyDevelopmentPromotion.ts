@@ -5,6 +5,7 @@ import zlib from "node:zlib";
 import {cloneManagerProfile, type ManagerProfile} from "../draft/managerProfiles";
 import type {LineageIdentity} from "../draft/naturalEvolution";
 import {auditV12Output, auditV12Signature, v12AuditMarkdown} from "../draft/v12Audit";
+import {loadDynastyState, prepareDynastyState} from "../draft/dynastyStateStore";
 
 interface SeasonRecord {season: number; rank: number; points: number; champion: boolean}
 interface MajorManager {
@@ -39,7 +40,7 @@ function applyPromotion(): void {
   const majorRoot = path.resolve(requiredOption("--major-source"));
   const statePath = path.join(majorRoot, "dynasty-state.json");
   if (fs.existsSync(path.join(majorRoot, ".run.lock"))) throw new Error(`League is currently running: ${majorRoot}`);
-  const beforeBytes = fs.readFileSync(statePath), state = JSON.parse(beforeBytes.toString("utf8")) as MajorState;
+  const beforeBytes = fs.readFileSync(statePath), state = loadDynastyState<MajorState>(statePath);
   const recoveredCommitted = recoverPreparedTransactions(majorRoot, beforeBytes);
   if (recoveredCommitted) throw new Error(`Recovered ${recoveredCommitted} committed promotion transaction; inspect it before starting another promotion`);
   if (state.version !== 12) throw new Error(`In-place promotion requires a V12 dynasty, received V${state.version}`);
@@ -131,7 +132,7 @@ function applyPromotion(): void {
     rationale: ["保留俱乐部资产和经济责任", "替换经理人格与个人职业记录", "以单一原子事务执行全部席位"], links: [path.relative(majorRoot, manifestPath).replace(/\\/g, "/")],
   });
 
-  const afterBytes = Buffer.from(`${JSON.stringify(state, null, 2)}\n`, "utf8"), afterHash = hash(afterBytes);
+  const afterBytes = prepareDynastyState(statePath, state).bytes, afterHash = hash(afterBytes);
   const checkpointArchive = "dynasty-state.after.json.gz", checkpointBytes = zlib.gzipSync(afterBytes, {level: 9}), checkpoint = {archive: checkpointArchive, archiveSha256: hash(checkpointBytes), stateSha256: afterHash, sourceBytes: afterBytes.length, compressedBytes: checkpointBytes.length};
   fs.writeFileSync(path.join(transactionDir, checkpointArchive), checkpointBytes);
   const preparedManifest = {...baseManifest, recovery: {beforeSha256: beforeHash, plannedAfterSha256: afterHash, checkpoint}};

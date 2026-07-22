@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
+import {loadDynastyState} from "../draft/dynastyStateStore";
 
 interface PendingLineage {lineageId: string; birthSeason: number}
 interface CareerSeason {season: number; rank: number; points: number; champion: boolean}
@@ -20,7 +21,7 @@ const args = process.argv.slice(2);
 const root = process.cwd();
 const source = path.resolve(option("--source", "output/draft-league-v12"));
 const out = path.resolve(option("--out", "output/punctuated-evolution-counterfactual"));
-const sourceState = read<DynastyState>(path.join(source, "dynasty-state.json"));
+const sourceState = loadDynastyState<DynastyState>(path.join(source, "dynasty-state.json"));
 const sourceShocks = new Set(Array.from({length: sourceState.completedSeason}, (_, index) => {
   const season = index + 1;
   const report = read<{budget?: {environmentalShock?: number}}>(path.join(source, `season-${String(season).padStart(2, "0")}`, "evolution.json"));
@@ -44,8 +45,8 @@ runBranch(controlDir, true);
 verifyPrefix(source, experimentDir, sourceState.completedSeason);
 verifyPrefix(source, controlDir, sourceState.completedSeason);
 
-const experiment = read<DynastyState>(path.join(experimentDir, "dynasty-state.json"));
-const control = read<DynastyState>(path.join(controlDir, "dynasty-state.json"));
+const experiment = loadDynastyState<DynastyState>(path.join(experimentDir, "dynasty-state.json"));
+const control = loadDynastyState<DynastyState>(path.join(controlDir, "dynasty-state.json"));
 const experimentManager = requiredManager(experiment, target.id);
 const controlManager = requiredManager(control, target.id);
 if (experimentManager.lineage.lineageId !== target.pendingLineage.lineageId) throw new Error("Experiment branch did not activate the selected pending lineage");

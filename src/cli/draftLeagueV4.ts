@@ -20,6 +20,7 @@ import {writeSeasonBrief} from "../draft/seasonBrief";
 import {loadCareerMemoryCheckpoint} from "../draft/careerArchive";
 import {extractKeyBattleDecisions} from "../draft/battleDecisionExtractor";
 import {buildTacticalMemoryTrace, evaluateConfigurationEvidence, evaluateConfigurationPosterior} from "../ai/whiteBox/memory";
+import {loadDynastyState, persistDynastyState} from "../draft/dynastyStateStore";
 
 interface SeasonResult {
   season: number;
@@ -263,7 +264,7 @@ function initializeFromCareerCheckpoint(): void {
 function restoreCheckpoint(): number {
   const statePath = path.join(outDir, "dynasty-state.json");
   if (!fs.existsSync(statePath)) return 0;
-  const state = readJson<DynastyState>(statePath);
+  const state = loadDynastyState<DynastyState>(statePath);
   if (state.version === 5 && expandFromV5) return migrateExpansionState(state as unknown as LegacyDynastyState);
   if (state.version === 6) return migrateNaturalEvolutionState(state as unknown as LegacyV6State);
   if (state.version === 7) throw new Error("V7 experimental evolution state cannot distinguish tested parents from untested offspring; resume from its V6 source or start a newer league");
@@ -1016,7 +1017,7 @@ function assetLabel(member: Pick<DynastyRosterMember, "scarcity"> | undefined, p
 function checkpoint(completedSeason: number): void {
   const snapshot: DynastyState = {version: stateVersion, seed, completedSeason, settings: currentSettings(), managers, market: Object.fromEntries(market), assets: Object.fromEntries(assets), fingerprint: runtimeFingerprint, registry: registryState(), decisionRecords: [...ledger.all()], evolutionArchive, punctuatedEvolution, leaguePool, moneySupply};
   validateDynastyState(snapshot);
-  writeJson(path.join(outDir, "dynasty-state.json"), snapshot);
+  persistDynastyState(path.join(outDir, "dynasty-state.json"), snapshot);
   writeEvolutionSummary(completedSeason);
   ledger.write(path.join(outDir, "career-decisions"));
 }

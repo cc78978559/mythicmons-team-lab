@@ -6,13 +6,14 @@ import {compareWhiteBoxBranches} from "../ai/whiteBox/counterfactual";
 import {evaluateWhiteBoxBidApproval, WHITE_BOX_BID_COUNTERFACTUAL_POLICY} from "../ai/whiteBox/bidApproval";
 import {evaluatePortfolioBidCounterfactual, loadPortfolioBidReplayCapsule, portfolioAwardSignature} from "../ai/whiteBox/portfolioBidCounterfactual";
 import {createRegistrySnapshot} from "../draft/registrySnapshot";
+import {loadDynastyState} from "../draft/dynastyStateStore";
 
 interface DynastyState {seed:string;completedSeason:number;settings:Record<string,number|string|boolean|undefined>;fingerprint:{registryHash:string};registry?:{revision:string;snapshot:string};decisionRecords?:Array<{decision?:string;context?:{season?:number}}>}
 
 const args=process.argv.slice(2),root=process.cwd(),source=path.resolve(required("--source")),out=path.resolve(option("--out","output/whitebox-bid-counterfactual"));
 const managerId=required("--manager"),decisionId=required("--decision-id"),interventionSeason=integerOption("--season",1,1,1000),followupSeasons=integerOption("--followup-seasons",1,0,3);
 const resume=args.includes("--resume");
-const sourceState=read<DynastyState>(path.join(source,"dynasty-state.json")),finalSeason=interventionSeason+followupSeasons;
+const sourceState=loadDynastyState<DynastyState>(path.join(source,"dynasty-state.json")),finalSeason=interventionSeason+followupSeasons;
 if(sourceState.completedSeason<interventionSeason)throw new Error(`Source has not completed auction season ${interventionSeason}`);
 const transitionSeasons=historicalRuntimeTransitionSeasons(sourceState.decisionRecords??[]);
 if(!resume&&transitionSeasons.some(season=>season<=interventionSeason))throw new Error(`Source crossed historical runtime transitions before season ${interventionSeason}; an exact pre-season checkpoint and matching runtime are required`);

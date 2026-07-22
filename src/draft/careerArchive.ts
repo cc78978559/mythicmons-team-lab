@@ -5,6 +5,7 @@ import zlib from "node:zlib";
 import {classifyEmergentStyle, type ManagerProfile, type ManagerTraits} from "./managerProfiles";
 import type {LineageIdentity} from "./naturalEvolution";
 import {countProgramNodes, strategyProgramHash} from "./strategyProgram";
+import {loadDynastyState} from "./dynastyStateStore";
 
 interface StoredRosterMember {
   assetId?: string;
@@ -134,7 +135,7 @@ interface NarrativeQualityReport {
 
 export function buildCareerArchive(rootDirectory: string, destination = path.join(rootDirectory, "career-portraits")): CareerArchiveResult {
   const root = path.resolve(rootDirectory), target = path.resolve(destination);
-  const state = readJson<StoredState>(path.join(root, "dynasty-state.json"));
+  const state = loadDynastyState<StoredState>(path.join(root, "dynasty-state.json"));
   fs.mkdirSync(path.join(target, "managers"), {recursive: true});
   const portraits = state.managers.map(manager => buildPortrait(manager, state));
   for (const portrait of portraits) {

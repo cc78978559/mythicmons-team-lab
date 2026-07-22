@@ -13,6 +13,7 @@ import {strategyProgramMutationOperator} from "../../draft/strategyProgram";
 import {evaluateWhiteBoxBidApproval, WHITE_BOX_BID_COUNTERFACTUAL_POLICY} from "./bidApproval";
 import type {WhiteBoxBidTrace} from "./auction";
 import {loadPortfolioBidReplayCapsule} from "./portfolioBidCounterfactual";
+import {loadDynastyState} from "../../draft/dynastyStateStore";
 
 export type UnifiedEvidenceStatus = "executable" | "requires-gate" | "archive-only";
 export type UnifiedEvidenceRunner = "general" | "lineup" | "battle" | "memory" | "learning" | "program-evolution" | "evolution" | "acquisition" | "bid" | null;
@@ -118,7 +119,7 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
   const sources: UnifiedEvidencePlan["sources"] = [], raw: UnifiedEvidenceCase[] = [];
   for (const input of [...new Set(inputs.map(value => path.resolve(value)))]) {
     const review = reviewWhiteBoxDifferences(input);
-    const state = readJson<any>(path.join(input, "dynasty-state.json"));
+    const state = loadDynastyState<any>(path.join(input, "dynasty-state.json"));
     const seed = String(state.seed ?? "unknown"), completedSeason = Number(state.completedSeason ?? 0);
     review.cases.forEach((entry, index) => { if (!entry.decisionId.startsWith("lineup:")) raw.push(toEvidenceCase(input, seed, completedSeason, entry, index + 1)); });
     const opportunity = scanWhiteBoxOpportunities([input], [UNIFIED_LINEUP_SCENARIO], {maximumCasesPerScenario: 10000, domains: ["lineup"]}), lineupScenario = opportunity.scenarios[0];
