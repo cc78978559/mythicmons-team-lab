@@ -185,6 +185,8 @@ A prepared transaction is recovered before any later promotion: if the current s
 
 The resumable production command combines the clean pre-season audit, one development cohort, source-bound promotion package, atomic bottom-N promotion, verified development-output compaction, next major season, final audit, and optional global-history update. Every stage is persisted under `season-cycles/<cycle-id>.json`; a completed cycle is idempotent, and an unfinished cycle resumes from verified artifacts rather than repeating completed battles. A dedicated workflow lock prevents two season-cycle processes from mutating the same major-league boundary concurrently.
 
+The cycle also binds its storage policy in the manifest. `--min-free-gb` defaults to `10` and is checked before mutation and again before the next major season. `--max-development-output-mb` defaults to `2048` and rejects an oversized uncompressed development result before promotion. Both observed free space and development output size are retained in stage evidence; a resumed cycle must use the same limits.
+
 ```powershell
 npm run official-season-cycle -- `
   --major-source output/official-era-02/league `

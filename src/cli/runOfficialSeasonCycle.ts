@@ -10,6 +10,7 @@ interface State {version: number; seed: string; completedSeason: number; setting
 interface CycleManifest {
   schemaVersion: 1; cycleId: string; status: "running" | "complete"; majorRoot: string; developmentOut: string; previousDevelopment?: string;
   boundary: {internalSeason: number; globalSeason: number; stateSha256: string; seed: string}; promotionSlots: number;
+  storage?: {minimumFreeGb: number; maximumDevelopmentOutputMb: number};
   stages: Record<string, {status: "complete"; at: string; evidence: Record<string, unknown>}>;
 }
 
@@ -17,6 +18,7 @@ const args = process.argv.slice(2), root = process.cwd();
 const majorRoot = path.resolve(requiredOption("--major-source")), developmentOut = path.resolve(requiredOption("--development-out"));
 const previousDevelopment = option("--previous-development", "") ? path.resolve(option("--previous-development", "")) : undefined;
 const promotionSlots = integerOption("--promotion-slots", 3, 1, 5), offset = integerOption("--global-season-offset", 0, 0, 100000);
+const storagePolicy = {minimumFreeGb: numberOption("--min-free-gb", 10, 0, 10000), maximumDevelopmentOutputMb: integerOption("--max-development-output-mb", 2048, 1, 102400)};
 const workflowLock = acquireNamedRunLock(majorRoot, ".official-season-cycle.lock", {workflow: "official-season-cycle"});
 process.once("exit", () => workflowLock.release());
 const cycleId = option("--cycle-id", "") || runningCycleId() || `after-s${String(readState().completedSeason).padStart(2, "0")}`;
@@ -27,6 +29,7 @@ const initialState = readState(), initialHash = fileHash(path.join(majorRoot, "d
 let manifest = loadOrCreateManifest();
 if (manifest.status === "complete") { verifyComplete(); finish(true); }
 
+storageGate("cycle-start");
 audit("before-audit", initialState.completedSeason);
 development();
 promotion();
@@ -52,11 +55,12 @@ function development(): void {
     if (previousDevelopment) command.push("--previous", previousDevelopment);
     run("src/cli/developmentLeague.ts", command, process.env, "development league");
   }
+  const storage = storageGate("development-complete", developmentOut);
   const promotion = read<any>(path.join(developmentOut, "promotion-package.json")), summary = read<any>(path.join(developmentOut, "development-summary.json"));
   const payload = promotionPayload();
   if (payload.source.stateSha256 !== manifest.boundary.stateSha256 || payload.source.completedSeason !== manifest.boundary.internalSeason || payload.source.seed !== manifest.boundary.seed) throw new Error("Development output is not bound to this cycle boundary");
   if (promotion.candidates !== promotionSlots || summary.promoted?.length !== promotionSlots) throw new Error("Development output has the wrong promotion count");
-  completeStage("development", {cycle: summary.cycle, capacity: summary.capacity, candidates: promotion.candidates, packageSha256: promotion.sha256});
+  completeStage("development", {cycle: summary.cycle, capacity: summary.capacity, candidates: promotion.candidates, packageSha256: promotion.sha256, storage});
 }
 
 function promotion(): void {
@@ -80,6 +84,7 @@ function compactDevelopment(): void {
 
 function nextSeason(): void {
   if (manifest.stages.season) return;
+  const storage = storageGate("next-season");
   const target = manifest.boundary.internalSeason + 1, current = readState();
   if (current.completedSeason === manifest.boundary.internalSeason) {
     const settings = current.settings, env = {...process.env,
@@ -92,7 +97,7 @@ function nextSeason(): void {
   }
   const state = readState();
   if (state.completedSeason !== target) throw new Error(`Expected completed season ${target}, received ${state.completedSeason}`);
-  completeStage("season", {internalSeason: target, globalSeason: target + offset, stateSha256: fileHash(path.join(majorRoot, "dynasty-state.json"))});
+  completeStage("season", {internalSeason: target, globalSeason: target + offset, stateSha256: fileHash(path.join(majorRoot, "dynasty-state.json")), storage});
 }
 
 function updateHistory(): void {
@@ -120,9 +125,10 @@ function loadOrCreateManifest(): CycleManifest {
   if (fs.existsSync(manifestPath)) {
     const saved = read<CycleManifest>(manifestPath);
     if (saved.majorRoot !== majorRoot || saved.developmentOut !== developmentOut || saved.boundary.seed !== initialState.seed || saved.promotionSlots !== promotionSlots) throw new Error("Cycle id already belongs to different inputs");
-    return saved;
+    if (saved.storage && JSON.stringify(saved.storage) !== JSON.stringify(storagePolicy)) throw new Error("Cycle storage policy differs from the existing manifest");
+    return {...saved, storage: saved.storage ?? storagePolicy};
   }
-  return {schemaVersion: 1, cycleId, status: "running", majorRoot, developmentOut, previousDevelopment, boundary: {internalSeason: initialState.completedSeason, globalSeason: initialState.completedSeason + offset, stateSha256: initialHash, seed: initialState.seed}, promotionSlots, stages: {}};
+  return {schemaVersion: 1, cycleId, status: "running", majorRoot, developmentOut, previousDevelopment, boundary: {internalSeason: initialState.completedSeason, globalSeason: initialState.completedSeason + offset, stateSha256: initialHash, seed: initialState.seed}, promotionSlots, storage: storagePolicy, stages: {}};
 }
 function verifyComplete(): void { const state = readState(), audit = read<any>(path.join(majorRoot, "audit-summary.json")); if (state.completedSeason !== manifest.boundary.internalSeason + 1 || audit.completedSeasons !== state.completedSeason || audit.inputSignature !== auditV12Signature(majorRoot, state.completedSeason) || audit.fatalCount || audit.warningCount) throw new Error("Completed cycle manifest no longer matches the league"); }
 function finish(reused: boolean): never { console.log(JSON.stringify({cycleId, status: manifest.status, reused, internalSeason: manifest.boundary.internalSeason + 1, globalSeason: manifest.boundary.internalSeason + 1 + offset, manifest: manifestPath}, null, 2)); process.exit(0); }
@@ -130,8 +136,20 @@ function readState(): State { return read<State>(path.join(majorRoot, "dynasty-s
 function runningCycleId(): string | undefined { const directory = path.join(majorRoot, "season-cycles"); if (!fs.existsSync(directory)) return undefined; const running = fs.readdirSync(directory).filter(file => file.endsWith(".json")).map(file => read<CycleManifest>(path.join(directory, file))).filter(value => value.status === "running"); if (running.length > 1) throw new Error("Multiple unfinished season cycles require an explicit --cycle-id"); return running[0]?.cycleId; }
 function run(file: string, commandArgs: string[], env: NodeJS.ProcessEnv, label: string): void { const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, file), ...commandArgs], {cwd: root, env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024}); if (result.status !== 0) throw new Error(`${label} failed:\n${result.stderr || result.stdout}`); }
 function atomicJson(file: string, value: unknown): void { const temporary = `${file}.${process.pid}.${crypto.randomBytes(5).toString("hex")}.tmp`; fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, "utf8"); fs.renameSync(temporary, file); }
+function storageGate(stage: string, output?: string): Record<string, unknown> {
+  const policy = manifest.storage ?? storagePolicy, roots = [...new Set([existingDirectory(majorRoot), existingDirectory(path.dirname(developmentOut))])];
+  const freeGb = Math.min(...roots.map(directory => { const stats = fs.statfsSync(directory); return Number(stats.bavail) * Number(stats.bsize) / 1073741824; }));
+  if (freeGb < policy.minimumFreeGb) throw new Error(`${stage} free disk ${round(freeGb)} GB is below the required ${policy.minimumFreeGb} GB`);
+  const outputMb = output && fs.existsSync(output) ? directorySize(output) / 1048576 : undefined;
+  if (outputMb !== undefined && outputMb > policy.maximumDevelopmentOutputMb) throw new Error(`${stage} output ${round(outputMb)} MB exceeds the ${policy.maximumDevelopmentOutputMb} MB limit`);
+  return {minimumFreeGb: policy.minimumFreeGb, maximumDevelopmentOutputMb: policy.maximumDevelopmentOutputMb, freeGb: round(freeGb), ...(outputMb === undefined ? {} : {outputMb: round(outputMb)})};
+}
+function existingDirectory(directory: string): string { let current = path.resolve(directory); while (!fs.existsSync(current)) { const parent = path.dirname(current); if (parent === current) throw new Error(`No existing ancestor for storage check: ${directory}`); current = parent; } return fs.statSync(current).isDirectory() ? current : path.dirname(current); }
+function directorySize(directory: string): number { return fs.readdirSync(directory, {withFileTypes: true}).reduce((sum, entry) => { const target = path.join(directory, entry.name); return sum + (entry.isDirectory() ? directorySize(target) : entry.isFile() ? fs.statSync(target).size : 0); }, 0); }
+function round(value: number): number { return Math.round(value * 100) / 100; }
 function fileHash(file: string): string { return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex"); }
 function read<T>(file: string): T { return JSON.parse(fs.readFileSync(file, "utf8")) as T; }
 function requiredOption(name: string): string { const value = option(name, ""); if (!value) throw new Error(`${name} is required`); return value; }
 function option(name: string, fallback: string): string { const index = args.indexOf(name); return index >= 0 ? args[index + 1] ?? fallback : fallback; }
 function integerOption(name: string, fallback: number, min: number, max: number): number { const value = Number(option(name, String(fallback))); if (!Number.isInteger(value) || value < min || value > max) throw new Error(`${name} must be ${min}..${max}`); return value; }
+function numberOption(name: string, fallback: number, min: number, max: number): number { const value = Number(option(name, String(fallback))); if (!Number.isFinite(value) || value < min || value > max) throw new Error(`${name} must be ${min}..${max}`); return value; }
