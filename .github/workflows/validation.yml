@@ -23,12 +23,12 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
       - name: Use Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -37,7 +37,7 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Restore validation result cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: output/tooling/checks
           key: validation-${{ runner.os }}-node24-shard${{ matrix.shard }}-${{ hashFiles('package-lock.json', 'package.json', 'tsconfig.json', 'src/**/*.ts') }}
@@ -49,7 +49,7 @@ jobs:
 
       - name: Upload failure logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: validation-logs-shard-${{ matrix.shard }}
           path: output/tooling/checks
