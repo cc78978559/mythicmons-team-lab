@@ -63,6 +63,8 @@ npm test
 
 For local iteration, `npm run check:affected` maps the current Git diff to the dependent smoke tests, keeps full stdout/stderr under `output/tooling/checks`, and prints only a compact summary. Successful checks are cached by their transitive source hash, so an unchanged rerun completes without repeating simulations. Use `npm run check:compact` for the complete test inventory with the same compact logging and resumable cache; add `-- --no-cache` when an unconditional rerun is required.
 
+Pull requests run the same compact full inventory on Node.js 24. Successful jobs retain only the concise summary; a failed job uploads the local check logs for seven days so detailed output does not flood the PR transcript.
+
 Convert between Showdown team formats:
 
 ```bash
