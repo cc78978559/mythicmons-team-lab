@@ -34,6 +34,11 @@ try{
   run(path.join(root,"src","cli","counterfactualWhiteBoxBid.ts"),["--source",portfolioSource,"--out",portfolioOut,"--decision-id",portfolioSelected.decisionId,"--manager",portfolioSelected.managerId,"--season","1","--followup-seasons","0"],{});
   const portfolioSummary=read<any>(path.join(portfolioOut,"counterfactual-summary.json"));assert.equal(portfolioSummary.auctionMode,"portfolio");assert.equal(portfolioSummary.auctionPrefixVerified,true);assert.equal(portfolioSummary.approval.status,"executable");assert(portfolioSummary.approval.changes.length);assert.deepEqual(portfolioSummary.affectedManagerIds,portfolioSelected.affectedManagerIds);
   const portfolioRecords=read<any>(path.join(portfolioOut,"experiment","season-01","decision-ledger.json")).records??[],portfolioExperiments=portfolioRecords.flatMap((record:any)=>(record.context?.bids??[]).map((bid:any)=>bid.bidExperiment).filter(Boolean));assert.equal(portfolioExperiments.length,1,"portfolio branch must change exactly one submitted bid");
+  fs.rmSync(path.join(portfolioOut,"counterfactual-summary.json"));fs.rmSync(path.join(portfolioOut,"counterfactual-report.md"));
+  run(path.join(root,"src","cli","counterfactualWhiteBoxBid.ts"),["--source",portfolioSource,"--out",portfolioOut,"--decision-id",portfolioSelected.decisionId,"--manager",portfolioSelected.managerId,"--season","1","--followup-seasons","0","--resume"],{});
+  assert.equal(read<any>(path.join(portfolioOut,"counterfactual-summary.json")).prefixVerified,true,"completed portfolio branches must resume into a verified summary");
+  const transitioned=read<any>(path.join(portfolioSource,"dynasty-state.json"));transitioned.decisionRecords.push({decision:"显式采用联盟代码升级",context:{}},{decision:"启动王朝第1季",context:{season:1}});fs.writeFileSync(path.join(portfolioSource,"dynasty-state.json"),JSON.stringify(transitioned));
+  const transitionedPlan=buildUnifiedEvidencePlan([portfolioSource],{portfolioBidScreens:[screenOut]}),transitionedBids=transitionedPlan.cases.filter(entry=>entry.domain==="auction"&&entry.reasons.includes("historical-runtime-transition-checkpoint-required"));assert(transitionedBids.length);assert(transitionedBids.every(entry=>entry.status!=="executable"));
 }finally{fs.rmSync(directory,{recursive:true,force:true});}
 console.log("White-box bid counterfactual smoke test passed");
 

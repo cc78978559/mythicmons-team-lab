@@ -166,6 +166,8 @@ npm run counterfactual:whitebox-unified -- `
 
 Only solver-confirmed allocation or payment changes become `executable`; unscreened bids remain `requires-gate`. The exact dynasty runner changes one submitted bid, verifies the complete candidate allocation against the offline solver, proves that all other bid inputs and the pre-auction ledger prefix are unchanged, and reports every affected manager. The formal V12 default remains portfolio mode, and no evidence activates bidding behavior automatically.
 
+Historical runtime transitions are now an explicit replay boundary. If a source adopted a different code fingerprint before the target auction, a solver-confirmed bid remains `requires-gate` with `historical-runtime-transition-checkpoint-required` until an exact pre-season dynasty checkpoint and its matching runtime are available. The isolated runner also refuses a fresh full-history replay in that situation. Completed branches may be finalized with `--resume`, but only after the normal prefix and one-intervention checks pass; control verification occurs before the experiment branch is launched.
+
 ## Scoped battle assist activation
 
 There is no global battle-assist boolean. An activation-eligible aggregate can export a hash-verified approval containing only its proven matchup/action scopes:

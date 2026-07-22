@@ -172,7 +172,7 @@ function loadPortfolioScreenEvidence(files:readonly string[]):Map<string,any>{co
 
 function collectBidCases(root:string,seed:string,sourceSeason:number,state:any,screenEvidence:Map<string,any>):UnifiedEvidenceCase[]{
   const cases:UnifiedEvidenceCase[]=[];
-  const auctionMode=String(state.settings?.auctionMode??"sequential");
+  const auctionMode=String(state.settings?.auctionMode??"sequential"),runtimeTransitions=historicalRuntimeTransitionSeasons(state.decisionRecords??[]);
   for(let season=1;season<=sourceSeason;season+=1){
     const file=path.join(root,`season-${String(season).padStart(2,"0")}`,"decision-ledger.json");
     if(!fs.existsSync(file))continue;
@@ -185,9 +185,9 @@ function collectBidCases(root:string,seed:string,sourceSeason:number,state:any,s
         const trace=item.trace;if(!item.managerId||trace?.version!=="white-box-bid-v1"||trace.ceiling<=trace.bid||trace.shade<=0)continue;
         const highestCompetingBid=Math.max(0,...normalized.filter(entry=>entry.managerId!==item.managerId).map(entry=>entry.bid));
         const approval=evaluateWhiteBoxBidApproval({auctionMode,bidderId:item.managerId,incumbentWinnerId:winner?.managerId??null,highestCompetingBid,trace});
-        const screened=screenEvidence.get(`${path.resolve(root)}|${season}|${trace.decisionId}`),status:UnifiedEvidenceStatus=auctionMode!=="sequential"?(screened?.status==="executable"?"executable":"requires-gate"):approval.recommended?"executable":"archive-only";
+        const screened=screenEvidence.get(`${path.resolve(root)}|${season}|${trace.decisionId}`),baseStatus:UnifiedEvidenceStatus=auctionMode!=="sequential"?(screened?.status==="executable"?"executable":"requires-gate"):approval.recommended?"executable":"archive-only",historicalTransition=runtimeTransitions.some(value=>value<=season),status:UnifiedEvidenceStatus=historicalTransition&&baseStatus==="executable"?"requires-gate":baseStatus;
         const runner:UnifiedEvidenceRunner=status==="executable"?"bid":null;
-        const reasons=auctionMode!=="sequential"?(screened?.status==="executable"?[]:["portfolio-solver-screen-required"]):[...approval.reasons];
+        const reasons=[...(auctionMode!=="sequential"?(screened?.status==="executable"?[]:["portfolio-solver-screen-required"]):approval.reasons),...(historicalTransition?["historical-runtime-transition-checkpoint-required"]:[])];
         const impact=round(trace.ceiling-trace.bid+(screened?.changes?.length??0)),id=digest([root,trace.decisionId,WHITE_BOX_BID_COUNTERFACTUAL_POLICY].join("|")),screenShape=screened?.changes?.map((change:any)=>change.before?.managerId===change.after?.managerId?"payment":"assignment").sort().join(",")??"",fingerprint=digest(["auction",WHITE_BOX_BID_COUNTERFACTUAL_POLICY,status,reasons.slice().sort().join(","),screenShape].join("|"));
         const bidTarget:UnifiedBidTarget={managerId:item.managerId,season,decisionId:trace.decisionId,policy:WHITE_BOX_BID_COUNTERFACTUAL_POLICY};
         cases.push({id,root,sourceSeed:seed,sourceSeason,reviewIndex:0,decisionId:trace.decisionId,domain:"auction",actor:item.managerId,season,classification:"reasonable-style-choice",incumbent:String(trace.bid),shadow:String(trace.ceiling),impact,priority:round((status==="executable"?150:status==="requires-gate"?20:0)+impact+season*.01),fingerprint,duplicates:1,duplicateCaseIds:[],replicas:[],status,runner,reasons,bidTarget,selected:false});
@@ -196,6 +196,8 @@ function collectBidCases(root:string,seed:string,sourceSeason:number,state:any,s
   }
   return cases;
 }
+
+function historicalRuntimeTransitionSeasons(records:any[]):number[]{const seasons:number[]=[];let pending=false;for(const record of records){if(record?.decision==="显式采用联盟代码升级"){pending=true;continue;}const season=Number(record?.context?.season);if(pending&&String(record?.decision??"").startsWith("启动王朝第")&&Number.isInteger(season)){seasons.push(season);pending=false;}}return seasons;}
 
 function collectLearningCases(root:string,seed:string,sourceSeason:number,state:any):UnifiedEvidenceCase[]{const cases:UnifiedEvidenceCase[]=[];for(const record of state.decisionRecords??[]){const trace=record.context?.learningWhiteBoxTrace,season=Number(record.context?.season),actor=String(record.actor??"");if(trace?.version!=="white-box-learning-v1"||!Number.isInteger(season)||season<1||!actor||!Array.isArray(trace.traits)||trace.traits.length!==6)continue;let valid=true,impact=0;const changed:string[]=[];for(const trait of trace.traits){if(trait.rollback?.trait!==trait.beforeTrait||JSON.stringify(trait.rollback?.posterior)!==JSON.stringify(trait.prior)){valid=false;break;}const delta=Math.abs(Number(trait.appliedDelta)||0);impact+=delta+Math.abs(Number(trait.posteriorAfter?.mean)-Number(trait.prior?.mean))*.25;if(delta>1e-12)changed.push(String(trait.trait));}if(!changed.length)continue;const status:UnifiedEvidenceStatus=valid?"executable":"archive-only",runner:UnifiedEvidenceRunner=valid?"learning":null,reasons=valid?[]:["learning-rollback-drift"],id=digest([root,actor,season,"no-learning"].join("|")),fingerprint=digest(["learning","no-learning-experiment",changed.sort().join(",")].join("|")),learningTarget:UnifiedLearningTarget={managerId:actor,season,policy:"no-learning-experiment"};cases.push({id,root,sourceSeed:seed,sourceSeason,reviewIndex:0,decisionId:`learning:${actor}:${season}`,domain:"learning",actor,season,classification:"reasonable-style-choice",incumbent:"season-learning-v1",shadow:"no-learning",impact:round(impact),priority:round((valid?140:0)+impact+season*.01),fingerprint,duplicates:1,duplicateCaseIds:[],replicas:[],status,runner,reasons,learningTarget,selected:false});}return cases;}
 
