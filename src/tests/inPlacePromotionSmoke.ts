@@ -40,11 +40,14 @@ try {
   run("src/cli/applyDevelopmentPromotion.ts", ["--major-source", league, "--promotion", promotionManifestPath, "--auto-bottom", "2", "--transaction-id", "smoke-rollback"]);
 
   const first = JSON.parse(fs.readFileSync(statePath, "utf8")), manifestPath = path.join(league, "promotion-transactions", "smoke-rollback", "transaction.json"), manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const checkpointPath = path.join(path.dirname(manifestPath), manifest.result.checkpoint.archive), checkpointBytes = fs.readFileSync(checkpointPath), checkpointState = zlib.gunzipSync(checkpointBytes);
+  assert.equal(hash(checkpointBytes), manifest.result.checkpoint.archiveSha256);assert.equal(hash(checkpointState), manifest.result.afterSha256);assert.deepEqual(JSON.parse(checkpointState.toString("utf8")), first);
   const simulatedCrash = {...manifest, status: "prepared"}; delete simulatedCrash.committedAt; delete simulatedCrash.result; fs.writeFileSync(manifestPath, `${JSON.stringify(simulatedCrash, null, 2)}\n`);
   const recovered = reject("src/cli/applyDevelopmentPromotion.ts", ["--major-source", league, "--promotion", promotionManifestPath, "--auto-bottom", "2", "--transaction-id", "must-not-run"]);
   assert.match(String(recovered.stderr), /Recovered 1 committed promotion transaction/);
   const recoveredManifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   assert.equal(recoveredManifest.status, "committed"); assert.ok(recoveredManifest.recoveredAt);
+  assert.equal(recoveredManifest.result.checkpoint.stateSha256, manifest.result.afterSha256);
   assert.equal(first.completedSeason, before.completedSeason, "Promotion must preserve the season boundary");
   assert.deepEqual(pickGlobal(first), globalBefore, "Promotion must preserve the complete club and league economy");
   assert.deepEqual(first.managers.filter((manager: any) => !bottom.includes(manager.id)), untouchedBefore, "Non-relegated managers must be byte-equivalent objects");

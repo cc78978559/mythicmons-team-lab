@@ -132,10 +132,12 @@ function applyPromotion(): void {
   });
 
   const afterBytes = Buffer.from(`${JSON.stringify(state, null, 2)}\n`, "utf8"), afterHash = hash(afterBytes);
-  const preparedManifest = {...baseManifest, recovery: {beforeSha256: beforeHash, plannedAfterSha256: afterHash}};
+  const checkpointArchive = "dynasty-state.after.json.gz", checkpointBytes = zlib.gzipSync(afterBytes, {level: 9}), checkpoint = {archive: checkpointArchive, archiveSha256: hash(checkpointBytes), stateSha256: afterHash, sourceBytes: afterBytes.length, compressedBytes: checkpointBytes.length};
+  fs.writeFileSync(path.join(transactionDir, checkpointArchive), checkpointBytes);
+  const preparedManifest = {...baseManifest, recovery: {beforeSha256: beforeHash, plannedAfterSha256: afterHash, checkpoint}};
   writeJson(manifestPath, preparedManifest);
   atomicWrite(statePath, afterBytes);
-  writeJson(manifestPath, {...preparedManifest, status: "committed", committedAt: new Date().toISOString(), result: {afterSha256: afterHash, completedSeason: state.completedSeason, managers: state.managers.length}});
+  writeJson(manifestPath, {...preparedManifest, status: "committed", committedAt: new Date().toISOString(), result: {afterSha256: afterHash, completedSeason: state.completedSeason, managers: state.managers.length, checkpoint}});
   console.log(JSON.stringify({transaction: manifestPath, status: "committed", completedSeason: state.completedSeason, vacancies: rows.map(row => ({id: row.vacancy, outgoing: row.outgoing.name, incoming: row.incoming.name})), beforeSha256: beforeHash, afterSha256: afterHash}, null, 2));
 }
 
@@ -177,13 +179,22 @@ function recoverPreparedTransactions(majorRoot: string, currentState: Buffer): n
     if (manifest.status !== "prepared") continue;
     if (path.resolve(manifest.source?.root ?? "") !== majorRoot) throw new Error(`Prepared transaction has the wrong league root: ${manifestPath}`);
     if (currentHash === manifest.recovery?.plannedAfterSha256) {
-      writeJson(manifestPath, {...manifest, status: "committed", recoveredAt: new Date().toISOString(), result: {afterSha256: currentHash, completedSeason: manifest.boundary?.completedSeason, managers: currentManagers}});
+      const checkpoint = validateCounterfactualCheckpoint(path.dirname(manifestPath), manifest.recovery?.checkpoint, currentHash);
+      writeJson(manifestPath, {...manifest, status: "committed", recoveredAt: new Date().toISOString(), result: {afterSha256: currentHash, completedSeason: manifest.boundary?.completedSeason, managers: currentManagers, ...(checkpoint ? {checkpoint} : {})}});
       committed += 1;
     } else if (currentHash === manifest.source?.beforeSha256) {
       writeJson(manifestPath, {...manifest, status: "aborted", recoveredAt: new Date().toISOString(), recoveryResult: "state-was-not-replaced"});
     } else throw new Error(`Prepared promotion transaction is ambiguous and requires manual inspection: ${manifestPath}`);
   }
   return committed;
+}
+function validateCounterfactualCheckpoint(directory: string, checkpoint: any, expectedStateHash: string): any | undefined {
+  if (!checkpoint) return undefined;
+  const archive = path.resolve(directory, String(checkpoint.archive ?? ""));
+  if (path.dirname(archive) !== path.resolve(directory) || !fs.existsSync(archive)) throw new Error(`Prepared promotion checkpoint is missing or unsafe: ${archive}`);
+  const compressed = fs.readFileSync(archive), restored = zlib.gunzipSync(compressed);
+  if (hash(compressed) !== checkpoint.archiveSha256 || hash(restored) !== expectedStateHash || checkpoint.stateSha256 !== expectedStateHash || restored.length !== checkpoint.sourceBytes || compressed.length !== checkpoint.compressedBytes) throw new Error(`Prepared promotion checkpoint failed verification: ${archive}`);
+  return checkpoint;
 }
 function historicalPromotionLineages(majorRoot: string): Set<string> {
   const result = new Set<string>(), directory = path.join(majorRoot, "promotion-transactions");
