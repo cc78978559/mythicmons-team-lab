@@ -39,9 +39,17 @@ Commands that only need the active boundary may read the core directly. Commands
 - Development-league compaction extracts the manager boundary before pruning its simulation directory.
 - Audit, promotion, counterfactual, release, and career-archive paths hydrate verified history.
 
+## Checkpoint branches
+
+Counterfactuals that intervene only after a completed season use `dynastyCheckpointBranch.ts`. A branch manifest binds the exact main-state bytes to the completed season summaries, evolution summaries, health summaries, active registry snapshot, and referenced history archives. Its content-derived checkpoint ID must match across experiment and control.
+
+Materialization copies only the files required to resume the dynasty. It requests copy-on-write cloning and safely falls back to ordinary copies; it never hard-links writable evidence back to the formal source. The branch verifies the full boundary immediately after materialization and verifies the immutable prefix again after continuation. Historical interventions inside an already completed season still require an exact replay from an earlier compatible checkpoint.
+
+The formal S21 source is not rewritten merely to create a branch. Its legacy inline state is copied as-is and naturally converts to split storage when the experimental continuation writes its next checkpoint.
+
 ## Compatibility rule
 
-State-storage changes must not alter manager state, seeds, settings, decision order, evolution inputs, or battle outputs. Acceptance requires legacy-load, split-load, tamper rejection, resume, audit, promotion rollback, official-cycle, and counterfactual smoke coverage.
+State-storage and checkpoint-branch changes must not alter manager state, seeds, settings, decision order, evolution inputs, or battle outputs. Acceptance requires legacy-load, split-load, tamper rejection, branch-source isolation, resume, audit, promotion rollback, official-cycle, and counterfactual smoke coverage.
 
 ## Validation topology
 
