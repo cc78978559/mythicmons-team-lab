@@ -1,6 +1,7 @@
 import type {WhiteBoxBidTrace} from "./auction";
 
 export const WHITE_BOX_BID_COUNTERFACTUAL_POLICY = "unshaded-ceiling-experiment" as const;
+export const MAX_BID_COUNTERFACTUAL_FOLLOWUP_SEASONS = 4;
 
 export interface WhiteBoxBidApprovalInput {
   auctionMode: string;

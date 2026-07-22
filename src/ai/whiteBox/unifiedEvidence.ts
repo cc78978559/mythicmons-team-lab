@@ -10,7 +10,7 @@ import {loadBattleReplayCapsule} from "../../showdown/battle";
 import {AI_VERSION} from "../../showdown/choice";
 import {buildBattleAssistScope} from "./battleScope";
 import {strategyProgramMutationOperator} from "../../draft/strategyProgram";
-import {evaluateWhiteBoxBidApproval, WHITE_BOX_BID_COUNTERFACTUAL_POLICY} from "./bidApproval";
+import {evaluateWhiteBoxBidApproval, MAX_BID_COUNTERFACTUAL_FOLLOWUP_SEASONS, WHITE_BOX_BID_COUNTERFACTUAL_POLICY} from "./bidApproval";
 import type {WhiteBoxBidTrace} from "./auction";
 import {loadPortfolioBidReplayCapsule} from "./portfolioBidCounterfactual";
 import {hasHistoricalReplayPlan} from "../../draft/historicalRuntimeCheckpoint";
@@ -175,7 +175,7 @@ function loadPortfolioScreenEvidence(files:readonly string[]):Map<string,any>{co
 
 function collectBidCases(root:string,seed:string,sourceSeason:number,state:any,screenEvidence:Map<string,any>,historicalReplayFollowupSeasons:number):UnifiedEvidenceCase[]{
   const cases:UnifiedEvidenceCase[]=[];
-  const auctionMode=String(state.settings?.auctionMode??"sequential"),runtimeTransitions=historicalReplayTransitionSeasons(state.decisionRecords??[]),replayReady=new Map<string,boolean>(),bidHorizonSupported=historicalReplayFollowupSeasons<=3;
+  const auctionMode=String(state.settings?.auctionMode??"sequential"),runtimeTransitions=historicalReplayTransitionSeasons(state.decisionRecords??[]),replayReady=new Map<string,boolean>(),bidHorizonSupported=historicalReplayFollowupSeasons<=MAX_BID_COUNTERFACTUAL_FOLLOWUP_SEASONS;
   for(let season=1;season<=sourceSeason;season+=1){
     const file=path.join(root,`season-${String(season).padStart(2,"0")}`,"decision-ledger.json");
     if(!fs.existsSync(file))continue;
