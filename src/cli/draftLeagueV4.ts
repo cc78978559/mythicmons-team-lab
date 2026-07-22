@@ -21,6 +21,7 @@ import {loadCareerMemoryCheckpoint} from "../draft/careerArchive";
 import {extractKeyBattleDecisions} from "../draft/battleDecisionExtractor";
 import {buildTacticalMemoryTrace, evaluateConfigurationEvidence, evaluateConfigurationPosterior} from "../ai/whiteBox/memory";
 import {loadDynastyState, persistDynastyState} from "../draft/dynastyStateStore";
+import {captureHistoricalDynastyCheckpoint} from "../draft/historicalRuntimeCheckpoint";
 
 interface SeasonResult {
   season: number;
@@ -217,6 +218,8 @@ function main(): void {
     if (resume && careerCheckpointPath) throw new Error("V4_CAREER_CHECKPOINT starts a new journey and cannot be combined with V4_RESUME");
     if (!resume && careerCheckpointPath) initializeFromCareerCheckpoint();
     const completedSeason = resume ? restoreCheckpoint() : 0;
+    if (stateVersion >= 12 && !resume && completedSeason === 0) checkpoint(0);
+    else if (stateVersion >= 12 && resume && fs.existsSync(path.join(outDir, ".season-checkpoints"))) captureHistoricalDynastyCheckpoint(root, outDir, completedSeason);
     for (let season = completedSeason + 1; season <= seasonCount; season += 1) runDynastySeason(season);
     writeDynastyOutputs();
     const latestChampion = managers.find(manager => manager.seasons.at(-1)?.season === seasonCount && manager.seasons.at(-1)?.champion);
@@ -1018,6 +1021,7 @@ function checkpoint(completedSeason: number): void {
   const snapshot: DynastyState = {version: stateVersion, seed, completedSeason, settings: currentSettings(), managers, market: Object.fromEntries(market), assets: Object.fromEntries(assets), fingerprint: runtimeFingerprint, registry: registryState(), decisionRecords: [...ledger.all()], evolutionArchive, punctuatedEvolution, leaguePool, moneySupply};
   validateDynastyState(snapshot);
   persistDynastyState(path.join(outDir, "dynasty-state.json"), snapshot);
+  if (stateVersion >= 12) captureHistoricalDynastyCheckpoint(root, outDir, completedSeason);
   writeEvolutionSummary(completedSeason);
   ledger.write(path.join(outDir, "career-decisions"));
 }

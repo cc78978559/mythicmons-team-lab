@@ -3,7 +3,9 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import zlib from "node:zlib";
 import {spawnSync} from "node:child_process";
+import {verifyHistoricalDynastyCheckpoint} from "../draft/historicalRuntimeCheckpoint";
 
 const root = process.cwd(), workspace = fs.mkdtempSync(path.join(os.tmpdir(), "mythic-official-cycle-"));
 const league = path.join(workspace, "league"), development = path.join(workspace, "development"), history = path.join(workspace, "official-history.json");
@@ -29,6 +31,9 @@ try {
   const historyLedger = read<any>(history); assert.equal(historyLedger.completedGlobalSeason, 2); assert.deepEqual(historyLedger.seasons.map((season: any) => season.globalSeason), [1, 2]);
   const replacement = state.managers.find((manager: any) => manager.id === bottom);
   assert.deepEqual(replacement.seasons.map((season: any) => season.season), [2]);
+  const promotedBoundary = verifyHistoricalDynastyCheckpoint(league, 1), promotedState = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(league, ".season-checkpoints", "season-01", promotedBoundary.state.archive))).toString("utf8"));
+  assert.deepEqual(promotedState.managers.find((manager: any) => manager.id === bottom).seasons, [], "season-01 historical boundary must include the post-promotion manager state used to start season 2");
+  verifyHistoricalDynastyCheckpoint(league, 0); verifyHistoricalDynastyCheckpoint(league, 2);
   const beforeRerun = hash(fs.readFileSync(path.join(league, "dynasty-state.json")));
   const repeated = run("src/cli/runOfficialSeasonCycle.ts", cycleArgs);
   assert.match(repeated.stdout, /"reused": true/); assert.equal(hash(fs.readFileSync(path.join(league, "dynasty-state.json"))), beforeRerun);

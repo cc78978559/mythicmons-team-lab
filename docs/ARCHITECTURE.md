@@ -47,6 +47,14 @@ Materialization copies only the files required to resume the dynasty. It request
 
 The formal S21 source is not rewritten merely to create a branch. Its legacy inline state is copied as-is and naturally converts to split storage when the experimental continuation writes its next checkpoint.
 
+## Historical runtime checkpoints
+
+New V12 journeys retain a compressed state boundary from `season-00` onward under `.season-checkpoints/season-NN/`. Each boundary binds the exact main-state bytes, referenced history archives, registry snapshot, runtime fingerprint, and a content-addressed runtime bundle. A code version is stored once under `.runtime-bundles/<runtime-id>/`; its executable workspace contains production TypeScript, benchmarks, package manifests, and the lockfile, but not `node_modules` or test sources. The unpacked runtime is about 2 MB with the current codebase.
+
+An intervention in season N is replayable only from the season N-1 state with the runtime recorded for season N. This deliberately reproduces a code upgrade that occurred at the start of N. Runtime files, state archives, registry data, the installed lockfile, and the Pokemon Showdown version are verified before execution. A later runtime transition inside the requested follow-up horizon remains blocked until segmented replay is implemented.
+
+These artifacts are prospective. Formal S21 predates them, so its two recorded code transitions remain `requires-gate`; the system does not infer exact historical bytes from Git commits because the legacy code hash included checkout-specific line endings.
+
 ## Compatibility rule
 
 State-storage and checkpoint-branch changes must not alter manager state, seeds, settings, decision order, evolution inputs, or battle outputs. Acceptance requires legacy-load, split-load, tamper rejection, branch-source isolation, resume, audit, promotion rollback, official-cycle, and counterfactual smoke coverage.

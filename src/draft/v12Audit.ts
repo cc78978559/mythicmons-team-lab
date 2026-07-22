@@ -6,6 +6,7 @@ import {countProgramNodes, strategyProgramBehavior, strategyProgramHash, validat
 import {loadRegistrySnapshot} from "./registrySnapshot";
 import type {ProgramOpportunitySnapshot} from "./strategyProgramOpportunity";
 import {loadDynastyState} from "./dynastyStateStore";
+import {verifyHistoricalDynastyCheckpoint} from "./historicalRuntimeCheckpoint";
 
 export interface V12AuditIssue {severity: "fatal" | "warning"; code: string; message: string; season?: number; managerId?: string}
 export interface V12AuditSummary {
@@ -49,6 +50,7 @@ export function auditV12Output(rootDirectory: string): V12AuditSummary {
       if (ledgerOwner !== manager.id) { contractOwnershipMismatches += 1; issues.push(issue("fatal", "contract-owner-mismatch", `${contract.assetId} ledger owner is ${ledgerOwner ?? "none"}`, undefined, manager.id)); }
     }
   }
+  if (fs.existsSync(path.join(root, ".season-checkpoints"))) for (let season = 0; season <= state.completedSeason; season += 1) try { verifyHistoricalDynastyCheckpoint(root, season); } catch (error) { issues.push(issue("fatal", "invalid-historical-checkpoint", String(error), season || undefined)); }
   for (let season = 1; season <= state.completedSeason; season += 1) {
     const dir = path.join(root, `season-${String(season).padStart(2, "0")}`);
     for (const name of ["season.json", "decision-ledger.json", "rosters", "economy.json", "evolution.json"]) if (!fs.existsSync(path.join(dir, name))) issues.push(issue("fatal", "missing-artifact", `${name} is missing`, season));
@@ -160,6 +162,8 @@ export function v12AuditMarkdown(summary: V12AuditSummary): string { const m = s
 function auditFiles(root: string, seasons: number): string[] {
   const files = fs.existsSync(path.join(root, "dynasty-state.json")) ? [path.join(root, "dynasty-state.json")] : [];
   if (fs.existsSync(path.join(root, "config-snapshots"))) collectAuditInputs(path.join(root, "config-snapshots"), files);
+  if (fs.existsSync(path.join(root, ".season-checkpoints"))) collectAuditInputs(path.join(root, ".season-checkpoints"), files);
+  if (fs.existsSync(path.join(root, ".runtime-bundles"))) collectAuditInputs(path.join(root, ".runtime-bundles"), files);
   for (let season = 1; season <= seasons; season += 1) {
     const seasonRoot = path.join(root, `season-${String(season).padStart(2, "0")}`);
     if (fs.existsSync(seasonRoot)) collectAuditInputs(seasonRoot, files);
