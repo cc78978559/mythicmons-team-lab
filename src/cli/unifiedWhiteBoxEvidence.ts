@@ -57,6 +57,8 @@ const aggregates = refreshAggregates();
 const summary = {
   selectedHypotheses: plan.metrics.selected,
   executableHypotheses: plan.cases.filter(entry => entry.selected && entry.status === "executable").length,
+  gateReasons: plan.metrics.gateReasons,
+  selectedGateReasons: plan.metrics.selectedGateReasons,
   crossSeedHypotheses: plan.metrics.crossSeedHypotheses,
   completedExperiments: manifest.runs.filter(run => run.status === "complete").length,
   failedExperiments: manifest.runs.filter(run => run.status === "failed").length,

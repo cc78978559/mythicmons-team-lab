@@ -83,7 +83,7 @@ try {
   assert.equal(plan.cases.find(entry => entry.domain === "acquisition")?.acquisitionTarget?.candidateId, "b");
   assert.equal(plan.cases.find(entry=>entry.domain==="auction")?.runner,"bid");
   assert.equal(plan.cases.find(entry=>entry.domain==="auction")?.bidTarget?.policy,"unshaded-ceiling-experiment");
-  assert.match(unifiedEvidenceMarkdown(plan), /统一白箱反事实证据清单/);
+  assert.deepEqual(plan.metrics.gateReasons, {}); assert.match(unifiedEvidenceMarkdown(plan), /统一白箱反事实证据清单/); const gatedMarkdownPlan=structuredClone(plan); gatedMarkdownPlan.metrics.gateReasons={"test-gate":2}; gatedMarkdownPlan.metrics.selectedGateReasons={"test-gate":1}; assert.match(unifiedEvidenceMarkdown(gatedMarkdownPlan), /\| test-gate \| 2 \| 1 \|/);
   const output = path.join(root, "evidence-output");
   for (let pass = 0; pass < 2; pass += 1) {
     const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(process.cwd(), "src", "cli", "unifiedWhiteBoxEvidence.ts"), "--inputs", root, "--out", output, "--max-cases", "10", "--max-per-domain", "2"], {cwd: process.cwd(), encoding: "utf8"});
@@ -93,6 +93,7 @@ try {
   const manifest = JSON.parse(fs.readFileSync(path.join(output, "evidence-manifest.json"), "utf8"));
   assert.equal(manifest.schemaVersion, 4);
   assert.equal(manifest.plan.metrics.scanned, 11);
+  const summary = JSON.parse(fs.readFileSync(path.join(output, "evidence-summary.json"), "utf8")); assert.deepEqual(summary.gateReasons, manifest.plan.metrics.gateReasons); assert.deepEqual(summary.selectedGateReasons, manifest.plan.metrics.selectedGateReasons);
   assert.deepEqual(manifest.runs, []);
   assert.ok(fs.existsSync(path.join(output, "evidence-plan.md")));
   const second = path.join(root, "second"); fs.mkdirSync(second, {recursive: true});

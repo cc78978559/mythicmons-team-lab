@@ -107,6 +107,8 @@ export interface UnifiedEvidencePlan {
     archiveOnly: number;
     byDomain: Record<string, number>;
     selectedByDomain: Record<string, number>;
+    gateReasons: Record<string, number>;
+    selectedGateReasons: Record<string, number>;
   };
   cases: UnifiedEvidenceCase[];
 }
@@ -166,6 +168,8 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
       archiveOnly: unique.filter(entry => entry.status === "archive-only").length,
       byDomain: countBy(unique.map(entry => entry.domain)),
       selectedByDomain: countBy(unique.filter(entry => entry.selected).map(entry => entry.domain)),
+      gateReasons: countBy(unique.filter(entry => entry.status === "requires-gate").flatMap(entry => entry.reasons)),
+      selectedGateReasons: countBy(unique.filter(entry => entry.selected && entry.status === "requires-gate").flatMap(entry => entry.reasons)),
     },
     cases: unique,
   };
@@ -285,6 +289,11 @@ export function unifiedEvidenceMarkdown(plan: UnifiedEvidencePlan): string {
   const m = plan.metrics;
   const lines = ["# 统一白箱反事实证据清单", "", `- 来源：${plan.sources.length}`, `- 扫描差异：${m.scanned}`, `- 去重后：${m.uniqueFingerprints}`, `- 跨种子假设：${m.crossSeedHypotheses}`, `- 入选：${m.selected}`, `- 可执行/需门禁/仅归档：${m.executable}/${m.requiresGate}/${m.archiveOnly}`, "", "| 优先级 | 领域 | 状态 | 赛季 | 经理 | 旧方案 | 白箱方案 | 副本/种子 |", "|---:|---|---|---:|---|---|---|---:|"];
   for (const entry of plan.cases.filter(entry => entry.selected)) lines.push(`| ${entry.priority.toFixed(2)} | ${entry.domain} | ${entry.status} | ${entry.season ?? "-"} | ${entry.actor} | ${entry.incumbent} | ${entry.shadow} | ${entry.replicas.length}/${new Set(entry.replicas.map(replica => replica.sourceSeed)).size} |`);
+  const gateReasons = Object.entries(m.gateReasons).sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+  if (gateReasons.length) {
+    lines.push("", "## 门禁原因", "", "| 原因 | 全部 | 入选 |", "|---|---:|---:|");
+    for (const [reason, count] of gateReasons) lines.push(`| ${reason} | ${count} | ${m.selectedGateReasons[reason] ?? 0} |`);
+  }
   lines.push("", "`executable` 只表示已有隔离重放器和必要门禁；不会自动改变正式联赛。运行实验仍需显式 `--run`。", "");
   return lines.join("\n");
 }
