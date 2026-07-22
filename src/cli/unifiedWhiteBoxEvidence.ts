@@ -36,7 +36,7 @@ if (previousRaw?.schemaVersion === 1 && previousRaw.runs?.length) throw new Erro
 if (previousRaw && ![2,3,4].includes(previousRaw.schemaVersion)) throw new Error(`Unsupported evidence manifest schema: ${previousRaw.schemaVersion}`);
 const previous = [2,3,4].includes(previousRaw?.schemaVersion) ? previousRaw as Manifest : null;
 if (previous && JSON.stringify(previous.config) !== JSON.stringify(config)) throw new Error("Unified evidence configuration differs from the existing manifest; use a new --out directory");
-const plan = buildUnifiedEvidencePlan(inputs, {maximumCases, maximumPerDomain, minimumImpact,portfolioBidScreens});
+const plan = buildUnifiedEvidencePlan(inputs, {maximumCases, maximumPerDomain, minimumImpact,portfolioBidScreens,historicalReplayFollowupSeasons:followupSeasons});
 const manifest: Manifest = {schemaVersion: 4, config, plan, runs: previous?.runs ?? [], stopReason: null};
 writePlan();
 

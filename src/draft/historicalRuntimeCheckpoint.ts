@@ -98,6 +98,10 @@ export function hasHistoricalReplayCheckpoint(dynastyRoot: string, targetSeason:
   try { resolveHistoricalReplayCheckpoint(dynastyRoot, targetSeason); return true; } catch { return false; }
 }
 
+export function hasHistoricalReplayPlan(dynastyRoot: string, targetSeason: number, finalSeason: number): boolean {
+  try { planHistoricalReplaySegments(dynastyRoot, targetSeason, finalSeason); return true; } catch { return false; }
+}
+
 export function resolveHistoricalReplayCheckpoint(dynastyRoot: string, targetSeason: number): HistoricalReplayCheckpoint {
   const [{firstSeason: _firstSeason, lastSeason: _lastSeason, ...checkpoint}] = planHistoricalReplaySegments(dynastyRoot, targetSeason, targetSeason);
   return checkpoint;

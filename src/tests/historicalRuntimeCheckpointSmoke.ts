@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
-import {materializeHistoricalReplayCheckpoint, planHistoricalReplaySegments, verifyHistoricalDynastyCheckpoint} from "../draft/historicalRuntimeCheckpoint";
+import {hasHistoricalReplayPlan, materializeHistoricalReplayCheckpoint, planHistoricalReplaySegments, verifyHistoricalDynastyCheckpoint} from "../draft/historicalRuntimeCheckpoint";
 import {auditV12Output} from "../draft/v12Audit";
 
 const project = process.cwd(), workspace = fs.mkdtempSync(path.join(os.tmpdir(), "mythic-historical-runtime-")), runtimeProject = path.join(workspace, "project"), source = path.join(workspace, "source"), replayRoot = path.join(workspace, "replay");
@@ -23,8 +23,11 @@ try {
   assert.equal(fs.readdirSync(path.join(source, ".runtime-bundles")).length, 2);
 
   const segments = planHistoricalReplaySegments(source, 1, 2);
+  assert.equal(hasHistoricalReplayPlan(source, 1, 2), true);
   assert.deepEqual(segments.map(segment => [segment.firstSeason, segment.lastSeason]), [[1, 1], [2, 2]]);
   assert.notEqual(segments[0].runtimeId, segments[1].runtimeId);
+  const secondCheckpoint = path.join(source, ".season-checkpoints", "season-02", "checkpoint.json"), hiddenSecondCheckpoint = `${secondCheckpoint}.missing`;
+  fs.renameSync(secondCheckpoint, hiddenSecondCheckpoint); assert.equal(hasHistoricalReplayPlan(source, 1, 2), false, "the complete follow-up horizon must be available"); fs.renameSync(hiddenSecondCheckpoint, secondCheckpoint);
   const materialized = materializeHistoricalReplayCheckpoint(source, 1, replayRoot);
   assert.equal(materialized.runtimeId, seasonZero.runtime.runtimeId, "season one must use its recorded runtime");
   assert.equal(read<any>(path.join(replayRoot, "dynasty-state.json")).completedSeason, 0);
