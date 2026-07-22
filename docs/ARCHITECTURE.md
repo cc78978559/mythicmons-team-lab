@@ -42,3 +42,7 @@ Commands that only need the active boundary may read the core directly. Commands
 ## Compatibility rule
 
 State-storage changes must not alter manager state, seeds, settings, decision order, evolution inputs, or battle outputs. Acceptance requires legacy-load, split-load, tamper rejection, resume, audit, promotion rollback, official-cycle, and counterfactual smoke coverage.
+
+## Validation topology
+
+Local `npm run check:compact` remains a complete serial validation command with hash-bound per-test caching. Pull-request validation divides the same discovered test set into four deterministic shards. Only shard zero runs the global TypeScript check; every smoke or regression script belongs to exactly one shard. Each isolated GitHub runner restores its own result cache, and `checkAffected.ts` revalidates every restored entry against the current transitive source hash before reuse.

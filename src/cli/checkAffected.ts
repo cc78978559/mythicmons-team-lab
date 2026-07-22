@@ -8,6 +8,7 @@ interface CacheEntry {hash: string; completedAt: string; durationMs: number; log
 interface CacheManifest {schemaVersion: 1; checks: Record<string, CacheEntry>}
 
 const args = process.argv.slice(2), root = process.cwd(), all = args.includes("--all"), dryRun = args.includes("--dry-run"), noCache = args.includes("--no-cache");
+const shard = shardOption(option("--shard", ""));
 const base = option("--base", "HEAD"), cacheRoot = path.resolve(option("--cache", "output/tooling/checks"));
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as {scripts: Record<string, string>};
 const testScripts = Object.entries(packageJson.scripts).filter(([name, command]) => (name.startsWith("smoke:") || name.startsWith("test:")) && /tsx\s+[^\s]+\.ts/.test(command));
@@ -15,8 +16,9 @@ const sourceFiles = files("src", ".ts"), dependencyGraph = buildDependencyGraph(
 const scriptFiles = new Map(testScripts.map(([name, command]) => [name, normalize(command.match(/tsx\s+([^\s]+\.ts)/)![1])]));
 const explicitFiles = option("--files", "").split(",").map(normalize).filter(Boolean);
 const changed = all ? [] : explicitFiles.length ? explicitFiles : changedFiles(base), globalChange = changed.some(file => ["package.json", "package-lock.json", "tsconfig.json"].includes(file));
-const selected = all || globalChange ? testScripts.map(([name]) => name) : selectAffected(changed);
-const checks = ["typecheck", ...selected.filter(name => name !== "typecheck")];
+const selectedBeforeShard = all || globalChange ? testScripts.map(([name]) => name) : selectAffected(changed);
+const selected = shard ? selectedBeforeShard.filter(name => shardFor(name, shard.count) === shard.index) : selectedBeforeShard;
+const checks = [...(!shard || shard.index === 0 ? ["typecheck"] : []), ...selected.filter(name => name !== "typecheck")];
 
 fs.mkdirSync(cacheRoot, {recursive: true});
 const lock = acquireNamedRunLock(cacheRoot, ".check-affected.lock", {workflow: "check-affected", base, all});
@@ -40,7 +42,7 @@ try {
     manifest.checks[name] = {hash, completedAt: new Date().toISOString(), durationMs, log}; atomicJson(manifestPath, manifest);
     results.push({name, status: "passed", durationMs, log});
   }
-  const summary = {mode: all ? "all" : "affected", base, changedFiles: changed.length, selectedTests: selected.length, passed: results.filter(row => row.status === "passed").length, cached: results.filter(row => row.status === "cached").length, failed: results.filter(row => row.status === "failed").length, planned: results.filter(row => row.status === "planned").length, durationMs: results.reduce((sum, row) => sum + row.durationMs, 0), cacheSavedMs: results.reduce((sum, row) => sum + (row.savedMs ?? 0), 0), logs: cacheRoot, checks: results.map(({log: _log, ...row}) => row)};
+  const summary = {mode: all ? "all" : "affected", base, ...(shard ? {shard: `${shard.index}/${shard.count}`, selectedBeforeShard: selectedBeforeShard.length} : {}), changedFiles: changed.length, selectedTests: selected.length, passed: results.filter(row => row.status === "passed").length, cached: results.filter(row => row.status === "cached").length, failed: results.filter(row => row.status === "failed").length, planned: results.filter(row => row.status === "planned").length, durationMs: results.reduce((sum, row) => sum + row.durationMs, 0), cacheSavedMs: results.reduce((sum, row) => sum + (row.savedMs ?? 0), 0), logs: cacheRoot, checks: results.map(({log: _log, ...row}) => row)};
   fs.writeFileSync(path.join(cacheRoot, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`, "utf8");
   const {checks: detailedChecks, ...compactSummary} = summary;
   console.log(JSON.stringify(dryRun ? {...compactSummary, checks: detailedChecks.length <= 12 ? detailedChecks : [...detailedChecks.slice(0, 12), {omitted: detailedChecks.length - 12}]} : compactSummary, null, 2));
@@ -70,3 +72,5 @@ function relatedStem(testFile: string, changedFile: string): boolean { const cle
 function explicitImpact(testFile: string, changedFile: string): boolean { const impacts: Record<string, string[]> = {"src/draft/runLock.ts": ["parallelRegistrySmoke.ts", "officialSeasonCycleSmoke.ts", "unifiedWhiteBoxEvidenceSmoke.ts", "programDecisionCounterfactualSmoke.ts"]}; return (impacts[changedFile] ?? []).includes(path.basename(testFile)); }
 function safe(value: string): string { return value.replace(/[^a-z0-9.-]+/gi, "-"); }
 function option(name: string, fallback: string): string { const index = args.indexOf(name); return index >= 0 ? args[index + 1] ?? fallback : fallback; }
+function shardFor(name: string, count: number): number { return Number.parseInt(crypto.createHash("sha256").update(name).digest("hex").slice(0, 8), 16) % count; }
+function shardOption(value: string): {index: number; count: number} | undefined { if (!value) return undefined; const match = value.match(/^(\d+)\/(\d+)$/), index = Number(match?.[1]), count = Number(match?.[2]); if (!match || !Number.isInteger(index) || !Number.isInteger(count) || count < 2 || count > 16 || index < 0 || index >= count) throw new Error("--shard must be INDEX/COUNT with COUNT 2..16 and INDEX starting at 0"); return {index, count}; }
