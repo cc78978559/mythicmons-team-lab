@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
-import {hasHistoricalReplayPlan, materializeHistoricalReplayCheckpoint, planHistoricalReplaySegments, verifyHistoricalDynastyCheckpoint} from "../draft/historicalRuntimeCheckpoint";
+import {hasHistoricalReplayPlan, inspectHistoricalReplayPlan, materializeHistoricalReplayCheckpoint, planHistoricalReplaySegments, verifyHistoricalDynastyCheckpoint} from "../draft/historicalRuntimeCheckpoint";
 import {auditV12Output} from "../draft/v12Audit";
 
 const project = process.cwd(), workspace = fs.mkdtempSync(path.join(os.tmpdir(), "mythic-historical-runtime-")), runtimeProject = path.join(workspace, "project"), source = path.join(workspace, "source"), replayRoot = path.join(workspace, "replay");
@@ -27,7 +27,7 @@ try {
   assert.deepEqual(segments.map(segment => [segment.firstSeason, segment.lastSeason]), [[1, 1], [2, 2]]);
   assert.notEqual(segments[0].runtimeId, segments[1].runtimeId);
   const secondCheckpoint = path.join(source, ".season-checkpoints", "season-02", "checkpoint.json"), hiddenSecondCheckpoint = `${secondCheckpoint}.missing`;
-  fs.renameSync(secondCheckpoint, hiddenSecondCheckpoint); assert.equal(hasHistoricalReplayPlan(source, 1, 2), false, "the complete follow-up horizon must be available"); fs.renameSync(hiddenSecondCheckpoint, secondCheckpoint);
+  fs.renameSync(secondCheckpoint, hiddenSecondCheckpoint); const missingInspection = inspectHistoricalReplayPlan(source, 1, 2); assert(!missingInspection.ready); assert.equal(missingInspection.issue, "checkpoint-missing"); fs.renameSync(hiddenSecondCheckpoint, secondCheckpoint);
   const materialized = materializeHistoricalReplayCheckpoint(source, 1, replayRoot);
   assert.equal(materialized.runtimeId, seasonZero.runtime.runtimeId, "season one must use its recorded runtime");
   assert.equal(read<any>(path.join(replayRoot, "dynasty-state.json")).completedSeason, 0);
@@ -40,6 +40,7 @@ try {
   const archive = path.join(source, ".season-checkpoints", "season-00", seasonZero.state.archive), original = fs.readFileSync(archive);
   fs.writeFileSync(archive, Buffer.concat([original, Buffer.from("tamper")]));
   assert.throws(() => verifyHistoricalDynastyCheckpoint(source, 0), /archive hash mismatch/);
+  const tamperedInspection = inspectHistoricalReplayPlan(source, 1, 2); assert(!tamperedInspection.ready); assert.equal(tamperedInspection.issue, "checkpoint-invalid");
   assert(auditV12Output(source).issues.some(issue => issue.code === "invalid-historical-checkpoint" && issue.severity === "fatal"));
   console.log("Segmented historical runtime checkpoint and exact replay smoke passed");
 } finally { fs.rmSync(workspace, {recursive: true, force: true}); }

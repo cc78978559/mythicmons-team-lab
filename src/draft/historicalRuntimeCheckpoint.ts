@@ -45,6 +45,8 @@ export interface HistoricalReplaySegment extends HistoricalReplayCheckpoint {
   firstSeason: number;
   lastSeason: number;
 }
+export type HistoricalReplayPlanIssue = "invalid-request" | "source-invalid" | "checkpoint-missing" | "checkpoint-invalid" | "runtime-missing" | "runtime-invalid" | "registry-transition-unsupported" | "registry-invalid" | "environment-mismatch" | "unknown";
+export type HistoricalReplayPlanInspection = {ready: true; segments: HistoricalReplaySegment[]} | {ready: false; issue: HistoricalReplayPlanIssue; message: string};
 
 type StoredBoundary = {completedSeason: number; fingerprint: HistoricalRuntimeFingerprint; registry?: {snapshot?: string; hash?: string}; stateStorage?: DynastyStateStorage};
 const capturedCheckpoints = new Map<string, HistoricalDynastyCheckpoint>();
@@ -99,7 +101,12 @@ export function hasHistoricalReplayCheckpoint(dynastyRoot: string, targetSeason:
 }
 
 export function hasHistoricalReplayPlan(dynastyRoot: string, targetSeason: number, finalSeason: number): boolean {
-  try { planHistoricalReplaySegments(dynastyRoot, targetSeason, finalSeason); return true; } catch { return false; }
+  return inspectHistoricalReplayPlan(dynastyRoot, targetSeason, finalSeason).ready;
+}
+
+export function inspectHistoricalReplayPlan(dynastyRoot: string, targetSeason: number, finalSeason: number): HistoricalReplayPlanInspection {
+  try { return {ready: true, segments: planHistoricalReplaySegments(dynastyRoot, targetSeason, finalSeason)}; }
+  catch (error) { return {ready: false, issue: classifyReplayPlanIssue(error), message: error instanceof Error ? error.message : String(error)}; }
 }
 
 export function resolveHistoricalReplayCheckpoint(dynastyRoot: string, targetSeason: number): HistoricalReplayCheckpoint {
@@ -110,7 +117,10 @@ export function resolveHistoricalReplayCheckpoint(dynastyRoot: string, targetSea
 export function planHistoricalReplaySegments(dynastyRoot: string, targetSeason: number, finalSeason: number): HistoricalReplaySegment[] {
   if (!Number.isInteger(targetSeason) || targetSeason < 1) throw new Error("Historical replay target season must be positive");
   if (!Number.isInteger(finalSeason) || finalSeason < targetSeason) throw new Error("Historical replay final season must not precede its target");
-  const dynasty = path.resolve(dynastyRoot), source = loadDynastyStateCore<{completedSeason: number}>(path.join(dynasty, "dynasty-state.json"));
+  const dynasty = path.resolve(dynastyRoot);
+  let source: {completedSeason: number};
+  try { source = loadDynastyStateCore<{completedSeason: number}>(path.join(dynasty, "dynasty-state.json")); }
+  catch (error) { throw new Error(`Historical replay source is invalid: ${error instanceof Error ? error.message : String(error)}`); }
   if (!Number.isInteger(source.completedSeason) || source.completedSeason < targetSeason) throw new Error("Historical replay source has not completed its target season");
   const stateCheckpoint = verifyHistoricalDynastyCheckpoint(dynasty, targetSeason - 1), registryHash = stateCheckpoint.fingerprint.registryHash;
   const segments: HistoricalReplaySegment[] = [];
@@ -216,6 +226,20 @@ function atomicWrite(file: string, bytes: Buffer): void { fs.mkdirSync(path.dirn
 function resolveWithin(root: string, relative: string): string { if (!relative || path.isAbsolute(relative)) throw new Error(`Unsafe historical checkpoint path: ${relative}`); const resolvedRoot = path.resolve(root), target = path.resolve(resolvedRoot, relative); if (!target.startsWith(`${resolvedRoot}${path.sep}`)) throw new Error(`Historical checkpoint path escaped its root: ${relative}`); return target; }
 function assertSeparateRoots(source: string, target: string): void { if (source === target || source.startsWith(`${target}${path.sep}`) || target.startsWith(`${source}${path.sep}`) || path.parse(target).root === target) throw new Error("Historical replay target must be separate from its source"); }
 function matchingNodePath(expected: HistoricalRuntimeFingerprint): string { const nodePath = path.dirname(path.dirname(require.resolve("tsx/package.json"))), project = path.dirname(nodePath), lock = path.join(project, "package-lock.json"), showdown = read<{version?: string}>(require.resolve("pokemon-showdown/package.json")); if (!fs.existsSync(lock) || hashReferences(project, [reference(project, lock)]) !== expected.dependencyHash) throw new Error("Historical runtime dependencies do not match the installed package lock; isolated installation is required"); if (showdown.version !== expected.pokemonShowdownVersion) throw new Error("Historical Pokemon Showdown version is not installed"); return nodePath; }
+function classifyReplayPlanIssue(error: unknown): HistoricalReplayPlanIssue {
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  if (message.includes("target season must") || message.includes("final season must")) return "invalid-request";
+  if (message.includes("across a registry transition")) return "registry-transition-unsupported";
+  if (message.includes("installed package lock") || message.includes("showdown version is not installed")) return "environment-mismatch";
+  if (message.includes("enoent") && message.includes(".season-checkpoints")) return "checkpoint-missing";
+  if (message.includes("enoent") && message.includes(".runtime-bundles")) return "runtime-missing";
+  if (message.includes("source is invalid") || message.includes("source has not completed") || message.includes("dynasty-state.json")) return "source-invalid";
+  if (message.includes("registry snapshot") || message.includes("registry hash mismatch") || message.includes("registry-manifest")) return "registry-invalid";
+  if (message.includes("historical dynasty checkpoint")) return "checkpoint-invalid";
+  if (message.includes("historical runtime")) return "runtime-invalid";
+  if (message.includes("pokemon showdown") || message.includes("dependency")) return "environment-mismatch";
+  return "unknown";
+}
 function validateFingerprint(value: HistoricalRuntimeFingerprint): void { for (const key of ["codeHash", "dataHash", "registryHash", "benchmarkHash", "dependencyHash"] as const) if (!/^[a-f0-9]{64}$/.test(value[key])) throw new Error(`Invalid historical runtime ${key}`); if (!value.pokemonShowdownVersion) throw new Error("Invalid historical Pokemon Showdown version"); }
 function read<T>(file: string): T { return JSON.parse(fs.readFileSync(file, "utf8")) as T; }
 function normalize(value: string): string { return value.replace(/\\/g, "/"); }

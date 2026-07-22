@@ -13,7 +13,7 @@ import {strategyProgramMutationOperator} from "../../draft/strategyProgram";
 import {evaluateWhiteBoxBidApproval, MAX_BID_COUNTERFACTUAL_FOLLOWUP_SEASONS, WHITE_BOX_BID_COUNTERFACTUAL_POLICY} from "./bidApproval";
 import type {WhiteBoxBidTrace} from "./auction";
 import {loadPortfolioBidReplayCapsule} from "./portfolioBidCounterfactual";
-import {hasHistoricalReplayPlan} from "../../draft/historicalRuntimeCheckpoint";
+import {inspectHistoricalReplayPlan, type HistoricalReplayPlanInspection} from "../../draft/historicalRuntimeCheckpoint";
 import {loadDynastyState} from "../../draft/dynastyStateStore";
 
 export type UnifiedEvidenceStatus = "executable" | "requires-gate" | "archive-only";
@@ -175,7 +175,7 @@ function loadPortfolioScreenEvidence(files:readonly string[]):Map<string,any>{co
 
 function collectBidCases(root:string,seed:string,sourceSeason:number,state:any,screenEvidence:Map<string,any>,historicalReplayFollowupSeasons:number):UnifiedEvidenceCase[]{
   const cases:UnifiedEvidenceCase[]=[];
-  const auctionMode=String(state.settings?.auctionMode??"sequential"),runtimeTransitions=historicalReplayTransitionSeasons(state.decisionRecords??[]),replayReady=new Map<string,boolean>(),bidHorizonSupported=historicalReplayFollowupSeasons<=MAX_BID_COUNTERFACTUAL_FOLLOWUP_SEASONS;
+  const auctionMode=String(state.settings?.auctionMode??"sequential"),runtimeTransitions=historicalReplayTransitionSeasons(state.decisionRecords??[]),replayInspections=new Map<string,HistoricalReplayPlanInspection>(),bidHorizonSupported=historicalReplayFollowupSeasons<=MAX_BID_COUNTERFACTUAL_FOLLOWUP_SEASONS;
   for(let season=1;season<=sourceSeason;season+=1){
     const file=path.join(root,`season-${String(season).padStart(2,"0")}`,"decision-ledger.json");
     if(!fs.existsSync(file))continue;
@@ -188,9 +188,11 @@ function collectBidCases(root:string,seed:string,sourceSeason:number,state:any,s
         const trace=item.trace;if(!item.managerId||trace?.version!=="white-box-bid-v1"||trace.ceiling<=trace.bid||trace.shade<=0)continue;
         const highestCompetingBid=Math.max(0,...normalized.filter(entry=>entry.managerId!==item.managerId).map(entry=>entry.bid));
         const approval=evaluateWhiteBoxBidApproval({auctionMode,bidderId:item.managerId,incumbentWinnerId:winner?.managerId??null,highestCompetingBid,trace});
-        const screened=screenEvidence.get(`${path.resolve(root)}|${season}|${trace.decisionId}`),baseStatus:UnifiedEvidenceStatus=auctionMode!=="sequential"?(screened?.status==="executable"?"executable":"requires-gate"):approval.recommended?"executable":"archive-only",finalSeason=season+historicalReplayFollowupSeasons,historicalTransition=runtimeTransitions.some(value=>value<=Math.min(finalSeason,sourceSeason)),replayKey=`${season}:${finalSeason}`,historicalReady=!historicalTransition||(replayReady.has(replayKey)?replayReady.get(replayKey)!:(replayReady.set(replayKey,hasHistoricalReplayPlan(root,season,finalSeason)),replayReady.get(replayKey)!)),status:UnifiedEvidenceStatus=baseStatus==="executable"&&(!bidHorizonSupported||(historicalTransition&&!historicalReady))?"requires-gate":baseStatus;
+        const screened=screenEvidence.get(`${path.resolve(root)}|${season}|${trace.decisionId}`),baseStatus:UnifiedEvidenceStatus=auctionMode!=="sequential"?(screened?.status==="executable"?"executable":"requires-gate"):approval.recommended?"executable":"archive-only",finalSeason=season+historicalReplayFollowupSeasons,historicalTransition=runtimeTransitions.some(value=>value<=Math.min(finalSeason,sourceSeason)),replayKey=`${season}:${finalSeason}`;
+        if(historicalTransition&&!replayInspections.has(replayKey))replayInspections.set(replayKey,inspectHistoricalReplayPlan(root,season,finalSeason));
+        const replayInspection=historicalTransition?replayInspections.get(replayKey)!:null,historicalReady=!replayInspection||replayInspection.ready,status:UnifiedEvidenceStatus=baseStatus==="executable"&&(!bidHorizonSupported||!historicalReady)?"requires-gate":baseStatus;
         const runner:UnifiedEvidenceRunner=status==="executable"?"bid":null;
-        const reasons=[...(auctionMode!=="sequential"?(screened?.status==="executable"?[]:["portfolio-solver-screen-required"]):approval.reasons),...(!bidHorizonSupported?["bid-followup-horizon-unsupported"]:[]),...(historicalTransition&&!historicalReady?["historical-runtime-transition-checkpoint-required"]:[])];
+        const reasons=[...(auctionMode!=="sequential"?(screened?.status==="executable"?[]:["portfolio-solver-screen-required"]):approval.reasons),...(!bidHorizonSupported?["bid-followup-horizon-unsupported"]:[]),...(!historicalReady?["historical-runtime-transition-checkpoint-required",`historical-replay-${replayInspection&&!replayInspection.ready?replayInspection.issue:"unknown"}`]:[])];
         const impact=round(trace.ceiling-trace.bid+(screened?.changes?.length??0)),id=digest([root,trace.decisionId,WHITE_BOX_BID_COUNTERFACTUAL_POLICY].join("|")),screenShape=screened?.changes?.map((change:any)=>change.before?.managerId===change.after?.managerId?"payment":"assignment").sort().join(",")??"",fingerprint=digest(["auction",WHITE_BOX_BID_COUNTERFACTUAL_POLICY,status,reasons.slice().sort().join(","),screenShape].join("|"));
         const bidTarget:UnifiedBidTarget={managerId:item.managerId,season,decisionId:trace.decisionId,policy:WHITE_BOX_BID_COUNTERFACTUAL_POLICY};
         cases.push({id,root,sourceSeed:seed,sourceSeason,reviewIndex:0,decisionId:trace.decisionId,domain:"auction",actor:item.managerId,season,classification:"reasonable-style-choice",incumbent:String(trace.bid),shadow:String(trace.ceiling),impact,priority:round((status==="executable"?150:status==="requires-gate"?20:0)+impact+season*.01),fingerprint,duplicates:1,duplicateCaseIds:[],replicas:[],status,runner,reasons,bidTarget,selected:false});
