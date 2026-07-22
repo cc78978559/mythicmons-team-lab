@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "check:affected": "tsx src/cli/checkAffected.ts",
+    "check:compact": "tsx src/cli/checkAffected.ts --all",
     "simulate": "tsx src/cli/simulate.ts",
     "evaluate": "tsx src/cli/evaluate.ts",
     "variants": "tsx src/cli/variants.ts",
@@ -99,6 +101,7 @@
     "smoke:promotion-in-place": "tsx src/tests/inPlacePromotionSmoke.ts",
     "smoke:official-season-cycle": "tsx src/tests/officialSeasonCycleSmoke.ts",
     "smoke:parallel-registry": "tsx src/tests/parallelRegistrySmoke.ts",
+    "smoke:check-affected": "tsx src/tests/checkAffectedSmoke.ts",
     "smoke:season-brief": "tsx src/tests/seasonBriefSmoke.ts",
     "smoke:career": "tsx src/tests/careerArchiveSmoke.ts",
     "smoke:v12": "tsx src/tests/v12Smoke.ts",
@@ -127,7 +130,7 @@
     "smoke:whitebox-release-registry": "tsx src/tests/whiteBoxReleaseRegistrySmoke.ts",
     "test:whitebox-boundaries": "tsx src/tests/whiteBoxBoundaryBatch.ts",
     "test:regressions": "tsx src/tests/regressions.ts",
-    "posttest": "npm run smoke:program-decision-counterfactual && npm run smoke:program-decision-learning && npm run smoke:strategy-program-sampler && npm run smoke:academy-contract-counterfactual",
+    "posttest": "npm run smoke:program-decision-counterfactual && npm run smoke:program-decision-learning && npm run smoke:strategy-program-sampler && npm run smoke:academy-contract-counterfactual && npm run smoke:check-affected",
     "test": "npm run typecheck && npm run smoke:whitebox && npm run smoke:whitebox-audit && npm run smoke:whitebox-soak && npm run smoke:whitebox-review && npm run smoke:whitebox-counterfactual && npm run smoke:whitebox-counterfactual-batch && npm run smoke:whitebox-sampling && npm run smoke:whitebox-unified && npm run smoke:battle-replay && npm run smoke:battle-aggregation && npm run smoke:battle-sampler && npm run smoke:battle-shadow-expansion && npm run smoke:battle-approval && npm run smoke:whitebox-retention && npm run smoke:whitebox-release && npm run smoke:whitebox-release-registry && npm run test:whitebox-boundaries && npm run smoke:boss && npm run smoke:tactical-memory && npm run smoke:tactical-memory-ablation && npm run smoke:tactical-memory-policy-sampler && npm run smoke:learning-counterfactual && npm run smoke:bid-counterfactual && npm run smoke:lineups && npm run smoke:strategy-program && npm run smoke:punctuated-evolution && npm run smoke:punctuated-counterfactual && npm run smoke:shadow-program-counterfactual && npm run smoke:strategy-program-replication && npm run smoke:strategy-program-screening && npm run smoke:development-league && npm run smoke:promotion-flow && npm run smoke:promotion-in-place && npm run smoke:official-season-cycle && npm run smoke:parallel-registry && npm run smoke:season-brief && npm run smoke:career && npm run test:regressions && npm run smoke:simulate && npm run smoke:evaluate && npm run smoke:variants && npm run smoke:sandbox && npm run smoke:dynasty && npm run smoke:v9 && npm run smoke:v10 && npm run smoke:v10-audit && npm run smoke:v11 && npm run smoke:v12"
   },
   "keywords": [],

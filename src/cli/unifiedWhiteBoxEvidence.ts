@@ -8,6 +8,7 @@ import type {BattleCounterfactualSample} from "../ai/whiteBox/battleAggregation"
 import type {TacticalMemoryAblationSample} from "../ai/whiteBox/tacticalMemoryAblation";
 import type {StrategyProgramCounterfactualSample} from "../ai/whiteBox/strategyProgramAggregation";
 import {compactWhiteBoxRun, type WhiteBoxRetentionTrace} from "../ai/whiteBox/retention";
+import {acquireNamedRunLock} from "../draft/runLock";
 
 type RunStatus = "complete" | "failed";
 interface ExperimentRun {hypothesisId: string; replicaId: string; seed: string; status: RunStatus; directory: string; startedAt: string; completedAt: string; retention?: WhiteBoxRetentionTrace[]; error?: string}
@@ -28,6 +29,8 @@ const maximumExperiments = integerOption("--max-experiments", 1, 1, 100), maximu
 const activationSamples = integerOption("--activation-samples", 30, 10, 1000), activationSeeds = integerOption("--activation-seeds", 10, 5, activationSamples);
 const config = {inputs,portfolioBidScreens, maximumCases, maximumPerDomain, minimumImpact, maximumExperiments, maximumOutputMb, minimumFreeGb, followupSeasons, activationSamples, activationSeeds};
 fs.mkdirSync(out, {recursive: true});
+const workflowLock = acquireNamedRunLock(out, ".unified-evidence.lock", {workflow: "unified-whitebox-evidence"});
+process.once("exit", () => workflowLock.release());
 const manifestPath = path.join(out, "evidence-manifest.json"), previousRaw = fs.existsSync(manifestPath) ? read<any>(manifestPath) : null;
 if (previousRaw?.schemaVersion === 1 && previousRaw.runs?.length) throw new Error("Schema-v1 evidence manifest has experiment runs and cannot be migrated safely; use a new --out directory");
 if (previousRaw && ![2,3,4].includes(previousRaw.schemaVersion)) throw new Error(`Unsupported evidence manifest schema: ${previousRaw.schemaVersion}`);

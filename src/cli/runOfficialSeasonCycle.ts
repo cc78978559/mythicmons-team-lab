@@ -4,6 +4,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import {spawnSync} from "node:child_process";
 import {auditV12Signature} from "../draft/v12Audit";
+import {acquireNamedRunLock} from "../draft/runLock";
 
 interface State {version: number; seed: string; completedSeason: number; settings: Record<string, number | string | boolean | undefined>; managers: Array<{id: string}>; fingerprint: Record<string, string>}
 interface CycleManifest {
@@ -16,6 +17,8 @@ const args = process.argv.slice(2), root = process.cwd();
 const majorRoot = path.resolve(requiredOption("--major-source")), developmentOut = path.resolve(requiredOption("--development-out"));
 const previousDevelopment = option("--previous-development", "") ? path.resolve(option("--previous-development", "")) : undefined;
 const promotionSlots = integerOption("--promotion-slots", 3, 1, 5), offset = integerOption("--global-season-offset", 0, 0, 100000);
+const workflowLock = acquireNamedRunLock(majorRoot, ".official-season-cycle.lock", {workflow: "official-season-cycle"});
+process.once("exit", () => workflowLock.release());
 const cycleId = option("--cycle-id", "") || runningCycleId() || `after-s${String(readState().completedSeason).padStart(2, "0")}`;
 if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/.test(cycleId)) throw new Error("Invalid --cycle-id");
 const manifestDir = path.join(majorRoot, "season-cycles"), manifestPath = path.join(manifestDir, `${cycleId}.json`);
@@ -27,6 +30,7 @@ if (manifest.status === "complete") { verifyComplete(); finish(true); }
 audit("before-audit", initialState.completedSeason);
 development();
 promotion();
+compactDevelopment();
 nextSeason();
 audit("after-audit", manifest.boundary.internalSeason + 1);
 updateHistory();
@@ -64,6 +68,14 @@ function promotion(): void {
   const transaction = read<any>(transactionPath), state = readState();
   if (transaction.status !== "committed" || state.completedSeason !== manifest.boundary.internalSeason) throw new Error("Promotion transaction did not preserve the season boundary");
   completeStage("promotion", {transaction: path.relative(majorRoot, transactionPath).replace(/\\/g, "/"), packageSha256: transaction.promotion?.payloadSha256, vacancies: transaction.transactions?.map((row: any) => row.vacancy)});
+}
+
+function compactDevelopment(): void {
+  if (manifest.stages["development-retention"]) return;
+  run("src/cli/compactDevelopmentLeague.ts", ["--source", developmentOut, "--prune-league"], process.env, "development retention");
+  const compact = read<any>(path.join(developmentOut, "development-final-state.json"));
+  if (compact.schemaVersion !== 1 || !fs.existsSync(path.join(developmentOut, compact.archive)) || fs.existsSync(path.join(developmentOut, "league"))) throw new Error("Development retention did not produce a verified compact boundary");
+  completeStage("development-retention", {archive: compact.archive, managers: compact.managers, sourceBytes: compact.sourceBytes, compactBytes: compact.compactBytes});
 }
 
 function nextSeason(): void {

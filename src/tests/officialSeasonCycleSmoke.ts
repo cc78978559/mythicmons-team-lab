@@ -17,7 +17,8 @@ try {
   run("src/cli/runOfficialSeasonCycle.ts", cycleArgs);
   const state = read<any>(path.join(league, "dynasty-state.json")), audit = read<any>(path.join(league, "audit-summary.json")), manifest = read<any>(path.join(league, "season-cycles", "cycle-smoke.json"));
   assert.equal(state.completedSeason, 2); assert.equal(audit.completedSeasons, 2); assert.equal(audit.fatalCount, 0); assert.equal(audit.warningCount, 0);
-  assert.equal(manifest.status, "complete"); assert.deepEqual(Object.keys(manifest.stages), ["before-audit", "development", "promotion", "season", "after-audit", "history"]);
+  assert.equal(manifest.status, "complete"); assert.deepEqual(Object.keys(manifest.stages), ["before-audit", "development", "promotion", "development-retention", "season", "after-audit", "history"]);
+  assert.ok(fs.existsSync(path.join(development, "development-final-state.json.gz"))); assert.equal(fs.existsSync(path.join(development, "league")), false);
   assert.equal(manifest.stages.season.evidence.globalSeason, 2);
   const historyLedger = read<any>(history); assert.equal(historyLedger.completedGlobalSeason, 2); assert.deepEqual(historyLedger.seasons.map((season: any) => season.globalSeason), [1, 2]);
   const replacement = state.managers.find((manager: any) => manager.id === bottom);

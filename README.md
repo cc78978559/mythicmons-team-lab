@@ -61,6 +61,8 @@ Smoke-test the simulation and evaluation pipeline:
 npm test
 ```
 
+For local iteration, `npm run check:affected` maps the current Git diff to the dependent smoke tests, keeps full stdout/stderr under `output/tooling/checks`, and prints only a compact summary. Successful checks are cached by their transitive source hash, so an unchanged rerun completes without repeating simulations. Use `npm run check:compact` for the complete test inventory with the same compact logging and resumable cache; add `-- --no-cache` when an unconditional rerun is required.
+
 Convert between Showdown team formats:
 
 ```bash

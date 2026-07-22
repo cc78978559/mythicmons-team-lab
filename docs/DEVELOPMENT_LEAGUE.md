@@ -154,7 +154,7 @@ Important outputs:
 - `promotion-package.json` plus `promotion-package.json.gz`: verified payload metadata and the complete promotable AI personality.
 - `development-report.md`: compact human-readable standings and status.
 
-After the summary and promotion package have been verified, `npm run compact:development-league -- --source <development-output> --prune-league` writes a hash-verified compressed final-manager state and removes the high-volume internal dynasty. Later cycles automatically prefer this compact state, so personality, learning, lineage, and career continuity remain available without retaining battle logs or the full decision ledger. Pruning is restricted to the direct `league/` child of the explicitly named development output, which must also contain the expected entrants and summary artifacts.
+After the summary and promotion package have been verified, `npm run compact:development-league -- --source <development-output> --prune-league` writes a hash-verified compressed final-manager state and removes the high-volume internal dynasty. The official season-cycle command performs this retention stage automatically after a committed promotion; the standalone command remains available for older or manually generated cohorts. Later cycles automatically prefer the compact state, so personality, learning, lineage, and career continuity remain available without retaining battle logs or the full decision ledger. Pruning is restricted to the direct `league/` child of the explicitly named development output, which must also contain the expected entrants and summary artifacts.
 
 ## In-place top-league promotion (recommended)
 
@@ -183,7 +183,7 @@ A prepared transaction is recovered before any later promotion: if the current s
 
 ## Audited official-season pipeline
 
-The resumable production command combines the clean pre-season audit, one development cohort, source-bound promotion package, atomic bottom-N promotion, next major season, final audit, and optional global-history update. Every stage is persisted under `season-cycles/<cycle-id>.json`; a completed cycle is idempotent, and an unfinished cycle resumes from verified artifacts rather than repeating completed battles.
+The resumable production command combines the clean pre-season audit, one development cohort, source-bound promotion package, atomic bottom-N promotion, verified development-output compaction, next major season, final audit, and optional global-history update. Every stage is persisted under `season-cycles/<cycle-id>.json`; a completed cycle is idempotent, and an unfinished cycle resumes from verified artifacts rather than repeating completed battles. A dedicated workflow lock prevents two season-cycle processes from mutating the same major-league boundary concurrently.
 
 ```powershell
 npm run official-season-cycle -- `
