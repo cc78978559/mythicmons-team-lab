@@ -41,6 +41,10 @@ export interface HistoricalReplayCheckpoint {
   registrySource: string;
   nodePath: string;
 }
+export interface HistoricalReplaySegment extends HistoricalReplayCheckpoint {
+  firstSeason: number;
+  lastSeason: number;
+}
 
 type StoredBoundary = {completedSeason: number; fingerprint: HistoricalRuntimeFingerprint; registry?: {snapshot?: string; hash?: string}; stateStorage?: DynastyStateStorage};
 const capturedCheckpoints = new Map<string, HistoricalDynastyCheckpoint>();
@@ -95,11 +99,37 @@ export function hasHistoricalReplayCheckpoint(dynastyRoot: string, targetSeason:
 }
 
 export function resolveHistoricalReplayCheckpoint(dynastyRoot: string, targetSeason: number): HistoricalReplayCheckpoint {
+  const [{firstSeason: _firstSeason, lastSeason: _lastSeason, ...checkpoint}] = planHistoricalReplaySegments(dynastyRoot, targetSeason, targetSeason);
+  return checkpoint;
+}
+
+export function planHistoricalReplaySegments(dynastyRoot: string, targetSeason: number, finalSeason: number): HistoricalReplaySegment[] {
   if (!Number.isInteger(targetSeason) || targetSeason < 1) throw new Error("Historical replay target season must be positive");
-  const dynasty = path.resolve(dynastyRoot), stateCheckpoint = verifyHistoricalDynastyCheckpoint(dynasty, targetSeason - 1), runtimeCheckpoint = verifyHistoricalDynastyCheckpoint(dynasty, targetSeason);
-  if (stateCheckpoint.fingerprint.registryHash !== runtimeCheckpoint.fingerprint.registryHash) throw new Error("Historical replay across a registry transition is not supported");
-  const manifest = verifyRuntimeBundle(dynasty, runtimeCheckpoint.runtime, runtimeCheckpoint.fingerprint);
-  return {targetSeason, sourceCompletedSeason: targetSeason - 1, runtimeWorkspace: path.join(path.dirname(resolveWithin(dynasty, runtimeCheckpoint.runtime.manifest)), "workspace"), runtimeId: manifest.runtimeId, runtimeFingerprint: runtimeCheckpoint.fingerprint, registrySource: resolveWithin(dynasty, runtimeCheckpoint.registrySnapshot), nodePath: matchingNodePath(runtimeCheckpoint.fingerprint)};
+  if (!Number.isInteger(finalSeason) || finalSeason < targetSeason) throw new Error("Historical replay final season must not precede its target");
+  const dynasty = path.resolve(dynastyRoot), source = loadDynastyStateCore<{completedSeason: number}>(path.join(dynasty, "dynasty-state.json"));
+  if (!Number.isInteger(source.completedSeason) || source.completedSeason < targetSeason) throw new Error("Historical replay source has not completed its target season");
+  const stateCheckpoint = verifyHistoricalDynastyCheckpoint(dynasty, targetSeason - 1), registryHash = stateCheckpoint.fingerprint.registryHash;
+  const segments: HistoricalReplaySegment[] = [];
+  for (let season = targetSeason; season <= finalSeason; season += 1) {
+    const recordedSeason = Math.min(season, source.completedSeason), runtimeCheckpoint = verifyHistoricalDynastyCheckpoint(dynasty, recordedSeason);
+    if (runtimeCheckpoint.fingerprint.registryHash !== registryHash) throw new Error("Historical replay across a registry transition is not supported");
+    const manifest = verifyRuntimeBundle(dynasty, runtimeCheckpoint.runtime, runtimeCheckpoint.fingerprint);
+    const checkpoint: HistoricalReplaySegment = {
+      targetSeason: season,
+      sourceCompletedSeason: targetSeason - 1,
+      firstSeason: season,
+      lastSeason: season,
+      runtimeWorkspace: path.join(path.dirname(resolveWithin(dynasty, runtimeCheckpoint.runtime.manifest)), "workspace"),
+      runtimeId: manifest.runtimeId,
+      runtimeFingerprint: runtimeCheckpoint.fingerprint,
+      registrySource: resolveWithin(dynasty, runtimeCheckpoint.registrySnapshot),
+      nodePath: matchingNodePath(runtimeCheckpoint.fingerprint),
+    };
+    const previous = segments.at(-1);
+    if (previous && previous.runtimeId === checkpoint.runtimeId && previous.registrySource === checkpoint.registrySource && previous.nodePath === checkpoint.nodePath) previous.lastSeason = season;
+    else segments.push(checkpoint);
+  }
+  return segments;
 }
 
 export function materializeHistoricalReplayCheckpoint(dynastyRoot: string, targetSeason: number, targetRoot: string): HistoricalReplayCheckpoint {
