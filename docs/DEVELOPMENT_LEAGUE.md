@@ -187,6 +187,8 @@ The resumable production command combines the clean pre-season audit, one develo
 
 The cycle also binds its storage policy in the manifest. `--min-free-gb` defaults to `10` and is checked before mutation and again before the next major season. `--max-development-output-mb` defaults to `2048` and rejects an oversized uncompressed development result before promotion. Both observed free space and development output size are retained in stage evidence; a resumed cycle must use the same limits.
 
+Add `--preflight-only` to validate the current clean audit, runtime signature or explicit upgrade authorization, history-ledger continuity, previous compact development source, target-output status, and storage policy without creating a cycle manifest or changing the dynasty. A failed preflight exits with status `2` and prints the individual readiness fields.
+
 ```powershell
 npm run official-season-cycle -- `
   --major-source output/official-era-02/league `

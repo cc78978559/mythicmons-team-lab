@@ -28,6 +28,7 @@ fs.mkdirSync(manifestDir, {recursive: true});
 const initialState = readState(), initialHash = fileHash(path.join(majorRoot, "dynasty-state.json"));
 let manifest = loadOrCreateManifest();
 if (manifest.status === "complete") { verifyComplete(); finish(true); }
+if (args.includes("--preflight-only")) preflight();
 
 storageGate("cycle-start");
 audit("before-audit", initialState.completedSeason);
@@ -117,7 +118,23 @@ function updateHistory(): void {
   completeStage("history", {ledger: ledgerPath, globalSeason});
 }
 
+function preflight(): never {
+  const state = readState(), auditPath = path.join(majorRoot, "audit-summary.json"), auditSummary = fs.existsSync(auditPath) ? read<any>(auditPath) : null;
+  const auditClean = Boolean(auditSummary && auditSummary.completedSeasons === state.completedSeason && auditSummary.fatalCount === 0 && auditSummary.warningCount === 0 && auditSummary.metrics?.moneyConserved);
+  const auditMatchesCurrentRuntime = Boolean(auditClean && auditSummary.inputSignature === auditV12Signature(majorRoot, state.completedSeason));
+  const developmentStatus = !fs.existsSync(developmentOut) ? "absent" : developmentComplete() ? "complete" : "incomplete";
+  const previousStatus = !previousDevelopment ? "not-configured" : validPreviousDevelopment(previousDevelopment) ? "verified" : "invalid";
+  const historyPath = option("--history-ledger", ""), history = historyPath && fs.existsSync(path.resolve(historyPath)) ? read<any>(path.resolve(historyPath)) : null;
+  const expectedGlobalSeason = state.completedSeason + offset, historyLatest = history ? Math.max(0, ...(history.seasons ?? []).map((entry: any) => Number(entry.globalSeason))) : null;
+  const historyStatus = !historyPath ? "not-configured" : !history ? "missing" : historyLatest === expectedGlobalSeason ? "current" : `expected-${expectedGlobalSeason}-found-${historyLatest}`;
+  const storage = storageGate("preflight", developmentStatus === "complete" ? developmentOut : undefined), codeUpgradeRequested = args.includes("--allow-code-upgrade");
+  const ready = auditClean && (auditMatchesCurrentRuntime || codeUpgradeRequested) && developmentStatus !== "incomplete" && previousStatus !== "invalid" && historyStatus === (historyPath ? "current" : "not-configured");
+  const result = {ready, cycleId, boundary: {internalSeason: state.completedSeason, globalSeason: expectedGlobalSeason, nextInternalSeason: state.completedSeason + 1, nextGlobalSeason: expectedGlobalSeason + 1}, audit: {clean: auditClean, matchesCurrentRuntime: auditMatchesCurrentRuntime, codeUpgradeRequested}, development: {target: developmentOut, status: developmentStatus, previous: previousDevelopment ?? null, previousStatus}, history: {path: historyPath ? path.resolve(historyPath) : null, status: historyStatus}, storage};
+  fs.writeSync(process.stdout.fd, `${JSON.stringify(result, null, 2)}\n`, undefined, "utf8"); process.exit(ready ? 0 : 2);
+}
+
 function developmentComplete(): boolean { return ["promotion-package.json", "promotion-package.json.gz", "development-summary.json", "entrants.json"].every(file => fs.existsSync(path.join(developmentOut, file))); }
+function validPreviousDevelopment(directory: string): boolean { return ["entrants.json", "development-summary.json", "development-final-state.json", "development-final-state.json.gz"].every(file => fs.existsSync(path.join(directory, file))); }
 function promotionPayload(): any { const promotion = read<any>(path.join(developmentOut, "promotion-package.json")); return JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(developmentOut, promotion.archive))).toString("utf8")); }
 function completeStage(stage: string, evidence: Record<string, unknown>): void { manifest.stages[stage] = {status: "complete", at: new Date().toISOString(), evidence}; persist(); }
 function persist(): void { atomicJson(manifestPath, manifest); }

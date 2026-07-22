@@ -11,8 +11,11 @@ const env = {...process.env, V12_OUT: league, V12_SEASONS: "1", V12_MANAGER_LIMI
 try {
   run("src/cli/draftLeagueV12.ts", [], env);
   run("src/cli/buildOfficialHistory.ts", ["--major-source", league, "--out", history]);
+  run("src/cli/auditV12.ts", ["--out", league, "--force"]);
   const before = read<any>(path.join(league, "dynasty-state.json"));
   const bottom = before.managers.slice().sort((a: any, b: any) => b.seasons.at(-1).rank - a.seasons.at(-1).rank)[0].id;
+  const preflightState = hash(fs.readFileSync(path.join(league, "dynasty-state.json"))), preflight = run("src/cli/runOfficialSeasonCycle.ts", ["--major-source", league, "--development-out", development, "--promotion-slots", "1", "--cycle-id", "preflight-smoke", "--history-ledger", history, "--min-free-gb", "0", "--max-development-output-mb", "1024", "--preflight-only"]), preflightResult = JSON.parse(preflight.stdout);
+  assert.equal(preflightResult.ready, true); assert.equal(preflightResult.development.status, "absent"); assert.equal(preflightResult.history.status, "current"); assert.equal(hash(fs.readFileSync(path.join(league, "dynasty-state.json"))), preflightState); assert.equal(fs.existsSync(path.join(league, "season-cycles", "preflight-smoke.json")), false);
   const blockedState = hash(fs.readFileSync(path.join(league, "dynasty-state.json"))), blocked = execute("src/cli/runOfficialSeasonCycle.ts", ["--major-source", league, "--development-out", development, "--promotion-slots", "1", "--cycle-id", "storage-blocked", "--min-free-gb", "10000", "--max-development-output-mb", "1024"]);
   assert.notEqual(blocked.status, 0); assert.match(blocked.stderr, /free disk .* below the required/); assert.equal(hash(fs.readFileSync(path.join(league, "dynasty-state.json"))), blockedState); assert.equal(fs.existsSync(path.join(league, "season-cycles", "storage-blocked.json")), false);
   const cycleArgs = ["--major-source", league, "--development-out", development, "--promotion-slots", "1", "--cycle-id", "cycle-smoke", "--history-ledger", history, "--min-free-gb", "0", "--max-development-output-mb", "1024"];
