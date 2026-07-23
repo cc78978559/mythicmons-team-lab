@@ -209,8 +209,19 @@ try {
   assert.equal(promotionPackage.candidates.length, 1);
   assert(promotionPackage.candidates[0].currentProfile);
   assert(fs.existsSync(path.join(output, "development-report.md")));
+  const contractScreenOut = path.join(workspace, "contract-screen");
+  const contractScreen = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "screenAcademyContracts.ts"), "--source", output, "--out", contractScreenOut], {cwd: root, encoding: "utf8"});
+  assert.equal(contractScreen.status, 0, contractScreen.stderr || contractScreen.stdout);
+  const contractScreens = read<any>(path.join(contractScreenOut, "academy-contract-screens.json"));
+  assert.equal(contractScreens.validation.sourceReconstructed, true);
+  assert.equal(contractScreens.validation.contractCount, 6);
+  assert.equal(contractScreens.cases.length, 0);
 
   const firstLeagueState = read<any>(path.join(output, "league", "dynasty-state.json"));
+  const compactDevelopment = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "compactDevelopmentLeague.ts"), "--source", output, "--prune-league"], {cwd: root, encoding: "utf8"});
+  assert.equal(compactDevelopment.status, 0, compactDevelopment.stderr || compactDevelopment.stdout);
+  assert(fs.existsSync(path.join(output, "development-final-state.json.gz")));
+  assert(!fs.existsSync(path.join(output, "league")));
   fs.cpSync(source, relocatedSource, {recursive: true});
   const nextDevelopment = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "developmentLeague.ts"), "--source", relocatedSource, "--previous", output, "--out", nextOutput, "--seasons", "2", "--capacity", "6", "--parent-limit", "6", "--promotion-slots", "1", "--elimination-slots", "1", "--max-founder-share-percent", "17", "--kinship-depth", "2", "--max-parent-similarity-percent", "0", "--academy-grant-pool", "240", "--academy-market-policy", "active", "--academy-market-consent-policy", "ignore", "--academy-market-contract-policy", "ignore", "--academy-market-max-transactions", "2", "--academy-signing-fee", "0", "--academy-transfer-fee", "0", "--academy-loan-fee", "0", "--academy-transfer-min-fit-percent", "-100", "--regular-rounds", "1", "--max-turns", "20"], {cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024});
   assert.equal(nextDevelopment.status, 0, nextDevelopment.stderr || nextDevelopment.stdout);

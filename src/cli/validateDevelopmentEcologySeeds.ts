@@ -38,7 +38,9 @@ try {
     }
     fs.mkdirSync(variantSource, {recursive: true});
     const registry = sourceState.registry ? {...sourceState.registry, snapshot: sourceState.registry.snapshot ? path.resolve(source, sourceState.registry.snapshot) : undefined} : undefined;
-    fs.writeFileSync(path.join(variantSource, "dynasty-state.json"), `${JSON.stringify({...sourceState, seed, registry}, null, 2)}\n`, "utf8");
+    const variantState: SourceState = {...sourceState, seed, registry};
+    delete variantState.stateStorage;
+    fs.writeFileSync(path.join(variantSource, "dynasty-state.json"), `${JSON.stringify(variantState, null, 2)}\n`, "utf8");
     if (!existingObservation) {
       const command = [require.resolve("tsx/cli"), path.join(root, "src", "cli", "developmentLeagueSoak.ts"), "--source", variantSource, "--out", runOut, "--cycles", String(cycles), "--seasons-per-cycle", "1", "--capacity", String(capacity), "--retention", "compact", "--force"];
       const run = spawnSync(process.execPath, command, {cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024});

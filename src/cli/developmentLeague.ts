@@ -63,6 +63,7 @@ const academyMarketMaximumSalary = integerOption("--academy-market-max-salary", 
 const academyMarketOfferPercent = integerOption("--academy-market-offer-percent", 115, 50, 200);
 const academyContractYears = integerOption("--academy-contract-years", 3, 1, 12);
 const academyArbitrationDemandPercent = integerOption("--academy-arbitration-demand-percent", 60, 0, 100);
+const academyContractAcceptOfferChild = option("--academy-contract-accept-offer-child", "").trim();
 const academyMarketMaximumTransactions = integerOption("--academy-market-max-transactions", 2, 0, 10);
 const academySigningFee = integerOption("--academy-signing-fee", 8, 0, 10000);
 const academyTransferFee = integerOption("--academy-transfer-fee", 15, 0, 10000);
@@ -105,7 +106,7 @@ const academyContracts = settleAcademyContracts(entrants.map(entrant => {
   const manager = checkpointManagers.find(value => value.id === entrant.slotId)!;
   const previousRow = lifecycle.continuing.find(value => value.childId === entrant.childId);
   return {childId: entrant.childId, childName: entrant.childName, academyId: entrant.rightsHolderId, optionYears: entrant.optionYears, annualSalary: entrant.annualSalary, contractYears: entrant.contractYears, profile: manager.currentProfile, averageRank: previousRow?.averageRank, capacity: previous?.entrants.capacity ?? entrantCount};
-}), academyStates, new Set(academyTalentMarket.transactions.filter(transaction => transaction.status === "executed").map(transaction => transaction.childId)), {policy: academyMarketContractPolicy, cycleSeasons: seasons, renewalYears: academyContractYears, baseSalary: academyMarketBaseSalary, maximumSalary: academyMarketMaximumSalary, arbitrationDemandWeight: academyArbitrationDemandPercent / 100, cycle});
+}), academyStates, new Set(academyTalentMarket.transactions.filter(transaction => transaction.status === "executed").map(transaction => transaction.childId)), {policy: academyMarketContractPolicy, cycleSeasons: seasons, renewalYears: academyContractYears, baseSalary: academyMarketBaseSalary, maximumSalary: academyMarketMaximumSalary, arbitrationDemandWeight: academyArbitrationDemandPercent / 100, cycle}, academyContractAcceptOfferChild ? {childId: academyContractAcceptOfferChild, action: "accept-offer"} : undefined);
 for (const academy of academyStates) academy.treasury = academyContracts.balances[academy.academyId] ?? academy.treasury;
 for (const entrant of entrants) { const assignment = academyContracts.assignments[entrant.childId]; if (assignment) { entrant.annualSalary = assignment.annualSalary; entrant.contractYears = assignment.contractYears; entrant.optionYears = assignment.optionYears; } }
 const salaryDebts = [...academyGuarantees.remainingDebts, ...academyContracts.newDebts];
@@ -124,7 +125,7 @@ console.log(JSON.stringify({cycle, capacity: entrantCount, returning: entrants.f
 function loadPrevious(directory: string) {
   const entrants = read<PreviousEntrants>(path.join(directory, "entrants.json"));
   const summary = read<PreviousSummary>(path.join(directory, "development-summary.json"));
-  const state = read<{managers: DevelopmentManager[]}>(path.join(directory, "league", "dynasty-state.json"));
+  const state = loadPreviousState(directory);
   const recordedSource = path.resolve(entrants.source.root);
   if (recordedSource !== source) {
     const recordedStatePath = path.join(recordedSource, "dynasty-state.json");
@@ -139,6 +140,18 @@ function loadPrevious(directory: string) {
     if (!sameJourney && !authorizedPromotionTransition(entrants, recordedSource, recordedState, recordedStatePath)) throw new Error("Previous development cycle belongs to a different major-league source");
   }
   return {entrants, summary, state};
+}
+
+function loadPreviousState(directory: string): {managers: DevelopmentManager[]} {
+  const compactManifest = path.join(directory, "development-final-state.json");
+  if (!fs.existsSync(compactManifest)) return read<{managers: DevelopmentManager[]}>(path.join(directory, "league", "dynasty-state.json"));
+  const manifest = read<{schemaVersion: number; archive: string; sha256: string; managers: number}>(compactManifest);
+  if (manifest.schemaVersion !== 1 || !manifest.archive || path.basename(manifest.archive) !== manifest.archive || !/^[a-f0-9]{64}$/.test(manifest.sha256)) throw new Error("Invalid compact development final-state manifest");
+  const bytes = zlib.gunzipSync(fs.readFileSync(path.join(directory, manifest.archive)));
+  if (crypto.createHash("sha256").update(bytes).digest("hex") !== manifest.sha256) throw new Error("Compact development final-state hash mismatch");
+  const state = JSON.parse(bytes.toString("utf8")) as {schemaVersion: number; managers: DevelopmentManager[]};
+  if (state.schemaVersion !== 1 || state.managers.length !== manifest.managers) throw new Error("Compact development final-state manager count mismatch");
+  return state;
 }
 
 function authorizedPromotionTransition(entrants: PreviousEntrants, recordedSource: string, recordedState: SourceState, recordedStatePath: string): boolean {

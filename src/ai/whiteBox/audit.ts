@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {ACQUISITION_SHADOW_PARAMETERS, BATTLE_SHADOW_PARAMETERS, BID_SHADOW_PARAMETERS, EVOLUTION_SHADOW_PARAMETERS, KEEPER_SHADOW_PARAMETERS, LEARNING_SHADOW_PARAMETERS, LINEUP_SHADOW_PARAMETERS, MARKET_FLOW_SHADOW_PARAMETERS, MEMORY_SHADOW_PARAMETERS, REGISTRATION_SHADOW_PARAMETERS, type WhiteBoxNumberParameter} from "./parameters";
+import {loadDynastyState} from "../../draft/dynastyStateStore";
 
 export interface WhiteBoxAuditIssue {severity: "fatal" | "warning"; code: string; message: string; source?: string}
 export interface WhiteBoxAuditSummary {
@@ -29,7 +30,7 @@ export function auditWhiteBoxOutput(rootDirectory: string): WhiteBoxAuditSummary
   const root = path.resolve(rootDirectory), sources: Array<{source: string; records: RecordLike[]}> = [];
   const statePath = path.join(root, "dynasty-state.json");
   if (fs.existsSync(statePath)) {
-    const state = read<{decisionRecords?: RecordLike[]}>(statePath);
+    const state = loadDynastyState<{decisionRecords?: RecordLike[]}>(statePath);
     sources.push({source: path.relative(root, statePath), records: state.decisionRecords ?? []});
   }
   const seasonDirectories = fs.existsSync(root) ? fs.readdirSync(root, {withFileTypes: true}).filter(entry => entry.isDirectory() && /^season-\d+$/.test(entry.name)).map(entry => path.join(root, entry.name)) : [];

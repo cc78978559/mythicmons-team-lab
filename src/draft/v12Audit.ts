@@ -5,6 +5,8 @@ import {Dex} from "pokemon-showdown";
 import {countProgramNodes, strategyProgramBehavior, strategyProgramHash, validateStrategyProgram, type StrategyProgram} from "./strategyProgram";
 import {loadRegistrySnapshot} from "./registrySnapshot";
 import type {ProgramOpportunitySnapshot} from "./strategyProgramOpportunity";
+import {loadDynastyState} from "./dynastyStateStore";
+import {verifyHistoricalDynastyCheckpoint} from "./historicalRuntimeCheckpoint";
 
 export interface V12AuditIssue {severity: "fatal" | "warning"; code: string; message: string; season?: number; managerId?: string}
 export interface V12AuditSummary {
@@ -17,7 +19,7 @@ interface State {version: number; completedSeason: number; moneySupply: number; 
 export function auditV12Output(rootDirectory: string): V12AuditSummary {
   const root = path.resolve(rootDirectory), issues: V12AuditIssue[] = [];
   if (fs.existsSync(path.join(root, ".run.lock"))) throw new Error("Cannot audit a league while it is still running");
-  const state = read<State>(path.join(root, "dynasty-state.json"));
+  const state = loadDynastyState<State>(path.join(root, "dynasty-state.json"));
   if (state.version !== 12) issues.push(issue("fatal", "wrong-state-version", `Expected V12, received V${state.version}`));
   if (!state.registry?.hash || !state.registry.snapshot || !fs.existsSync(path.resolve(root, state.registry.snapshot))) issues.push(issue("fatal", "missing-registry-snapshot", "League state does not point to a preserved registry snapshot"));
   else try { if (loadRegistrySnapshot(path.resolve(root, state.registry.snapshot)).hash !== state.registry.hash) throw new Error("state hash differs"); } catch (error) { issues.push(issue("fatal", "corrupt-registry-snapshot", String(error))); }
@@ -48,6 +50,7 @@ export function auditV12Output(rootDirectory: string): V12AuditSummary {
       if (ledgerOwner !== manager.id) { contractOwnershipMismatches += 1; issues.push(issue("fatal", "contract-owner-mismatch", `${contract.assetId} ledger owner is ${ledgerOwner ?? "none"}`, undefined, manager.id)); }
     }
   }
+  if (fs.existsSync(path.join(root, ".season-checkpoints"))) for (let season = 0; season <= state.completedSeason; season += 1) try { verifyHistoricalDynastyCheckpoint(root, season); } catch (error) { issues.push(issue("fatal", "invalid-historical-checkpoint", String(error), season || undefined)); }
   for (let season = 1; season <= state.completedSeason; season += 1) {
     const dir = path.join(root, `season-${String(season).padStart(2, "0")}`);
     for (const name of ["season.json", "decision-ledger.json", "rosters", "economy.json", "evolution.json"]) if (!fs.existsSync(path.join(dir, name))) issues.push(issue("fatal", "missing-artifact", `${name} is missing`, season));
@@ -159,6 +162,8 @@ export function v12AuditMarkdown(summary: V12AuditSummary): string { const m = s
 function auditFiles(root: string, seasons: number): string[] {
   const files = fs.existsSync(path.join(root, "dynasty-state.json")) ? [path.join(root, "dynasty-state.json")] : [];
   if (fs.existsSync(path.join(root, "config-snapshots"))) collectAuditInputs(path.join(root, "config-snapshots"), files);
+  if (fs.existsSync(path.join(root, ".season-checkpoints"))) collectAuditInputs(path.join(root, ".season-checkpoints"), files);
+  if (fs.existsSync(path.join(root, ".runtime-bundles"))) collectAuditInputs(path.join(root, ".runtime-bundles"), files);
   for (let season = 1; season <= seasons; season += 1) {
     const seasonRoot = path.join(root, `season-${String(season).padStart(2, "0")}`);
     if (fs.existsSync(seasonRoot)) collectAuditInputs(seasonRoot, files);

@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import type {WhiteBoxCandidateTrace, WhiteBoxShadowSummary} from "./decision";
 import {whiteBoxExperimentEligibility} from "./sampling";
+import {evaluateAcquisitionAssistGate} from "./acquisitionApproval";
+import {loadDynastyState} from "../../draft/dynastyStateStore";
 
 export interface WhiteBoxDifferenceCase {
   id: string; decisionId: string; domain: string; actor: string; season: number | null; decision: string; source: string; incumbent: string; shadow: string;
@@ -17,7 +19,7 @@ export interface WhiteBoxDifferenceReview {
 }
 
 export function reviewWhiteBoxDifferences(rootDirectory: string): WhiteBoxDifferenceReview {
-  const root = path.resolve(rootDirectory), state = read<any>(path.join(root, "dynasty-state.json"));
+  const root = path.resolve(rootDirectory), state = loadDynastyState<any>(path.join(root, "dynasty-state.json"));
   const sources:Array<{source:string;records:any[]}>= [{source:"dynasty-state.json",records:state.decisionRecords??[]}];
   for(const entry of fs.readdirSync(root,{withFileTypes:true}).filter(entry=>entry.isDirectory()&&/^season-\d+$/.test(entry.name)).sort((a,b)=>a.name.localeCompare(b.name))){const file=path.join(root,entry.name,"decision-ledger.json");if(fs.existsSync(file))sources.push({source:`${entry.name}/decision-ledger.json`,records:read<any>(file).records??[]});}
   const cases: WhiteBoxDifferenceCase[] = [];
@@ -50,8 +52,8 @@ function buildCase(record:any,index:number,source:string,trace:WhiteBoxShadowSum
   const ids=new Set([...(incumbent?.contributions??[]),...(shadow?.contributions??[])].map(entry=>entry.id));
   const contributionDeltas=[...ids].map(id=>{const before=incumbent?.contributions.find(entry=>entry.id===id),after=shadow?.contributions.find(entry=>entry.id===id);return{id,source:after?.source??before?.source??"unknown",delta:round((after?.value??0)-(before?.value??0))};}).filter(entry=>entry.delta!==0).sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta)||a.id.localeCompare(b.id));
   const before=members(incumbentId),after=members(shadowId);
-  const gate=record.context?.whiteBoxTradeAssist;
-  const experimentGate=gate?.version==="white-box-trade-assist-v1"?{version:String(gate.version),recommended:Boolean(gate.recommended),hardRejections:Array.isArray(gate.hardRejections)?gate.hardRejections.map(String):[]}:null;
+  const gate=record.context?.whiteBoxTradeAssist,acquisitionGate=trace.decisionId.startsWith("acquire:")?evaluateAcquisitionAssistGate(incumbent??undefined,shadow??undefined):null;
+  const experimentGate=acquisitionGate?{version:acquisitionGate.version,recommended:acquisitionGate.recommended,hardRejections:[...acquisitionGate.hardRejections]}:gate?.version==="white-box-trade-assist-v1"?{version:String(gate.version),recommended:Boolean(gate.recommended),hardRejections:Array.isArray(gate.hardRejections)?gate.hardRejections.map(String):[]}:null;
   return {id:`${source}#${index+1}:${record.id??`record-${index+1}`}:${trace.decisionId}`,decisionId:trace.decisionId,domain:domain(trace.decisionId),actor:String(record.actor??"unknown"),season:traceSeason(record,trace),decision:String(record.decision??"unknown"),source:`${source}#${index+1}`,incumbent:incumbentId,shadow:shadowId,classification,incumbentCandidate:incumbent,shadowCandidate:shadow,experimentGate,counterfactual:{rationalDelta:delta(incumbent?.rationalScore,shadow?.rationalScore),styleDelta:delta(incumbent?.appliedStyleScore,shadow?.appliedStyleScore),finalDelta:delta(incumbent?.finalScore,shadow?.finalScore),added:[...after].filter(id=>!before.has(id)).sort(),removed:[...before].filter(id=>!after.has(id)).sort(),contributionDeltas}};
 }
 

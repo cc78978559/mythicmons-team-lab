@@ -4,6 +4,7 @@ import path from "node:path";
 import {spawnSync} from "node:child_process";
 import {auditV12Output, auditV12Signature} from "../draft/v12Audit";
 import {strategyProgramHash, validateStrategyProgram} from "../draft/strategyProgram";
+import {loadDynastyState} from "../draft/dynastyStateStore";
 
 const root = process.cwd();
 const output = path.join(root, "output", "test-v12-smoke");
@@ -13,7 +14,7 @@ fs.rmSync(registrySource, {recursive: true, force: true});
 fs.cpSync(path.join(root, "data", "draft"), registrySource, {recursive: true});
 runSeason(false, "1");
 
-const state = read<any>(path.join(output, "dynasty-state.json"));
+const state = loadDynastyState<any>(path.join(output, "dynasty-state.json"));
 assert.equal(state.version, 12);
 assert.equal(state.completedSeason, 1);
 assert.equal(state.settings.tacticalMemoryBehaviorPolicy, "cumulative");
@@ -87,7 +88,7 @@ fs.writeFileSync(sourceFile, `${JSON.stringify(sourceValue)}\n`, "utf8");
 runSeason(true, "1");
 assert.equal(read<any>(path.join(output, "dynasty-state.json")).registry.hash, pinnedHash);
 runSeason(true, "1", true);
-const adopted = read<any>(path.join(output, "dynasty-state.json"));
+const adopted = loadDynastyState<any>(path.join(output, "dynasty-state.json"));
 assert.notEqual(adopted.registry.hash, pinnedHash);
 assert(adopted.decisionRecords.some((record: any) => record.decision.includes("采用新的魔改配置版本")));
 fs.rmSync(registrySource, {recursive: true, force: true});

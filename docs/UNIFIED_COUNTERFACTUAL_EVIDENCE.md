@@ -98,7 +98,77 @@ npm run counterfactual:whitebox-battle-sample -- `
 ```
 
 This is the first unified layer. It does not weaken existing domain-specific gates.
-The unified runner executes gate-approved lineup replicas and exact battle replicas through separate isolated routes. Battle branches retain only their two games and summary rather than using dynasty-directory compaction. Their multi-sample results use the battle-specific paired aggregate above. Learning, memory, and evolution interventions remain unsupported.
+The unified runner executes gate-approved lineup replicas, exact battle replicas, and named tactical-memory shadow replicas through separate isolated routes. Battle and memory branches retain only their two games and summary rather than using dynasty-directory compaction. Their multi-sample results use domain-specific paired aggregates.
+
+Tactical-memory hypotheses compare the manifest-bound incumbent policy with one named retained shadow policy, such as `seasonal-decay`. Each replica is bound to the replay-capsule hash, exact Showdown seed, and one acting side. The runner first reproduces the complete incumbent trace, then replaces only that side's opponent model. At most one side from an exact seed contributes to a hypothesis, preventing correlated sides from inflating the independent-seed count. Formal evidence uses the same outcome-changing pair, directional seed-cluster, and exact-binomial gates as the standalone memory sampler. Reaching the threshold only creates an activation-review candidate.
+
+The isolated memory command is also available directly:
+
+```powershell
+npm run counterfactual:tactical-memory -- `
+  --source-game <battle-directory> `
+  --player p1 `
+  --candidate-policy seasonal-decay `
+  --out output/tactical-memory-counterfactual
+```
+
+Cross-season personality learning is represented by a strict one-manager, one-season ablation. The candidate branch keeps season age, exploration decay, and style-history timing unchanged, but restores all six personality traits and all six strategy posteriors from the trace rollback payload. The incumbent branch must reproduce the stored source prefix, the candidate must match it through the intervention season, and exactly one experiment record must exist. Historical interventions only replay through the requested follow-up horizon, avoiding an unnecessary replay of every later archived season.
+
+```powershell
+npm run counterfactual:whitebox-learning -- `
+  --source output/official-era-02/league `
+  --manager manager-01 `
+  --season 12 `
+  --followup-seasons 1 `
+  --out output/learning-counterfactual
+```
+
+The unified planner pools these replicas under the explicit `season-learning-v1` versus `no-learning` hypothesis, while allowing at most one intervention from each independent league seed. A favorable no-learning result is evidence against the current learning rule, not permission to disable learning automatically.
+
+Evolution uses two source-bound routes. A current-season `evolution-shadow-candidates.json` package contributes only semantic strategy-program candidates with positive observed choice potential; these run through the existing two-season program-only counterfactual and the operator-specific aggregate. A full-personality candidate is executable only when the source dynasty genuinely contains a matching pending profile and lineage for the next season; it runs through the existing activation-versus-suppression replay. The planner never reconstructs discarded mutations or turns an ordinary shadow report into a synthetic candidate.
+
+Both routes keep production evolution unchanged. Program evidence is grouped by mutation operator, while full-lineage evidence is stratified by its declared mutation structure. At most one replica per independent dynasty seed contributes to either hypothesis. A successful formal gate can only recommend bounded activation review.
+
+Supplemental drafting and public registration now use a conservative acquisition-assist gate. A white-box alternative must improve rational and final score, keep general-strength regression within `.05`, avoid aggregate regression across role fit, roster completion, and team-system fit, and improve at least two of those three structural signals. Personality style or exploration alone cannot admit an experiment. The planner also requires an exact single-selection group in the retained `program-opportunities.json`; missing or mismatched groups remain archive-only. Admitted cases reuse the isolated program-decision runner, which verifies the immutable prefix, candidate identity, and one-and-only-one intervention before producing a cross-season comparison.
+
+Sequential-auction bids now have a dedicated numeric counterfactual. The candidate policy, `unshaded-ceiling-experiment`, removes only the retained random bid shade and submits the already audited ceiling; it does not recompute valuation or exceed the budget remaining after the roster reserve. A case is executable only when the bidder lost the source auction and the ceiling strictly exceeds the highest competing bid. Existing winners, ties, hard rejections, and changes that cannot alter the source winner are screened without a league replay. The isolated runner reproduces the source prefix, changes exactly one bid, and reports effects for both the bidder and the displaced source winner:
+
+```powershell
+npm run counterfactual:whitebox-bid -- `
+  --source <dynasty-root> `
+  --decision-id <retained-bid-decision-id> `
+  --manager <manager-id> `
+  --season <season> `
+  --followup-seasons 1 `
+  --out output/bid-counterfactual
+```
+
+Portfolio auctions remain a separate causal unit, but now have a dedicated two-stage route. The cheap stage reconstructs the complete source solver input from retained positive bids, utilities, starting budgets, keeper rosters, roster limits, and the exact seed. It refuses the source unless all reconstructed awards, winners, payments, and runner-up bids match the ledger. It then excludes bids that cannot directly clear the source award or cannot fit the source manager's remaining win and budget limits.
+
+The explicit deep screen reruns the full 600-wide constrained solver for a bounded number of prioritized bids. It writes a source-hash-bound artifact; ordinary unified planning never performs thousands of solver runs implicitly:
+
+```powershell
+npm run screen:portfolio-bids -- `
+  --source <dynasty-root> `
+  --season <season> `
+  --max-candidates 10 `
+  --out output/portfolio-bid-screen
+```
+
+Attach one or more verified screens to the unified catalog:
+
+```powershell
+npm run counterfactual:whitebox-unified -- `
+  --inputs <dynasty-root> `
+  --portfolio-bid-screens output/portfolio-bid-screen `
+  --out output/unified-evidence
+```
+
+Only solver-confirmed allocation or payment changes become `executable`; unscreened bids remain `requires-gate`. The exact dynasty runner changes one submitted bid, verifies the complete candidate allocation against the offline solver, proves that all other bid inputs and the pre-auction ledger prefix are unchanged, and reports every affected manager. The formal V12 default remains portfolio mode, and no evidence activates bidding behavior automatically.
+
+Historical runtime and registry transitions are now explicit replay boundaries. If a source adopted a different code or registry fingerprint before the target auction, a solver-confirmed bid remains `requires-gate` with `historical-runtime-transition-checkpoint-required` until an exact pre-season dynasty checkpoint and its matching runtime are available. The planner also emits a stable diagnostic such as `historical-replay-checkpoint-missing`, `historical-replay-checkpoint-invalid`, `historical-replay-runtime-invalid`, `historical-replay-registry-transition-unsupported`, or `historical-replay-environment-mismatch`; the original umbrella reason remains for manifest compatibility. New journeys save both state and runtime evidence prospectively. For season N, the runner restores the N-1 state, executes the runtime recorded by N, verifies the reproduced prefix, and changes only the admitted bid; missing or tampered state, source, registry, dependency, or Showdown evidence restores the gate. A follow-up that crosses additional code upgrades is split into verified runtime segments, with one resume at each transition and the experiment active only in the segment containing the intervention. Unified planning verifies the complete requested follow-up horizon before marking a bid executable, and rejects bid horizons above the formal four-season evidence limit instead of failing after launch. A segment that itself crosses a registry, dependency-lock, or Showdown transition remains blocked. Completed branches may be finalized with `--resume`, but only after the normal prefix and one-intervention checks pass; control verification occurs before the experiment branch is launched.
+
+The compact `evidence-summary.json` and the Markdown plan aggregate gate reasons for both all deduplicated hypotheses and the currently selected subset. Operators can therefore diagnose blocked work without loading the full evidence manifest; per-case reasons and replay identities remain in that manifest for audit.
 
 ## Scoped battle assist activation
 

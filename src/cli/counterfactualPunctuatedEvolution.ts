@@ -1,7 +1,8 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
+import {loadDynastyState} from "../draft/dynastyStateStore";
+import {materializeDynastyCheckpointBranch, verifyDynastyCheckpointBranch, type DynastyCheckpointBranchManifest} from "../draft/dynastyCheckpointBranch";
 
 interface PendingLineage {lineageId: string; birthSeason: number}
 interface CareerSeason {season: number; rank: number; points: number; champion: boolean}
@@ -20,7 +21,7 @@ const args = process.argv.slice(2);
 const root = process.cwd();
 const source = path.resolve(option("--source", "output/draft-league-v12"));
 const out = path.resolve(option("--out", "output/punctuated-evolution-counterfactual"));
-const sourceState = read<DynastyState>(path.join(source, "dynasty-state.json"));
+const sourceState = loadDynastyState<DynastyState>(path.join(source, "dynasty-state.json"));
 const sourceShocks = new Set(Array.from({length: sourceState.completedSeason}, (_, index) => {
   const season = index + 1;
   const report = read<{budget?: {environmentalShock?: number}}>(path.join(source, `season-${String(season).padStart(2, "0")}`, "evolution.json"));
@@ -39,13 +40,16 @@ prepareOutput();
 const activationSeason = target.pendingLineage.birthSeason;
 const experimentDir = path.join(out, "experiment");
 const controlDir = path.join(out, "control");
+const experimentCheckpoint = materializeDynastyCheckpointBranch(source, experimentDir);
+const controlCheckpoint = materializeDynastyCheckpointBranch(source, controlDir);
+if (experimentCheckpoint.checkpointId !== controlCheckpoint.checkpointId) throw new Error("Counterfactual branches were not created from the same checkpoint");
 runBranch(experimentDir, false);
 runBranch(controlDir, true);
-verifyPrefix(source, experimentDir, sourceState.completedSeason);
-verifyPrefix(source, controlDir, sourceState.completedSeason);
+verifyPrefix(experimentDir, experimentCheckpoint);
+verifyPrefix(controlDir, controlCheckpoint);
 
-const experiment = read<DynastyState>(path.join(experimentDir, "dynasty-state.json"));
-const control = read<DynastyState>(path.join(controlDir, "dynasty-state.json"));
+const experiment = loadDynastyState<DynastyState>(path.join(experimentDir, "dynasty-state.json"));
+const control = loadDynastyState<DynastyState>(path.join(controlDir, "dynasty-state.json"));
 const experimentManager = requiredManager(experiment, target.id);
 const controlManager = requiredManager(control, target.id);
 if (experimentManager.lineage.lineageId !== target.pendingLineage.lineageId) throw new Error("Experiment branch did not activate the selected pending lineage");
@@ -72,20 +76,21 @@ const comparison = {
     cash: experimentManager.cash - controlManager.cash,
   },
 };
-const summary = {schemaVersion: 1, source, prefixVerifiedThroughSeason: sourceState.completedSeason, isolatedDifferenceVerified: true, isolatedDifference: `${target.id}@${activationSeason}`, comparison};
+const summary = {schemaVersion: 1, source, checkpoint: {id: experimentCheckpoint.checkpointId, completedSeason: experimentCheckpoint.completedSeason, immutableFiles: experimentCheckpoint.immutablePrefix.length}, prefixVerifiedThroughSeason: sourceState.completedSeason, isolatedDifferenceVerified: true, isolatedDifference: `${target.id}@${activationSeason}`, comparison};
 fs.writeFileSync(path.join(out, "counterfactual-summary.json"), `${JSON.stringify(summary, null, 2)}\n`, "utf8");
 fs.writeFileSync(path.join(out, "counterfactual-report.md"), markdown(summary), "utf8");
 console.log(JSON.stringify({prefixVerified: true, isolatedDifference: summary.isolatedDifference, comparison, report: path.join(out, "counterfactual-report.md")}, null, 2));
 
 function runBranch(directory: string, suppress: boolean): void {
   const settings = sourceState.settings;
-  const registrySource = sourceState.registry?.snapshot ? path.resolve(source, sourceState.registry.snapshot) : path.resolve(option("--registry", "data/draft"));
+  const registrySource = sourceState.registry?.snapshot ? path.resolve(directory, sourceState.registry.snapshot) : path.resolve(option("--registry", "data/draft"));
   const env = {
     ...process.env,
     V12_OUT: directory,
     V12_SEED: sourceState.seed,
     V12_SEASONS: String(activationSeason),
-    V12_RESUME: "false",
+    V12_RESUME: "true",
+    V12_ALLOW_CODE_UPGRADE: "true",
     V12_MANAGER_LIMIT: String(settings.managerLimit),
     V12_PAIRS: String(settings.pairs),
     V12_POOL_SIZE: String(settings.poolSize),
@@ -120,18 +125,7 @@ function prepareOutput(): void {
   fs.mkdirSync(resolved, {recursive: true});
 }
 
-function verifyPrefix(expectedRoot: string, actualRoot: string, seasons: number): void {
-  for (let season = 1; season <= seasons; season += 1) {
-    const name = `season-${String(season).padStart(2, "0")}`;
-    const expected = essential(read<Record<string, unknown>>(path.join(expectedRoot, name, "season.json")));
-    const actual = essential(read<Record<string, unknown>>(path.join(actualRoot, name, "season.json")));
-    if (digest(expected) !== digest(actual)) throw new Error(`Replayed ${name} does not match source prefix`);
-  }
-}
-
-function essential(season: Record<string, unknown>): unknown { return {season: season.season, champion: season.champion, standings: season.standings, transactions: season.transactions, validity: season.validity}; }
-function digest(value: unknown): string { return crypto.createHash("sha256").update(stable(value)).digest("hex"); }
-function stable(value: unknown): string { if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`; if (value && typeof value === "object") return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stable((value as Record<string, unknown>)[key])}`).join(",")}}`; return JSON.stringify(value); }
+function verifyPrefix(branch: string, manifest: DynastyCheckpointBranchManifest): void { verifyDynastyCheckpointBranch(branch, manifest); }
 function requiredManager(state: DynastyState, managerId: string): ManagerState { const manager = state.managers.find(entry => entry.id === managerId); if (!manager) throw new Error(`Branch has no manager ${managerId}`); return manager; }
 function requiredSeason(manager: ManagerState, season: number): CareerSeason { const entry = manager.seasons.find(value => value.season === season); if (!entry) throw new Error(`Branch has no season ${season} for ${manager.id}`); return entry; }
 function branchResult(manager: ManagerState, season: CareerSeason): BranchResult { return {lineageId: manager.lineage.lineageId, points: season.points, rank: season.rank, champion: season.champion, titles: manager.titles, cash: manager.cash}; }

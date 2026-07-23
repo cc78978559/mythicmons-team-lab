@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
 import {DRAFT_GENERATIONS, draftGenerationSource} from "../draft/customRegistry";
+import {loadDynastyState} from "../draft/dynastyStateStore";
 
 interface SmokeState {
   version: number;
@@ -28,7 +29,7 @@ try {
   const first = runDynasty(false);
   assert.equal(first.status, 0, first.stderr || first.stdout);
   const statePath = path.join(outDir, "dynasty-state.json");
-  const state = JSON.parse(fs.readFileSync(statePath, "utf8")) as SmokeState;
+  const state = loadDynastyState<SmokeState>(statePath);
   assert.equal(state.version, 8);
   assert.equal(state.completedSeason, 2);
   assert.equal(state.managers.length, 6);
@@ -53,10 +54,11 @@ try {
   const resumed = runDynasty(true);
   assert.equal(resumed.status, 0, resumed.stderr || resumed.stdout);
   assert.match(resumed.stdout, /resumed after season 2/);
-  const resumedState = JSON.parse(fs.readFileSync(statePath, "utf8")) as SmokeState;
+  const resumedState = loadDynastyState<SmokeState>(statePath);
   assert.equal(resumedState.completedSeason, 2);
   assert.equal(resumedState.decisionRecords.length, state.decisionRecords.length);
   resumedState.fingerprint.dataHash = "0".repeat(64);
+  delete (resumedState as any).stateStorage;
   fs.writeFileSync(statePath, `${JSON.stringify(resumedState, null, 2)}\n`, "utf8");
   const rejected = runDynasty(true);
   assert.notEqual(rejected.status, 0, "Resume must reject a changed data fingerprint");
@@ -72,7 +74,7 @@ try {
   fs.writeFileSync(statePath, `${JSON.stringify(legacyV6, null, 2)}\n`, "utf8");
   const migratedV6 = runDynasty(true);
   assert.equal(migratedV6.status, 0, migratedV6.stderr || migratedV6.stdout);
-  const v6Result = JSON.parse(fs.readFileSync(statePath, "utf8")) as SmokeState;
+  const v6Result = loadDynastyState<SmokeState>(statePath);
   assert.equal(v6Result.version, 8);
   assert.ok(v6Result.managers.every(manager => manager.lineage.lineageId.startsWith("founder:")));
 
@@ -88,7 +90,7 @@ try {
   fs.writeFileSync(statePath, `${JSON.stringify(legacyV5, null, 2)}\n`, "utf8");
   const migratedV5 = runDynasty(true, {managerLimit: 7, expandFromV5: true});
   assert.equal(migratedV5.status, 0, migratedV5.stderr || migratedV5.stdout);
-  const v5Result = JSON.parse(fs.readFileSync(statePath, "utf8")) as SmokeState;
+  const v5Result = loadDynastyState<SmokeState>(statePath);
   assert.equal(v5Result.version, 8);
   assert.equal(v5Result.managers.length, 7);
   assert.ok(v5Result.managers.every(manager => manager.lineage?.lineageId), "Every incumbent and expansion manager needs a valid lineage");

@@ -44,7 +44,7 @@ const env = {
   V4_BASE_BUDGET: process.env.V12_BASE_CASH || "40",
   V4_KEEPER_CAP: "120", V4_MAX_KEEPERS: process.env.V12_MAX_ROSTER || "10", V4_SEPARATE_PAYROLL: "true",
   V3_SPORTS_MARKET: "true", V3_DUAL_LAYER: "true", V3_PROGRAM_EVOLUTION: "true",
-  V4_AUCTION_MODE: "portfolio", V4_MIN_ROSTER: process.env.V12_MIN_ROSTER || "6", V4_MAX_ROSTER: process.env.V12_MAX_ROSTER || "10",
+  V4_AUCTION_MODE: process.env.V12_AUCTION_MODE || "portfolio", V4_MIN_ROSTER: process.env.V12_MIN_ROSTER || "6", V4_MAX_ROSTER: process.env.V12_MAX_ROSTER || "10",
   V4_MIDSEASON_GRANT: "0", V4_CONTRACT_MODEL: "sports-market", V4_LEARNING_MODEL: "counterfactual", V4_DYNAMIC_POOL: "false", V4_CARRY_RATE: "0", V4_CARRY_CAP: "0",
 };
 const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "draftLeagueV4.ts")], {cwd: root, env, encoding: "utf8", stdio: "inherit"});

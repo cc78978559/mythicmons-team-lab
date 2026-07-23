@@ -4,8 +4,13 @@ import path from "node:path";
 export interface RunLock {file: string; release(): void}
 
 export function acquireRunLock(directory: string, context: Record<string, unknown> = {}): RunLock {
+  return acquireNamedRunLock(directory, ".run.lock", context);
+}
+
+export function acquireNamedRunLock(directory: string, name: string, context: Record<string, unknown> = {}): RunLock {
+  if (!/^\.[a-z0-9][a-z0-9.-]*\.lock$/i.test(name) || name.includes("..")) throw new Error(`Invalid run-lock name: ${name}`);
   fs.mkdirSync(directory, {recursive: true});
-  const file = path.join(directory, ".run.lock");
+  const file = path.join(directory, name);
   let descriptor: number;
   try { descriptor = fs.openSync(file, "wx"); }
   catch (error) {

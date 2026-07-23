@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import {loadDynastyState} from "./dynastyStateStore";
 
 export type AuditSeverity = "fatal" | "warning" | "info";
 
@@ -60,7 +61,7 @@ export function auditV10Output(outputDirectory: string): V10AuditSummary {
   const root = path.resolve(outputDirectory);
   const statePath = path.join(root, "dynasty-state.json");
   if (!fs.existsSync(statePath)) throw new Error(`V10 state is missing: ${statePath}`);
-  const state = read<DynastyState>(statePath);
+  const state = loadDynastyState<DynastyState>(statePath);
   const issues: AuditIssue[] = [];
   if (state.version !== 10) issues.push(issue("fatal", "wrong-state-version", `Expected V10 state, received version ${state.version}`));
   if (!state.managers.length) issues.push(issue("fatal", "empty-league", "The dynasty contains no managers"));

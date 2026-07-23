@@ -36,6 +36,12 @@ async function main(): Promise<void> {
         aiOpponentModelPolicy: "cumulative",
       });
     }
+    const sourceGame=path.dirname(findNamed(path.join(source,"battle-0"),"replay-input.json")[0]),singleOut=path.join(root,"single-counterfactual"),single=spawnSync(process.execPath,[require.resolve("tsx/cli"),path.resolve("src/cli/counterfactualTacticalMemory.ts"),"--source-game",sourceGame,"--out",singleOut,"--player","p1","--candidate-policy","seasonal-decay"],{cwd:process.cwd(),encoding:"utf8",maxBuffer:64*1024*1024});
+    assert.equal(single.status,0,single.stderr||single.stdout);
+    const singleSummary=read<any>(path.join(singleOut,"counterfactual-summary.json"));
+    assert.equal(singleSummary.sourceVerified,true);
+    assert.equal(singleSummary.intervention.playerId,"p1");
+    assert.equal(singleSummary.intervention.candidatePolicy,"seasonal-decay");
     const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.resolve("src/cli/sampleTacticalMemoryAblation.ts"), "--inputs", source, "--out", out, "--shadow-policy", "seasonal-decay", "--minimum-confidence", "0", "--target-samples", "3", "--minimum-seeds", "2", "--minimum-decisive-pairs", "2", "--minimum-decisive-seeds", "2", "--max-samples", "4", "--max-launches", "3", "--min-free-gb", "0", "--run"], {cwd: process.cwd(), encoding: "utf8", maxBuffer: 64 * 1024 * 1024});
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const summary = read<any>(path.join(out, "tactical-memory-ablation-summary.json"));

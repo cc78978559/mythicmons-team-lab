@@ -20,6 +20,8 @@ import {writeSeasonBrief} from "../draft/seasonBrief";
 import {loadCareerMemoryCheckpoint} from "../draft/careerArchive";
 import {extractKeyBattleDecisions} from "../draft/battleDecisionExtractor";
 import {buildTacticalMemoryTrace, evaluateConfigurationEvidence, evaluateConfigurationPosterior} from "../ai/whiteBox/memory";
+import {loadDynastyState, persistDynastyState} from "../draft/dynastyStateStore";
+import {captureHistoricalDynastyCheckpoint} from "../draft/historicalRuntimeCheckpoint";
 
 interface SeasonResult {
   season: number;
@@ -147,6 +149,8 @@ process.env.V4_STRATEGY_PROGRAM_OPERATOR = strategyProgramOperator;
 const baseBudget = integerSetting("V4_BASE_BUDGET", 100, 20, 120);
 const keeperCap = integerSetting("V4_KEEPER_CAP", 70, 40, 120);
 const auctionMode = process.env.V4_AUCTION_MODE || "sequential";
+const bidCounterfactualPolicy = process.env.V4_BID_COUNTERFACTUAL_POLICY || "";
+const bidCounterfactualTarget = process.env.V4_BID_COUNTERFACTUAL_TARGET || "";
 const minRoster = integerSetting("V4_MIN_ROSTER", 8, 6, 10);
 const maxRoster = integerSetting("V4_MAX_ROSTER", 8, minRoster, 10);
 const midseasonGrant = integerSetting("V4_MIDSEASON_GRANT", 0, 0, 20);
@@ -214,6 +218,8 @@ function main(): void {
     if (resume && careerCheckpointPath) throw new Error("V4_CAREER_CHECKPOINT starts a new journey and cannot be combined with V4_RESUME");
     if (!resume && careerCheckpointPath) initializeFromCareerCheckpoint();
     const completedSeason = resume ? restoreCheckpoint() : 0;
+    if (stateVersion >= 12 && !resume && completedSeason === 0) checkpoint(0);
+    else if (stateVersion >= 12 && resume && fs.existsSync(path.join(outDir, ".season-checkpoints"))) captureHistoricalDynastyCheckpoint(root, outDir, completedSeason);
     for (let season = completedSeason + 1; season <= seasonCount; season += 1) runDynastySeason(season);
     writeDynastyOutputs();
     const latestChampion = managers.find(manager => manager.seasons.at(-1)?.season === seasonCount && manager.seasons.at(-1)?.champion);
@@ -261,7 +267,7 @@ function initializeFromCareerCheckpoint(): void {
 function restoreCheckpoint(): number {
   const statePath = path.join(outDir, "dynasty-state.json");
   if (!fs.existsSync(statePath)) return 0;
-  const state = readJson<DynastyState>(statePath);
+  const state = loadDynastyState<DynastyState>(statePath);
   if (state.version === 5 && expandFromV5) return migrateExpansionState(state as unknown as LegacyDynastyState);
   if (state.version === 6) return migrateNaturalEvolutionState(state as unknown as LegacyV6State);
   if (state.version === 7) throw new Error("V7 experimental evolution state cannot distinguish tested parents from untested offspring; resume from its V6 source or start a newer league");
@@ -673,6 +679,8 @@ function runV3Season(season: number, seasonDir: string, profilePath: string, kee
       V3_BUDGETS: budgetPath,
       V3_ASSET_LEDGER: assetPath,
       V3_AUCTION_MODE: auctionMode,
+      V3_BID_COUNTERFACTUAL_POLICY: bidCounterfactualPolicy,
+      V3_BID_COUNTERFACTUAL_TARGET: bidCounterfactualTarget,
       V3_MIN_ROSTER: String(minRoster),
       V3_MAX_ROSTER: String(maxRoster),
       V3_MIDSEASON_GRANT: String(midseasonGrant),
@@ -951,7 +959,7 @@ function marketSnapshot(): Record<string, {averagePrice: number; appearances: nu
 
 function recordReviewDecision(season: number, career: ManagerCareer, review: SeasonReview, champion: boolean): void {
   const strongest = [...review.signals].sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0];
-  ledger.add({stage: "review", actor: career.id, decision: `第${season}季复盘并调整策略后验`, selected: review.emergentStyle.label, context: {season, champion, performance: review.performance, before: review.before, after: review.after, development: review.developmentAfter, signals: review.signals, keeperPolicy: review.keeperPolicy, keeperWhiteBoxShadow: review.keeperWhiteBoxShadow, keeperWhiteBoxCounterfactual: review.keeperWhiteBoxCounterfactual, learningWhiteBoxTrace: review.learningWhiteBoxTrace}, alternatives: [{option: "完全不学习"}, {option: "把重复对局全部视为独立样本"}], rationale: strongest ? [strongest.reason, "每季每条策略最多增加一个有效样本", `当前探索率${review.developmentAfter.exploration.toFixed(3)}`, "风格标签只描述后验，不控制行为"] : ["本季证据不足以改变模型"]});
+  ledger.add({stage: "review", actor: career.id, decision: `第${season}季复盘并调整策略后验`, selected: review.emergentStyle.label, context: {season, champion, performance: review.performance, before: review.before, after: review.after, development: review.developmentAfter, signals: review.signals, keeperPolicy: review.keeperPolicy, keeperWhiteBoxShadow: review.keeperWhiteBoxShadow, keeperWhiteBoxCounterfactual: review.keeperWhiteBoxCounterfactual, learningWhiteBoxTrace: review.learningWhiteBoxTrace, learningPolicy:review.learningPolicy, learningExperiment:review.learningExperiment}, alternatives: [{option: "完全不学习"}, {option: "把重复对局全部视为独立样本"}], rationale: strongest ? [strongest.reason, "每季每条策略最多增加一个有效样本", `当前探索率${review.developmentAfter.exploration.toFixed(3)}`, "风格标签只描述后验，不控制行为"] : ["本季证据不足以改变模型"]});
   for (const keeper of review.keepers) ledger.add({stage: "waiver", actor: career.id, decision: `为第${season + 1}季保留成员`, selected: keeper.pokemon, context: {family: keeper.family, salary: keeper.salary, years: keeper.years, appearances: keeper.lastSeasonAppearances, kos: keeper.lastSeasonKos}, alternatives: review.released.slice(0, 3).map(member => ({option: member.pokemon})), rationale: [`上季出场${keeper.lastSeasonAppearances}次、击倒${keeper.lastSeasonKos}次`, `续约薪资${keeper.salary}`, "保留名单最多三人且承诺资金不超过70"]});
 }
 
@@ -1012,7 +1020,8 @@ function assetLabel(member: Pick<DynastyRosterMember, "scarcity"> | undefined, p
 function checkpoint(completedSeason: number): void {
   const snapshot: DynastyState = {version: stateVersion, seed, completedSeason, settings: currentSettings(), managers, market: Object.fromEntries(market), assets: Object.fromEntries(assets), fingerprint: runtimeFingerprint, registry: registryState(), decisionRecords: [...ledger.all()], evolutionArchive, punctuatedEvolution, leaguePool, moneySupply};
   validateDynastyState(snapshot);
-  writeJson(path.join(outDir, "dynasty-state.json"), snapshot);
+  persistDynastyState(path.join(outDir, "dynasty-state.json"), snapshot);
+  if (stateVersion >= 12) captureHistoricalDynastyCheckpoint(root, outDir, completedSeason);
   writeEvolutionSummary(completedSeason);
   ledger.write(path.join(outDir, "career-decisions"));
 }

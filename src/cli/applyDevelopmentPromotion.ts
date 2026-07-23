@@ -5,6 +5,7 @@ import zlib from "node:zlib";
 import {cloneManagerProfile, type ManagerProfile} from "../draft/managerProfiles";
 import type {LineageIdentity} from "../draft/naturalEvolution";
 import {auditV12Output, auditV12Signature, v12AuditMarkdown} from "../draft/v12Audit";
+import {loadDynastyState, prepareDynastyState} from "../draft/dynastyStateStore";
 
 interface SeasonRecord {season: number; rank: number; points: number; champion: boolean}
 interface MajorManager {
@@ -39,7 +40,7 @@ function applyPromotion(): void {
   const majorRoot = path.resolve(requiredOption("--major-source"));
   const statePath = path.join(majorRoot, "dynasty-state.json");
   if (fs.existsSync(path.join(majorRoot, ".run.lock"))) throw new Error(`League is currently running: ${majorRoot}`);
-  const beforeBytes = fs.readFileSync(statePath), state = JSON.parse(beforeBytes.toString("utf8")) as MajorState;
+  const beforeBytes = fs.readFileSync(statePath), state = loadDynastyState<MajorState>(statePath);
   const recoveredCommitted = recoverPreparedTransactions(majorRoot, beforeBytes);
   if (recoveredCommitted) throw new Error(`Recovered ${recoveredCommitted} committed promotion transaction; inspect it before starting another promotion`);
   if (state.version !== 12) throw new Error(`In-place promotion requires a V12 dynasty, received V${state.version}`);
@@ -131,11 +132,13 @@ function applyPromotion(): void {
     rationale: ["保留俱乐部资产和经济责任", "替换经理人格与个人职业记录", "以单一原子事务执行全部席位"], links: [path.relative(majorRoot, manifestPath).replace(/\\/g, "/")],
   });
 
-  const afterBytes = Buffer.from(`${JSON.stringify(state, null, 2)}\n`, "utf8"), afterHash = hash(afterBytes);
-  const preparedManifest = {...baseManifest, recovery: {beforeSha256: beforeHash, plannedAfterSha256: afterHash}};
+  const afterBytes = prepareDynastyState(statePath, state).bytes, afterHash = hash(afterBytes);
+  const checkpointArchive = "dynasty-state.after.json.gz", checkpointBytes = zlib.gzipSync(afterBytes, {level: 9}), checkpoint = {archive: checkpointArchive, archiveSha256: hash(checkpointBytes), stateSha256: afterHash, sourceBytes: afterBytes.length, compressedBytes: checkpointBytes.length};
+  fs.writeFileSync(path.join(transactionDir, checkpointArchive), checkpointBytes);
+  const preparedManifest = {...baseManifest, recovery: {beforeSha256: beforeHash, plannedAfterSha256: afterHash, checkpoint}};
   writeJson(manifestPath, preparedManifest);
   atomicWrite(statePath, afterBytes);
-  writeJson(manifestPath, {...preparedManifest, status: "committed", committedAt: new Date().toISOString(), result: {afterSha256: afterHash, completedSeason: state.completedSeason, managers: state.managers.length}});
+  writeJson(manifestPath, {...preparedManifest, status: "committed", committedAt: new Date().toISOString(), result: {afterSha256: afterHash, completedSeason: state.completedSeason, managers: state.managers.length, checkpoint}});
   console.log(JSON.stringify({transaction: manifestPath, status: "committed", completedSeason: state.completedSeason, vacancies: rows.map(row => ({id: row.vacancy, outgoing: row.outgoing.name, incoming: row.incoming.name})), beforeSha256: beforeHash, afterSha256: afterHash}, null, 2));
 }
 
@@ -177,13 +180,22 @@ function recoverPreparedTransactions(majorRoot: string, currentState: Buffer): n
     if (manifest.status !== "prepared") continue;
     if (path.resolve(manifest.source?.root ?? "") !== majorRoot) throw new Error(`Prepared transaction has the wrong league root: ${manifestPath}`);
     if (currentHash === manifest.recovery?.plannedAfterSha256) {
-      writeJson(manifestPath, {...manifest, status: "committed", recoveredAt: new Date().toISOString(), result: {afterSha256: currentHash, completedSeason: manifest.boundary?.completedSeason, managers: currentManagers}});
+      const checkpoint = validateCounterfactualCheckpoint(path.dirname(manifestPath), manifest.recovery?.checkpoint, currentHash);
+      writeJson(manifestPath, {...manifest, status: "committed", recoveredAt: new Date().toISOString(), result: {afterSha256: currentHash, completedSeason: manifest.boundary?.completedSeason, managers: currentManagers, ...(checkpoint ? {checkpoint} : {})}});
       committed += 1;
     } else if (currentHash === manifest.source?.beforeSha256) {
       writeJson(manifestPath, {...manifest, status: "aborted", recoveredAt: new Date().toISOString(), recoveryResult: "state-was-not-replaced"});
     } else throw new Error(`Prepared promotion transaction is ambiguous and requires manual inspection: ${manifestPath}`);
   }
   return committed;
+}
+function validateCounterfactualCheckpoint(directory: string, checkpoint: any, expectedStateHash: string): any | undefined {
+  if (!checkpoint) return undefined;
+  const archive = path.resolve(directory, String(checkpoint.archive ?? ""));
+  if (path.dirname(archive) !== path.resolve(directory) || !fs.existsSync(archive)) throw new Error(`Prepared promotion checkpoint is missing or unsafe: ${archive}`);
+  const compressed = fs.readFileSync(archive), restored = zlib.gunzipSync(compressed);
+  if (hash(compressed) !== checkpoint.archiveSha256 || hash(restored) !== expectedStateHash || checkpoint.stateSha256 !== expectedStateHash || restored.length !== checkpoint.sourceBytes || compressed.length !== checkpoint.compressedBytes) throw new Error(`Prepared promotion checkpoint failed verification: ${archive}`);
+  return checkpoint;
 }
 function historicalPromotionLineages(majorRoot: string): Set<string> {
   const result = new Set<string>(), directory = path.join(majorRoot, "promotion-transactions");

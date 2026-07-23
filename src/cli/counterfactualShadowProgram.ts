@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
@@ -7,6 +6,7 @@ import {cloneManagerProfile, type ManagerProfile} from "../draft/managerProfiles
 import type {LineageIdentity} from "../draft/naturalEvolution";
 import {strategyProgramBehaviorDistance, strategyProgramHash, strategyProgramMutationOperator, type StrategyProgramMutationOperator} from "../draft/strategyProgram";
 import {createRegistrySnapshot} from "../draft/registrySnapshot";
+import {materializeDynastyCheckpointBranch, verifyDynastyCheckpointBranch, type DynastyCheckpointBranchManifest} from "../draft/dynastyCheckpointBranch";
 
 interface ManagerState {
   id: string;
@@ -56,7 +56,8 @@ const sourceManager = requiredManager(sourceState, candidate.managerId);
 if (sourceManager.pendingProfile || sourceManager.pendingLineage) throw new Error("Source manager already has a pending lineage");
 prepareOutput();
 const experimentDir = path.join(out, "experiment"), controlDir = path.join(out, "control");
-cloneSource(experimentDir); cloneSource(controlDir);
+const experimentCheckpoint = materializeDynastyCheckpointBranch(source, experimentDir), controlCheckpoint = materializeDynastyCheckpointBranch(source, controlDir);
+if (experimentCheckpoint.checkpointId !== controlCheckpoint.checkpointId) throw new Error("Counterfactual branches were not created from the same checkpoint");
 injectProgramCandidate(experimentDir);
 runBranch(experimentDir); runBranch(controlDir);
 const experiment = read<DynastyState>(path.join(experimentDir, "dynasty-state.json"));
@@ -79,7 +80,8 @@ const summary = {
   evaluationSeason,
   horizonSeasons,
   continuationSalt: continuationSalt || null,
-  prefixVerified: verifySourcePrefix(experimentDir) && verifySourcePrefix(controlDir),
+  checkpoint: {id: experimentCheckpoint.checkpointId, completedSeason: experimentCheckpoint.completedSeason, immutableFiles: experimentCheckpoint.immutablePrefix.length},
+  prefixVerified: verifyPrefix(experimentDir, experimentCheckpoint) && verifyPrefix(controlDir, controlCheckpoint),
   isolatedDifference: {managerId: candidate.managerId, operator, parentProgramHash: strategyProgramHash(sourceManager.currentProfile.strategyProgram!), candidateProgramHash: strategyProgramHash(candidate.profile.strategyProgram!), behaviorDistance: strategyProgramBehaviorDistance(sourceManager.currentProfile.strategyProgram, candidate.profile.strategyProgram), opportunityDistance: candidate.programOpportunity?.distance ?? null, choicePotential: candidate.programOpportunity?.choicePotential ?? null, operatorMutations: candidate.lineage.mutations.filter(mutation => mutation.startsWith("program."))},
   decisionEffects,
   experiment: result(experimentManager, experimentSeasons),
@@ -127,27 +129,7 @@ function registrySourceFor(directory: string): string {
   if (restored.hash !== sourceState.fingerprint.registryHash) throw new Error("Source registry snapshot is missing and the current registry hash does not match");
   return restored.directory;
 }
-function cloneSource(target: string): void {
-  fs.mkdirSync(target, {recursive: true});
-  for (const entry of fs.readdirSync(source, {withFileTypes: true})) {
-    if (entry.name === ".run.lock") continue;
-    const from = path.join(source, entry.name), to = path.join(target, entry.name);
-    if (entry.isDirectory()) linkTree(from, to);
-    else fs.copyFileSync(from, to);
-  }
-}
-function linkTree(from: string, to: string): void {
-  fs.mkdirSync(to, {recursive: true});
-  for (const entry of fs.readdirSync(from, {withFileTypes: true})) {
-    const sourceFile = path.join(from, entry.name), targetFile = path.join(to, entry.name);
-    if (entry.isDirectory()) linkTree(sourceFile, targetFile);
-    else try { fs.linkSync(sourceFile, targetFile); } catch { fs.copyFileSync(sourceFile, targetFile); }
-  }
-}
-function verifySourcePrefix(branch: string): boolean {
-  for (let season = 1; season <= sourceState.completedSeason; season += 1) for (const name of ["season.json", "evolution.json"]) if (digestFile(path.join(source, `season-${String(season).padStart(2, "0")}`, name)) !== digestFile(path.join(branch, `season-${String(season).padStart(2, "0")}`, name))) return false;
-  return true;
-}
+function verifyPrefix(branch: string, manifest: DynastyCheckpointBranchManifest): true { verifyDynastyCheckpointBranch(branch, manifest); return true; }
 function prepareOutput(): void {
   if (fs.existsSync(out)) throw new Error(`Counterfactual output exists: ${out}`);
   if (out === source || source.startsWith(`${out}${path.sep}`) || out.startsWith(`${source}${path.sep}`)) throw new Error("Counterfactual output must be separate from its source");
@@ -180,7 +162,6 @@ function markdown(value: typeof summary): string { const effects = value.decisio
 function sumDecisionEffects(left: ReturnType<typeof compareDecisionEffects>, right: ReturnType<typeof compareDecisionEffects>) { return Object.fromEntries(Object.keys(left).map(key => [key, left[key as keyof typeof left] + right[key as keyof typeof right]])) as ReturnType<typeof compareDecisionEffects>; }
 function seasonRange(first: number, last: number): number[] { return Array.from({length: last - first + 1}, (_, index) => first + index); }
 function sum(values: number[]): number { return values.reduce((total, value) => total + value, 0); }
-function digestFile(file: string): string { return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex"); }
 function write(file: string, value: unknown): void { fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, "utf8"); }
 function read<T>(file: string): T { return JSON.parse(fs.readFileSync(file, "utf8")) as T; }
 function option(name: string, fallback: string): string { const index = args.indexOf(name); return index >= 0 ? args[index + 1] ?? fallback : fallback; }

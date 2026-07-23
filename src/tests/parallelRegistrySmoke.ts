@@ -5,7 +5,7 @@ import path from "node:path";
 import {compileSandboxTeam} from "../sandbox/compiler";
 import type {SandboxTeam} from "../sandbox/types";
 import {createRegistrySnapshot, loadRegistrySnapshot, verifyRegistrySnapshot} from "../draft/registrySnapshot";
-import {acquireRunLock} from "../draft/runLock";
+import {acquireNamedRunLock, acquireRunLock} from "../draft/runLock";
 
 const root = process.cwd();
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "mythic-registry-parallel-"));
@@ -37,6 +37,11 @@ try {
   assert.throws(() => acquireRunLock(league), /already locked/);
   lock.release();
   assert.doesNotThrow(() => { const next = acquireRunLock(league); next.release(); });
+  const workflow = acquireNamedRunLock(league, ".workflow-smoke.lock", {test: true});
+  assert.throws(() => acquireNamedRunLock(league, ".workflow-smoke.lock"), /already locked/);
+  assert.doesNotThrow(() => { const independent = acquireRunLock(league); independent.release(); });
+  workflow.release();
+  assert.throws(() => acquireNamedRunLock(league, "../unsafe.lock"), /Invalid run-lock name/);
 
   const duplicateSource = path.join(temporary, "duplicate");
   fs.cpSync(source, duplicateSource, {recursive: true});

@@ -84,6 +84,8 @@ export interface SeasonReview {
   keeperWhiteBoxCounterfactual: KeeperWhiteBoxCounterfactual;
   keeperPolicy: "incumbent" | "whitebox-experiment";
   learningWhiteBoxTrace: WhiteBoxLearningTrace;
+  learningPolicy: "incumbent" | "no-learning-experiment";
+  learningExperiment: {target: string; rolledBackTraits: Array<keyof ManagerTraits>} | null;
 }
 
 export interface KeeperWhiteBoxCounterfactual {
@@ -186,11 +188,17 @@ export function reviewManagerSeason(
     }
   }
 
+  const learningTarget=`${current.id}@${season}`,requestedLearningPolicy=process.env.V4_LEARNING_POLICY??"incumbent";
+  if(requestedLearningPolicy!=="incumbent"&&requestedLearningPolicy!=="no-learning-experiment")throw new Error(`Unsupported learning policy: ${requestedLearningPolicy}`);
+  const learningPolicy=requestedLearningPolicy==="no-learning-experiment"&&process.env.V4_LEARNING_POLICY_TARGET===learningTarget?"no-learning-experiment":"incumbent";
+  const learningExperiment=learningPolicy==="no-learning-experiment"?{target:learningTarget,rolledBackTraits:[...TRAITS]}:null;
+  if(learningExperiment)for(const trait of TRAITS){after[trait]=learningWhiteBoxTrace.traits.find(entry=>entry.trait===trait)!.rollback.trait;developmentAfter.strategies[trait]={...learningWhiteBoxTrace.traits.find(entry=>entry.trait===trait)!.rollback.posterior};signals.find(entry=>entry.trait===trait)!.delta=0;}
+
   const emergentStyle = classifyEmergentStyle({...current, traits: after, development: developmentAfter});
   developmentAfter.styleHistory.push({season: developmentAfter.seasons, ...emergentStyle});
 
   const {keepers, released, whiteBoxShadow, whiteBoxCounterfactual, keeperPolicy} = selectKeepers(current, activeRoster, previousContracts, Number(process.env.V4_MAX_KEEPERS || 3), season);
-  return {managerId: current.id, performance, signals, before: {...current.traits}, after, developmentAfter, emergentStyle, keepers, released, keeperWhiteBoxShadow: whiteBoxShadow, keeperWhiteBoxCounterfactual: whiteBoxCounterfactual, keeperPolicy, learningWhiteBoxTrace};
+  return {managerId: current.id, performance, signals, before: {...current.traits}, after, developmentAfter, emergentStyle, keepers, released, keeperWhiteBoxShadow: whiteBoxShadow, keeperWhiteBoxCounterfactual: whiteBoxCounterfactual, keeperPolicy, learningWhiteBoxTrace, learningPolicy, learningExperiment};
 }
 
 function lineupAlternativeEvidence(managerId: string, records: DecisionRecord[], decisions: readonly DecisionRecord[]): number {

@@ -154,6 +154,8 @@ Important outputs:
 - `promotion-package.json` plus `promotion-package.json.gz`: verified payload metadata and the complete promotable AI personality.
 - `development-report.md`: compact human-readable standings and status.
 
+After the summary and promotion package have been verified, `npm run compact:development-league -- --source <development-output> --prune-league` writes a hash-verified compressed final-manager state and removes the high-volume internal dynasty. The official season-cycle command performs this retention stage automatically after a committed promotion; the standalone command remains available for older or manually generated cohorts. Later cycles automatically prefer the compact state, so personality, learning, lineage, and career continuity remain available without retaining battle logs or the full decision ledger. Pruning is restricted to the direct `league/` child of the explicitly named development output, which must also contain the expected entrants and summary artifacts.
+
 ## In-place top-league promotion (recommended)
 
 At a clean audited season boundary, the production path automatically relegates the bottom `N` managers and assigns the top `N` verified development candidates in one atomic transaction. It preserves the dynasty directory, season numbering, assets, contracts, cash, dead money, market history, money supply, all completed-season evidence, and every non-relegated manager. The incoming manager keeps its development-league personality, learned memory, strategy program, and lineage, but starts a new major-league personal career with zero titles, points, and top-league seasons. Its punctuated-evolution pressure starts at zero rather than inheriting the outgoing manager's pressure.
@@ -166,7 +168,7 @@ npm run promote-development-in-place -- `
   --transaction-id after-season-09
 ```
 
-The command requires a matching clean `audit-summary.json`, recomputes its input signature, verifies the compressed promotion-package hash, and accepts only a schema-v2 package bound to the exact source root, state hash, seed, season, runtime fingerprint, registry, and audit signature. A package already consumed by the dynasty, a duplicate child, an active lineage, or a previously admitted lineage is rejected. The command rejects a live `.run.lock`, stores a compressed exact pre-transaction state and audit under `promotion-transactions/<id>/`, then atomically replaces `dynasty-state.json`. Explicit retirement or exceptional vacancies remain available with `--replacements manager-05,manager-06 --candidate-indices 1,2 --reason retirement`.
+The command requires a matching clean `audit-summary.json`, recomputes its input signature, verifies the compressed promotion-package hash, and accepts only a schema-v2 package bound to the exact source root, state hash, seed, season, runtime fingerprint, registry, and audit signature. A package already consumed by the dynasty, a duplicate child, an active lineage, or a previously admitted lineage is rejected. The command rejects a live `.run.lock`, stores a compressed exact pre-transaction state and audit under `promotion-transactions/<id>/`, then atomically replaces `dynasty-state.json`. It also stores and hashes `dynasty-state.after.json.gz`: this is the exact post-promotion, pre-next-season checkpoint needed by future isolated counterfactuals, and prepared-transaction recovery verifies it before recording a recovered commit. Explicit retirement or exceptional vacancies remain available with `--replacements manager-05,manager-06 --candidate-indices 1,2 --reason retirement`.
 
 Before another season has changed the state, the exact transaction can be rolled back:
 
@@ -181,7 +183,11 @@ A prepared transaction is recovered before any later promotion: if the current s
 
 ## Audited official-season pipeline
 
-The resumable production command combines the clean pre-season audit, one development cohort, source-bound promotion package, atomic bottom-N promotion, next major season, final audit, and optional global-history update. Every stage is persisted under `season-cycles/<cycle-id>.json`; a completed cycle is idempotent, and an unfinished cycle resumes from verified artifacts rather than repeating completed battles.
+The resumable production command combines the clean pre-season audit, one development cohort, source-bound promotion package, atomic bottom-N promotion, verified development-output compaction, next major season, final audit, and optional global-history update. Every stage is persisted under `season-cycles/<cycle-id>.json`; a completed cycle is idempotent, and an unfinished cycle resumes from verified artifacts rather than repeating completed battles. A dedicated workflow lock prevents two season-cycle processes from mutating the same major-league boundary concurrently.
+
+The cycle also binds its storage policy in the manifest. `--min-free-gb` defaults to `10` and is checked before mutation and again before the next major season. `--max-development-output-mb` defaults to `2048` and rejects an oversized uncompressed development result before promotion. Both observed free space and development output size are retained in stage evidence; a resumed cycle must use the same limits.
+
+Add `--preflight-only` to validate the current clean audit, runtime signature or explicit upgrade authorization, history-ledger continuity, previous compact development source, target-output status, and storage policy without creating a cycle manifest or changing the dynasty. A failed preflight exits with status `2` and prints the individual readiness fields.
 
 ```powershell
 npm run official-season-cycle -- `

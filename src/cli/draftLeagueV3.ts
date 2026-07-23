@@ -29,6 +29,7 @@ import {LINEUP_SHADOW_PARAMETERS} from "../ai/whiteBox/parameters";
 import {buildAcquisitionWhiteBoxCandidate, whiteBoxAcquisitionTotal} from "../ai/whiteBox/acquisition";
 import {ACQUISITION_SHADOW_PARAMETERS, BID_SHADOW_PARAMETERS, MARKET_FLOW_SHADOW_PARAMETERS, REGISTRATION_SHADOW_PARAMETERS} from "../ai/whiteBox/parameters";
 import {evaluateWhiteBoxBid} from "../ai/whiteBox/auction";
+import {WHITE_BOX_BID_COUNTERFACTUAL_POLICY} from "../ai/whiteBox/bidApproval";
 import {buildTradeWhiteBoxCandidate, evaluateMarketReplacement, evaluateTradeAssistGate, evaluateWaiverPriority, type TradeCandidateInput} from "../ai/whiteBox/marketFlow";
 import {loadBattleAssistApproval} from "../ai/whiteBox/battleApproval";
 
@@ -94,6 +95,8 @@ const marketHistoryPath = process.env.V3_MARKET_HISTORY ? path.resolve(process.e
 const budgetPath = process.env.V3_BUDGETS ? path.resolve(process.env.V3_BUDGETS) : null;
 const assetLedgerPath = process.env.V3_ASSET_LEDGER ? path.resolve(process.env.V3_ASSET_LEDGER) : null;
 const auctionMode = process.env.V3_AUCTION_MODE || "sequential";
+const bidCounterfactualPolicy = process.env.V3_BID_COUNTERFACTUAL_POLICY || "";
+const bidCounterfactualTarget = process.env.V3_BID_COUNTERFACTUAL_TARGET || "";
 const minimumRosterSize = Number(process.env.V3_MIN_ROSTER || 8);
 const maximumRosterSize = Number(process.env.V3_MAX_ROSTER || 8);
 const midseasonGrant = Number(process.env.V3_MIDSEASON_GRANT || 0);
@@ -200,6 +203,8 @@ function validateSettings(): void {
   if (!Number.isInteger(seasonNumber) || seasonNumber < 1) throw new Error("V3_SEASON_NUMBER must be positive");
   if (!Number.isInteger(regularRoundSetting) || regularRoundSetting < 0 || regularRoundSetting >= managerLimit) throw new Error(`V3_REGULAR_ROUNDS must be 0..${managerLimit - 1}`);
   if (!['sequential', 'portfolio'].includes(auctionMode)) throw new Error("V3_AUCTION_MODE must be sequential or portfolio");
+  if (bidCounterfactualPolicy && bidCounterfactualPolicy !== WHITE_BOX_BID_COUNTERFACTUAL_POLICY) throw new Error(`Unsupported V3 bid counterfactual policy: ${bidCounterfactualPolicy}`);
+  if (Boolean(bidCounterfactualPolicy) !== Boolean(bidCounterfactualTarget)) throw new Error("V3 bid counterfactual policy and target must be provided together");
   if (!Number.isInteger(minimumRosterSize) || !Number.isInteger(maximumRosterSize) || minimumRosterSize < 6 || maximumRosterSize < minimumRosterSize || maximumRosterSize > 10) throw new Error("V3 roster limits must satisfy 6 <= min <= max <= 10");
   if (!Number.isInteger(midseasonGrant) || midseasonGrant < 0 || midseasonGrant > 20) throw new Error("V3_MIDSEASON_GRANT must be 0..20");
   if (!Number.isFinite(tacticalMemoryConfidenceFloor) || tacticalMemoryConfidenceFloor < 0 || tacticalMemoryConfidenceFloor > 1) throw new Error("V3_TACTICAL_MEMORY_CONFIDENCE_FLOOR must be within 0..1");
@@ -640,7 +645,7 @@ function runAuction(available: Map<string, Candidate>, dex: ReturnType<typeof De
     const nominated = nominationRanked[0].candidate;
     const bids = managers.map(manager => bidFor(manager, nominated, dex, lot)).sort((a, b) => b.bid - a.bid || tie(a.manager.id, lot) - tie(b.manager.id, lot));
     const winner = bids[0].bid > 0 ? bids[0] : null;
-    const decision = ledger.add({stage: "auction", actor: nominator.id, decision: `提名并竞价 ${nominated.name}`, selected: winner ? `${winner.manager.name} ${winner.bid}` : "流拍", context: {lot: lot + 1, family: nominated.family, assetId: nominated.assetId, nominator: nominator.name, referencePrice: nominated.market, budgets: Object.fromEntries(managers.map(manager => [manager.id, manager.budget])), bids: bids.map(bid => ({manager: bid.manager.id, bid: bid.bid, ceiling: bid.ceiling, rationale: bid.rationale, whiteBox: bid.whiteBoxTrace}))}, alternatives: nominationRanked.slice(1, 5).map(entry => ({option: entry.candidate.name, score: entry.value})), rationale: winner ? [`${winner.manager.name}最高出价${winner.bid}`, `次高价${bids[1]?.bid ?? 0}`] : ["所有经理选择保留预算"]});
+    const decision = ledger.add({stage: "auction", actor: nominator.id, decision: `提名并竞价 ${nominated.name}`, selected: winner ? `${winner.manager.name} ${winner.bid}` : "流拍", context: {lot: lot + 1, family: nominated.family, assetId: nominated.assetId, nominator: nominator.name, referencePrice: nominated.market, budgets: Object.fromEntries(managers.map(manager => [manager.id, manager.budget])), bids: bids.map(bid => ({manager: bid.manager.id, bid: bid.bid, ceiling: bid.ceiling, rationale: bid.rationale, whiteBox: bid.whiteBoxTrace, ...(bid.bidExperiment ? {bidExperiment: bid.bidExperiment} : {})}))}, alternatives: nominationRanked.slice(1, 5).map(entry => ({option: entry.candidate.name, score: entry.value})), rationale: winner ? [`${winner.manager.name}最高出价${winner.bid}`, `次高价${bids[1]?.bid ?? 0}`] : ["所有经理选择保留预算"]});
     if (!winner) { available.delete(nominated.id); continue; }
     winner.manager.budget -= winner.bid;
     winner.manager.roster.push(newRosterEntry(configureCandidateForManager(winner.manager, nominated, dex), "auction", winner.bid, decision.id));
@@ -672,7 +677,7 @@ function runPortfolioAuction(available: Map<string, Candidate>, dex: ReturnType<
     const award = awardByAsset.get(candidate.id);
     const winner = award ? managers.find(manager => manager.id === award.managerId)! : null;
     const rankedBids = bids.filter(bid => bid.assetId === candidate.id && bid.bid > 0).sort((a, b) => b.bid - a.bid || b.utility - a.utility);
-    const auditedBids = rankedBids.map(bid => ({...bid, whiteBox: bidDetails.get(`${bid.managerId}:${candidate.id}`)?.whiteBoxTrace}));
+    const auditedBids = rankedBids.map(bid => { const detail = bidDetails.get(`${bid.managerId}:${candidate.id}`); return {...bid, whiteBox: detail?.whiteBoxTrace, ...(detail?.bidExperiment ? {bidExperiment: detail.bidExperiment} : {})}; });
     const decision = ledger.add({stage: "auction", actor: "portfolio-market", decision: `组合市场分配 ${candidate.name}`, selected: winner ? `${winner.name} ${award!.payment}` : "未成交", context: {lot: index + 1, family: candidate.family, assetId: candidate.assetId, mode: "portfolio", pricing: "critical-bid-approximation", referencePrice: candidate.market, submittedBids: rankedBids.length, winningBid: award?.bid ?? 0, criticalBidPrice: award?.payment ?? 0, runnerUpBid: award?.runnerUpBid ?? 0, bids: auditedBids}, alternatives: rankedBids.slice(0, 5).map(bid => ({option: bid.managerId, score: bid.utility, cost: bid.bid})), rationale: winner ? ["全体高级资产同时求解", "在预算、名单和唯一性约束下最大化组合效用", `使用透明临界报价近似支付${award!.payment}`] : ["没有可行的正报价分配"]});
     if (winner) {
       winner.budget -= award!.payment;
@@ -703,7 +708,11 @@ function bidFor(manager: Manager, candidate: Candidate, dex: ReturnType<typeof D
   const bid = Math.max(0, ceiling - shade);
   const whiteBoxTrace = evaluateWhiteBoxBid({decisionId: `bid:${seasonNumber}:${lot + 1}:${manager.id}:${candidate.id}`, managerId: manager.id, candidateId: candidate.id, mode: sportsMarket ? "sports-market" : "standard", budget: manager.budget, reserve, market: candidate.market, fit, fundamental, starPremium: economics.starPremium, bidAggression: economics.bidAggression, cashUtility: economics.cashUtility, remainingNeed: Math.max(1, 4 - manager.roster.length), scarceMultiplier: scarcePreference, shade, parameters: bidShadowValues});
   if (whiteBoxTrace.ceiling !== ceiling || whiteBoxTrace.bid !== bid) throw new Error(`White-box bid decomposition drifted for ${manager.id}:${candidate.id}`);
-  return {manager, bid, ceiling, rationale: [`通用实力与适配估值${fit.toFixed(2)}`, sportsMarket ? `独立基本面估值${fundamental.toFixed(2)}，旧市场价仅作弱锚` : `参考市场价${candidate.market}`, `保留至少${reserve}资金完成名单`, shade ? `策略性压价${shade}` : "按上限竞价"], whiteBoxTrace};
+  const targeted = bidCounterfactualPolicy === WHITE_BOX_BID_COUNTERFACTUAL_POLICY && whiteBoxTrace.decisionId === bidCounterfactualTarget;
+  if (targeted && (whiteBoxTrace.hardRejections.length || whiteBoxTrace.shade <= 0 || whiteBoxTrace.ceiling <= whiteBoxTrace.bid)) throw new Error(`Targeted bid is not eligible for ${WHITE_BOX_BID_COUNTERFACTUAL_POLICY}: ${whiteBoxTrace.decisionId}`);
+  const executedBid = targeted ? whiteBoxTrace.ceiling : bid;
+  const bidExperiment = targeted ? {policy: WHITE_BOX_BID_COUNTERFACTUAL_POLICY, target: bidCounterfactualTarget, incumbentBid: bid, candidateBid: executedBid, ceiling: whiteBoxTrace.ceiling} : undefined;
+  return {manager, bid: executedBid, ceiling, rationale: [`通用实力与适配估值${fit.toFixed(2)}`, sportsMarket ? `独立基本面估值${fundamental.toFixed(2)}，旧市场价仅作弱锚` : `参考市场价${candidate.market}`, `保留至少${reserve}资金完成名单`, shade ? `策略性压价${shade}` : "按上限竞价", ...(targeted ? ["反事实实验取消策略性压价"] : [])], whiteBoxTrace, bidExperiment};
 }
 
 function runSupplementalDraft(available: Map<string, Candidate>, dex: ReturnType<typeof Dex.mod>): void {
