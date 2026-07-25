@@ -189,7 +189,7 @@ The cycle also binds its storage policy in the manifest. `--min-free-gb` default
 
 Add `--preflight-only` to validate the current clean audit, runtime signature or explicit upgrade authorization, history-ledger continuity, previous compact development source, target-output status, and storage policy without creating a cycle manifest or changing the dynasty. A failed preflight exits with status `2` and prints the individual readiness fields.
 
-The formal source must already contain `dynasty-state.json`. A missing source fails before acquiring a workflow lock or creating the league root. Successful and failed preflights do not create `season-cycles`; that directory is created only when a real cycle stage is persisted.
+The formal source must already contain `dynasty-state.json`. A missing source returns exit status `2` with a compact `ready: false` result and `formal-state-missing` reason code before acquiring a workflow lock or creating the league root. Successful and failed preflights do not create `season-cycles`; that directory is created only when a real cycle stage is persisted. Non-preflight execution with a missing source remains a hard error.
 
 ```powershell
 npm run official-season-cycle -- `

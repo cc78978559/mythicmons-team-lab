@@ -12,7 +12,8 @@ const league = path.join(workspace, "league"), development = path.join(workspace
 const env = {...process.env, V12_OUT: league, V12_SEASONS: "1", V12_MANAGER_LIMIT: "6", V12_PAIRS: "1", V12_POOL_SIZE: "100", V12_AUCTION_LOTS: "10", V12_REGULAR_ROUNDS: "1", V12_MAX_TURNS: "20", V12_MIN_ROSTER: "6", V12_MAX_ROSTER: "6", V12_SEED: "official-cycle-smoke", V12_EVOLUTION_MODE: "punctuated", V12_EVOLUTION_POLICY: "shadow", V12_EVIDENCE_RETENTION: "compact", V12_EVIDENCE_SAMPLE_RATE: "0"};
 try {
   const missingLeague = path.join(workspace, "missing-league"), missing = execute("src/cli/runOfficialSeasonCycle.ts", ["--major-source", missingLeague, "--development-out", development, "--preflight-only"]);
-  assert.notEqual(missing.status, 0); assert.match(missing.stderr, /Formal dynasty state does not exist/); assert.equal(fs.existsSync(missingLeague), false);
+  const missingResult = JSON.parse(missing.stdout);
+  assert.equal(missing.status, 2); assert.equal(missingResult.ready, false); assert.deepEqual(missingResult.reasonCodes, ["formal-state-missing"]); assert.equal(missingResult.source.status, "missing"); assert.equal(fs.existsSync(missingLeague), false);
   run("src/cli/draftLeagueV12.ts", [], env);
   run("src/cli/buildOfficialHistory.ts", ["--major-source", league, "--out", history]);
   run("src/cli/auditV12.ts", ["--out", league, "--force"]);

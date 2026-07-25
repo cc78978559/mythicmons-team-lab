@@ -23,7 +23,13 @@ const storagePolicy = {minimumFreeGb: numberOption("--min-free-gb", 10, 0, 10000
 const historyLedger = option("--history-ledger", "") ? path.resolve(option("--history-ledger", "")) : undefined;
 const cycleConfiguration = {globalSeasonOffset: offset, ...(historyLedger ? {historyLedger} : {}), developmentSeasons: option("--development-seasons", "1"), developmentRounds: option("--development-rounds", "1"), developmentMaxTurns: option("--development-max-turns", "40")};
 const statePath = path.join(majorRoot, "dynasty-state.json");
-if (!fs.existsSync(statePath)) throw new Error(`Formal dynasty state does not exist: ${statePath}`);
+if (!fs.existsSync(statePath)) {
+  if (args.includes("--preflight-only")) {
+    const result = {ready: false, reasonCodes: ["formal-state-missing"], source: {root: majorRoot, state: statePath, status: "missing"}, development: {target: developmentOut, status: fs.existsSync(developmentOut) ? "present-without-source" : "absent", previous: previousDevelopment ?? null, previousStatus: previousDevelopment && fs.existsSync(previousDevelopment) ? "present-unverified" : previousDevelopment ? "missing" : "not-configured"}, history: {path: historyLedger ?? null, status: historyLedger && fs.existsSync(historyLedger) ? "present-unverified" : historyLedger ? "missing" : "not-configured"}};
+    fs.writeSync(process.stdout.fd, `${JSON.stringify(result, null, 2)}\n`, undefined, "utf8"); process.exit(2);
+  }
+  throw new Error(`Formal dynasty state does not exist: ${statePath}`);
+}
 const workflowLock = acquireNamedRunLock(majorRoot, ".official-season-cycle.lock", {workflow: "official-season-cycle"});
 process.once("exit", () => workflowLock.release());
 const cycleId = option("--cycle-id", "") || runningCycleId() || `after-s${String(readState().completedSeason).padStart(2, "0")}`;
