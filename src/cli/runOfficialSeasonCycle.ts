@@ -22,12 +22,13 @@ const promotionSlots = integerOption("--promotion-slots", 3, 1, 5), offset = int
 const storagePolicy = {minimumFreeGb: numberOption("--min-free-gb", 10, 0, 10000), maximumDevelopmentOutputMb: integerOption("--max-development-output-mb", 2048, 1, 102400)};
 const historyLedger = option("--history-ledger", "") ? path.resolve(option("--history-ledger", "")) : undefined;
 const cycleConfiguration = {globalSeasonOffset: offset, ...(historyLedger ? {historyLedger} : {}), developmentSeasons: option("--development-seasons", "1"), developmentRounds: option("--development-rounds", "1"), developmentMaxTurns: option("--development-max-turns", "40")};
+const statePath = path.join(majorRoot, "dynasty-state.json");
+if (!fs.existsSync(statePath)) throw new Error(`Formal dynasty state does not exist: ${statePath}`);
 const workflowLock = acquireNamedRunLock(majorRoot, ".official-season-cycle.lock", {workflow: "official-season-cycle"});
 process.once("exit", () => workflowLock.release());
 const cycleId = option("--cycle-id", "") || runningCycleId() || `after-s${String(readState().completedSeason).padStart(2, "0")}`;
 if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/.test(cycleId)) throw new Error("Invalid --cycle-id");
 const manifestDir = path.join(majorRoot, "season-cycles"), manifestPath = path.join(manifestDir, `${cycleId}.json`);
-fs.mkdirSync(manifestDir, {recursive: true});
 const initialState = readState(), initialHash = fileHash(path.join(majorRoot, "dynasty-state.json"));
 let manifest = loadOrCreateManifest();
 if (manifest.status === "complete") { verifyComplete(); finish(true); }
@@ -139,7 +140,7 @@ function developmentComplete(): boolean { return ["promotion-package.json", "pro
 function validPreviousDevelopment(directory: string): boolean { return ["entrants.json", "development-summary.json", "development-final-state.json", "development-final-state.json.gz"].every(file => fs.existsSync(path.join(directory, file))); }
 function promotionPayload(): any { const promotion = read<any>(path.join(developmentOut, "promotion-package.json")); return JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(developmentOut, promotion.archive))).toString("utf8")); }
 function completeStage(stage: string, evidence: Record<string, unknown>): void { manifest.stages[stage] = {status: "complete", at: new Date().toISOString(), evidence}; persist(); }
-function persist(): void { atomicJson(manifestPath, manifest); }
+function persist(): void { fs.mkdirSync(manifestDir, {recursive: true}); atomicJson(manifestPath, manifest); }
 function loadOrCreateManifest(): CycleManifest {
   if (fs.existsSync(manifestPath)) {
     const saved = read<CycleManifest>(manifestPath);
