@@ -169,3 +169,4 @@ npm run official-season-cycle -- `
 - `quick`, `full`, and `forensic` modes now distinguish routine checks, complete invariant rescans with hash reuse, and complete content rehashing. Cache hits no longer rewrite every season report.
 - Financial illegality remains fatal. League-health observations are counted separately so a small but technically valid test league is not rejected merely for low market activity.
 - Because the command aliases also changed `package.json`, the final affected-test run expanded to all 53 test families. All 54 checks, including type checking, passed. Usage is documented in `docs/V12_AUDIT.md`.
+- The first S10 continuation exposed and fixed one follow-up performance defect: increasing the season count invalidated the whole hash cache. Cache entries are now reused independently by path across season growth; a regression fixture adding a synthetic next season hashes only its new file.

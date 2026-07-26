@@ -34,7 +34,7 @@ const summaryPath = path.join(out, "audit-summary.json"), cachePath = path.join(
 stage(`indexing ${state.completedSeason} seasons`);
 const priorCache = mode === "forensic" ? undefined : optional<V12AuditSignatureCache>(cachePath);
 const signatureStarted = Date.now(), signatureResult = auditV12SignatureIncremental(out, state.completedSeason, priorCache, mode === "forensic");
-if (!priorCache || signatureResult.hashedFiles > 0 || Object.keys(priorCache.files).length !== signatureResult.files) writeAtomic(cachePath, signatureResult.cache);
+if (!priorCache || priorCache.seasons !== state.completedSeason || signatureResult.hashedFiles > 0 || Object.keys(priorCache.files).length !== signatureResult.files) writeAtomic(cachePath, signatureResult.cache);
 stage(`signature ready: ${signatureResult.hashedFiles}/${signatureResult.files} files hashed, ${megabytes(signatureResult.hashedBytes)}/${megabytes(signatureResult.bytes)} MB read in ${seconds(signatureStarted)}s`);
 let summary: V12AuditSummary, cached = false;
 if (!args.includes("--force") && mode === "quick" && fs.existsSync(summaryPath)) {

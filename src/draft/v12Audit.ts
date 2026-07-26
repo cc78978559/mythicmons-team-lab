@@ -210,7 +210,7 @@ export function auditV12SignatureIncremental(rootDirectory: string, seasons: num
   const root = path.resolve(rootDirectory), files = auditFiles(root, seasons), entries: V12AuditSignatureCache["files"] = {};
   let bytes = 0, hashedFiles = 0, hashedBytes = 0;
   for (const file of files) {
-    const relative = path.relative(root, file).replace(/\\/g, "/"), stat = fs.statSync(file), cached = prior?.schemaVersion === 1 && prior.seasons === seasons ? prior.files[relative] : undefined;
+    const relative = path.relative(root, file).replace(/\\/g, "/"), stat = fs.statSync(file), cached = prior?.schemaVersion === 1 ? prior.files[relative] : undefined;
     const reusable = !rehashAll && cached?.size === stat.size && cached.mtimeMs === stat.mtimeMs && /^[a-f0-9]{64}$/.test(cached.sha256);
     const sha256 = reusable ? cached.sha256 : crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
     entries[relative] = {size: stat.size, mtimeMs: stat.mtimeMs, sha256};
