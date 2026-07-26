@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
-import {auditV12Output, auditV12Signature} from "../draft/v12Audit";
+import {auditV12Output, auditV12Signature, auditV12SignatureIncremental} from "../draft/v12Audit";
 import {strategyProgramHash, validateStrategyProgram} from "../draft/strategyProgram";
 import {loadDynastyState} from "../draft/dynastyStateStore";
 
@@ -67,6 +67,10 @@ assert.ok(!health.warnings.includes("auction-tie-dominance"));
 assert.equal(health.programSpecies, audit.metrics.uniquePrograms);
 assert.equal(health.behaviorSpecies, audit.metrics.uniqueProgramBehaviors);
 assert.equal(audit.metrics.invalidLineups, 0);
+assert.equal(audit.metrics.battleFiles, audit.metrics.expectedBattleFiles);
+assert.equal(audit.metrics.battleInventoryMismatches, 0);
+assert.equal(audit.metrics.healthWarnings, health.warnings.length);
+assert.equal(audit.metrics.financialViolations, 0);
 assert(audit.metrics.configurationUpdates > 0);
 assert.equal(audit.metrics.uniqueProgramBehaviors, 1);
 assert.equal(audit.metrics.nonZeroProgramBehaviors, 0);
@@ -79,15 +83,29 @@ assert.equal(brief.season, 1);
 assert(tokenBudget.briefCharacters <= 8_000);
 assert(tokenBudget.estimatedStandardReportTotal <= 3_000);
 const signature = auditV12Signature(output, 1);
+  const firstIncremental = auditV12SignatureIncremental(output, 1);
+  assert.equal(firstIncremental.signature, signature);
+  assert.equal(firstIncremental.hashedFiles, firstIncremental.files);
+  const cachedIncremental = auditV12SignatureIncremental(output, 1, firstIncremental.cache);
+  assert.equal(cachedIncremental.signature, signature);
+  assert.equal(cachedIncremental.hashedFiles, 0);
   const rosterFile = findFiles(path.join(output, "season-01", "rosters"), "roster.json")[0];
   const originalTime = fs.statSync(rosterFile).mtimeMs;
   fs.utimesSync(rosterFile, new Date(), new Date(originalTime + 2000));
   assert.equal(auditV12Signature(output, 1), signature, "Audit signature must ignore metadata-only timestamp drift");
+  const metadataRefresh = auditV12SignatureIncremental(output, 1, firstIncremental.cache);
+  assert.equal(metadataRefresh.signature, signature);
+  assert.equal(metadataRefresh.hashedFiles, 1);
   const originalRoster = fs.readFileSync(rosterFile);
   fs.appendFileSync(rosterFile, "\n");
   assert.notEqual(auditV12Signature(output, 1), signature, "Audit signature must detect content changes");
   fs.writeFileSync(rosterFile, originalRoster);
   assert.equal(auditV12Signature(output, 1), signature, "Restoring exact content must restore the signature");
+  const endFile = findFiles(path.join(output, "season-01", "battles"), "end.json")[0], hiddenEnd = `${endFile}.hidden`;
+  fs.renameSync(endFile, hiddenEnd);
+  const missingBattleAudit = auditV12Output(output);
+  assert(missingBattleAudit.issues.some(entry => entry.code === "battle-inventory-mismatch"), "Audit must reconcile archived and present battles");
+  fs.renameSync(hiddenEnd, endFile);
 const pinnedHash = read<any>(path.join(output, "dynasty-state.json")).registry.hash;
 const sourceFile = path.join(registrySource, "g1-six-team.json"), sourceValue = JSON.parse(fs.readFileSync(sourceFile, "utf8"));
 fs.writeFileSync(sourceFile, `${JSON.stringify(sourceValue)}\n`, "utf8");
@@ -97,6 +115,14 @@ runSeason(true, "1", true);
 const adopted = loadDynastyState<any>(path.join(output, "dynasty-state.json"));
 assert.notEqual(adopted.registry.hash, pinnedHash);
 assert(adopted.decisionRecords.some((record: any) => record.decision.includes("采用新的魔改配置版本")));
+const fullAudit = runAudit("--mode", "full");
+assert.equal(fullAudit.status, 0, fullAudit.stderr || fullAudit.stdout);
+assert.equal(JSON.parse(fullAudit.stdout).cached, false);
+const quickAudit = runAudit("--mode", "quick");
+assert.equal(quickAudit.status, 0, quickAudit.stderr || quickAudit.stdout);
+const quickResult = JSON.parse(quickAudit.stdout);
+assert.equal(quickResult.cached, true);
+assert.equal(quickResult.signature.hashedFiles, 0);
 fs.rmSync(registrySource, {recursive: true, force: true});
 console.log("V12 self-programming league smoke test passed");
 
@@ -118,6 +144,13 @@ function assertResumeRejectsChangedMemoryPolicy(): void {
   });
   assert.notEqual(result.status, 0, "a saved journey must reject a different tactical-memory policy");
   assert.match(result.stderr || result.stdout, /settings do not match/);
+}
+function runAudit(...auditArgs: string[]) {
+  return spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "auditV12.ts"), "--out", output, ...auditArgs], {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
 }
 function findFiles(directory: string, suffix: string, matchSuffix = false): string[] {
   const files: string[] = [];

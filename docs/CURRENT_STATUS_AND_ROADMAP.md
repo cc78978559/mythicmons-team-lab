@@ -161,3 +161,11 @@ npm run official-season-cycle -- `
 - Manager configuration learning corrected weak unsupported choices without a hand-authored ban: Dream Eater selected sets fell from 16 in S1 to 7 in S2 and Hydro Cannon fell from 10 to 0. High-power moves retained by managers had positive local battle evidence and were not manually removed.
 - Historical checkpoints `season-00` through `season-09` all verify. Replay plans from every season boundary through S9 are ready, including the audited dependency-migration segment at the start of the journey.
 - The final canonical backup is `C:\ProjectHoly-Backups\mythicmons-team-lab\official-era-03-s9-final-2026-07-26`: 29,427 files and 2,632,345,076 bytes. Source and backup file counts, byte counts, dynasty state, history ledger, audit summary, S9 season/health files, and the S9 checkpoint hash all match.
+
+## 2026-07-26 V12 audit efficiency update
+
+- Audit schema v5 reconciles every season's authoritative `battle-archive.json` count with the actual retained `end.json` inventory. Deleting a complete battle directory can no longer hide behind a lower observed count.
+- Content signatures now use a local incremental hash index. On the nine-season formal archive, the initial full migration read 2,329.5 MB and completed in 31.3 seconds; the subsequent quick audit hashed 0 files, read 0 content bytes, and completed in 2.7-3.4 seconds.
+- `quick`, `full`, and `forensic` modes now distinguish routine checks, complete invariant rescans with hash reuse, and complete content rehashing. Cache hits no longer rewrite every season report.
+- Financial illegality remains fatal. League-health observations are counted separately so a small but technically valid test league is not rejected merely for low market activity.
+- Because the command aliases also changed `package.json`, the final affected-test run expanded to all 53 test families. All 54 checks, including type checking, passed. Usage is documented in `docs/V12_AUDIT.md`.

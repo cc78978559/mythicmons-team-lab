@@ -4,7 +4,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import {cloneManagerProfile, type ManagerProfile} from "../draft/managerProfiles";
 import type {LineageIdentity} from "../draft/naturalEvolution";
-import {auditV12Output, auditV12Signature, v12AuditMarkdown} from "../draft/v12Audit";
+import {auditV12Output, cachedV12AuditSignature, v12AuditMarkdown} from "../draft/v12Audit";
 import {loadDynastyState, prepareDynastyState} from "../draft/dynastyStateStore";
 
 interface SeasonRecord {season: number; rank: number; points: number; champion: boolean}
@@ -159,8 +159,9 @@ function rollback(): never {
   const auditBackup = path.resolve(path.dirname(manifestPath), manifest.source.audit), restoredAuditPath = path.join(majorRoot, "audit-summary.json");
   if (fs.existsSync(auditBackup)) fs.copyFileSync(auditBackup, restoredAuditPath);
   const restoredAudit = fs.existsSync(restoredAuditPath) ? read<AuditSummary>(restoredAuditPath) : undefined;
-  if (!restoredAudit || restoredAudit.inputSignature !== auditV12Signature(majorRoot, restoredAudit.completedSeasons)) {
-    const refreshedAudit = auditV12Output(majorRoot);
+  const restoredSignature = cachedV12AuditSignature(majorRoot, restoredAudit?.completedSeasons ?? read<MajorState>(statePath).completedSeason);
+  if (!restoredAudit || restoredAudit.inputSignature !== restoredSignature.signature) {
+    const refreshedAudit = auditV12Output(majorRoot, restoredSignature.signature);
     fs.writeFileSync(restoredAuditPath, `${JSON.stringify(refreshedAudit, null, 2)}\n`, "utf8");
     fs.writeFileSync(path.join(majorRoot, "audit-report.md"), v12AuditMarkdown(refreshedAudit), "utf8");
   }
@@ -211,7 +212,7 @@ function historicalPromotionLineages(majorRoot: string): Set<string> {
 
 function validateAudit(majorRoot: string, completedSeason: number): AuditSummary {
   const audit = read<AuditSummary>(path.join(majorRoot, "audit-summary.json"));
-  const currentSignature = auditV12Signature(majorRoot, completedSeason);
+  const currentSignature = cachedV12AuditSignature(majorRoot, completedSeason).signature;
   const invalid = audit.inputSignature !== currentSignature || audit.completedSeasons !== completedSeason || audit.fatalCount !== 0 || audit.warningCount !== 0 || !audit.metrics?.moneyConserved || audit.metrics.invalidLineups !== 0 || audit.metrics.missingBattleEvidence !== 0 || audit.metrics.unendedBattles !== 0 || audit.metrics.protocolErrors !== 0;
   if (invalid) throw new Error("Latest major-league audit is not clean or does not match the season boundary");
   return audit;

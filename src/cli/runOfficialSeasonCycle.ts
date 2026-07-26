@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 import {spawnSync} from "node:child_process";
-import {auditV12Signature} from "../draft/v12Audit";
+import {cachedV12AuditSignature} from "../draft/v12Audit";
 import {acquireNamedRunLock} from "../draft/runLock";
 
 interface State {version: number; seed: string; completedSeason: number; settings: Record<string, number | string | boolean | undefined>; managers: Array<{id: string}>; fingerprint: Record<string, string>}
@@ -130,7 +130,7 @@ function updateHistory(): void {
 function preflight(): never {
   const state = readState(), auditPath = path.join(majorRoot, "audit-summary.json"), auditSummary = fs.existsSync(auditPath) ? read<any>(auditPath) : null;
   const auditClean = Boolean(auditSummary && auditSummary.completedSeasons === state.completedSeason && auditSummary.fatalCount === 0 && auditSummary.warningCount === 0 && auditSummary.metrics?.moneyConserved);
-  const auditMatchesCurrentRuntime = Boolean(auditClean && auditSummary.inputSignature === auditV12Signature(majorRoot, state.completedSeason));
+  const auditMatchesCurrentRuntime = Boolean(auditClean && auditSummary.inputSignature === cachedV12AuditSignature(majorRoot, state.completedSeason).signature);
   const developmentStatus = !fs.existsSync(developmentOut) ? "absent" : developmentComplete() ? "complete" : "incomplete";
   const previousStatus = !previousDevelopment ? "not-configured" : validPreviousDevelopment(previousDevelopment) ? "verified" : "invalid";
   const historyPath = historyLedger, history = historyPath && fs.existsSync(historyPath) ? read<any>(historyPath) : null;
@@ -158,7 +158,7 @@ function loadOrCreateManifest(): CycleManifest {
   }
   return {schemaVersion: 1, cycleId, status: "running", majorRoot, developmentOut, previousDevelopment, boundary: {internalSeason: initialState.completedSeason, globalSeason: initialState.completedSeason + offset, stateSha256: initialHash, seed: initialState.seed}, promotionSlots, storage: storagePolicy, configuration: cycleConfiguration, stages: {}};
 }
-function verifyComplete(): void { const state = readState(), audit = read<any>(path.join(majorRoot, "audit-summary.json")); if (state.completedSeason !== manifest.boundary.internalSeason + 1 || audit.completedSeasons !== state.completedSeason || audit.inputSignature !== auditV12Signature(majorRoot, state.completedSeason) || audit.fatalCount || audit.warningCount) throw new Error("Completed cycle manifest no longer matches the league"); }
+function verifyComplete(): void { const state = readState(), audit = read<any>(path.join(majorRoot, "audit-summary.json")); if (state.completedSeason !== manifest.boundary.internalSeason + 1 || audit.completedSeasons !== state.completedSeason || audit.inputSignature !== cachedV12AuditSignature(majorRoot, state.completedSeason).signature || audit.fatalCount || audit.warningCount) throw new Error("Completed cycle manifest no longer matches the league"); }
 function finish(reused: boolean): never { console.log(JSON.stringify({cycleId, status: manifest.status, reused, internalSeason: manifest.boundary.internalSeason + 1, globalSeason: manifest.boundary.internalSeason + 1 + offset, manifest: manifestPath}, null, 2)); process.exit(0); }
 function readState(): State { return read<State>(path.join(majorRoot, "dynasty-state.json")); }
 function runningCycleId(): string | undefined { const directory = path.join(majorRoot, "season-cycles"); if (!fs.existsSync(directory)) return undefined; const running = fs.readdirSync(directory).filter(file => file.endsWith(".json")).map(file => read<CycleManifest>(path.join(directory, file))).filter(value => value.status === "running"); if (running.length > 1) throw new Error("Multiple unfinished season cycles require an explicit --cycle-id"); return running[0]?.cycleId; }
