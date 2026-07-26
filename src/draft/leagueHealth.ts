@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import {strategyProgramBehavior, strategyProgramHash, type StrategyProgram} from "./strategyProgram";
 
 export interface LeagueHealthSnapshot {
   season: number;
@@ -8,6 +9,8 @@ export interface LeagueHealthSnapshot {
   scarceTransactions?: number;
   teamsWithMidseasonLiquidity: number;
   averageFinalCash: number;
+  auctionMode?: "sequential" | "portfolio";
+  equalTopBidRate?: number;
   auctionTieRate: number;
   lateToEarlyPriceRatio: number;
   unusedRosterRate: number;
@@ -20,6 +23,9 @@ export function auditLeagueSeason(seasonDir: string): LeagueHealthSnapshot {
   const season = read<{season: number; transactions?: Array<{type?: string}>}>(path.join(seasonDir, "season.json"));
   const decisions = read<{records: Array<{stage: string; context: Record<string, any>}>}>(path.join(seasonDir, "decision-ledger.json")).records;
   const evolution = read<{descendants: Array<{lineage: {niche: string}; program?: {hash: string}}>}>(path.join(seasonDir, "evolution.json"));
+  const profileFile = path.join(seasonDir, "manager-profiles.json");
+  const profiles = fs.existsSync(profileFile) ? read<{managers?: Array<{strategyProgram?: StrategyProgram}>}>(profileFile).managers ?? [] : [];
+  const programs = profiles.map(profile => profile.strategyProgram).filter((program): program is StrategyProgram => Boolean(program));
   const rosterRoot = path.join(seasonDir, "rosters");
   const rosters = fs.readdirSync(rosterRoot).map(manager => read<{budget: number; members: Array<{appearances: number}>}>(path.join(rosterRoot, manager, "roster.json")));
   const auctions = decisions.filter(record => record.stage === "auction").map((record, index) => {
@@ -37,6 +43,7 @@ export function auditLeagueSeason(seasonDir: string): LeagueHealthSnapshot {
   const programEvolution = /^(1|true|yes)$/i.test(process.env.V4_PROGRAM_EVOLUTION || "false");
   const publicAdjustments = season.transactions?.filter(entry => entry.type === "background-registration").length ?? 0;
   const scarceTransactions = (season.transactions?.length ?? 0) - publicAdjustments;
+  const equalTopBidRate = auctions.length ? auctions.filter(entry => entry.tied).length / auctions.length : 0;
   const snapshot: LeagueHealthSnapshot = {
     season: season.season,
     transactions: season.transactions?.length ?? 0,
@@ -44,11 +51,19 @@ export function auditLeagueSeason(seasonDir: string): LeagueHealthSnapshot {
     scarceTransactions,
     teamsWithMidseasonLiquidity: rosters.filter(roster => roster.budget >= 2).length,
     averageFinalCash: average(rosters.map(roster => roster.budget)),
-    auctionTieRate: auctions.length ? auctions.filter(entry => entry.tied).length / auctions.length : 0,
+    auctionMode: portfolioAuction ? "portfolio" : "sequential",
+    equalTopBidRate,
+    // Portfolio allocation uses continuous utility and global constraints, so equal
+    // integer bids do not invoke the sequential auction's seeded tie-break.
+    auctionTieRate: portfolioAuction ? 0 : equalTopBidRate,
     lateToEarlyPriceRatio: portfolioAuction ? 1 : early > 0 ? late / early : 1,
     unusedRosterRate: totalMembers ? rosters.reduce((sum, roster) => sum + roster.members.filter(member => member.appearances === 0).length, 0) / totalMembers : 0,
-    behaviorSpecies: new Set(evolution.descendants.map(entry => entry.lineage.niche)).size,
-    programSpecies: new Set(evolution.descendants.map(entry => entry.program?.hash).filter(Boolean)).size,
+    behaviorSpecies: programs.length
+      ? new Set(programs.map(program => strategyProgramBehavior(program).hash)).size
+      : new Set(evolution.descendants.map(entry => entry.lineage.niche)).size,
+    programSpecies: programs.length
+      ? new Set(programs.map(strategyProgramHash)).size
+      : new Set(evolution.descendants.map(entry => entry.program?.hash).filter(Boolean)).size,
     warnings: [],
   };
   if (programEvolution ? scarceTransactions < Math.max(1, Math.floor(rosters.length / 10)) && publicAdjustments === 0 : snapshot.transactions < 5) snapshot.warnings.push("low-midseason-activity");
