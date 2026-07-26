@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import zlib from "node:zlib";
 import {spawnSync} from "node:child_process";
 import {loadDynastyState} from "../draft/dynastyStateStore";
 import {buildCareerArchive, loadCareerMemoryCheckpoint, readCareerPortrait} from "../draft/careerArchive";
 
 const root = process.cwd(), temporary = fs.mkdtempSync(path.join(os.tmpdir(), "mythicmons-career-"));
 try {
-  const source = path.join(temporary, "source"), next = path.join(temporary, "next");
+  const source = path.join(temporary, "source"), next = path.join(temporary, "next"), migrated = path.join(temporary, "migrated");
   runLeague(source, "career-source");
   const archive = buildCareerArchive(source);
   assert.equal(archive.managers, 6);
@@ -42,19 +44,40 @@ try {
   assert.ok(battleArchive.compactEvidenceBattles > 0);
   assert.equal(findFiles(path.join(next, "season-01", "battles"), "public.log.gz").length, battleArchive.battles);
   assert.ok(findFiles(path.join(next, "season-01", "battles"), "ai-summary.json").length > 0);
+  const dependencyVariant = writeDependencyVariant(checkpoint, temporary);
+  const rejected = runLeagueProcess(path.join(temporary, "rejected"), "career-rejected", dependencyVariant);
+  assert.notEqual(rejected.status, 0);
+  assert.match(rejected.stderr || rejected.stdout, /ALLOW_DEPENDENCY_UPGRADE/);
+  runLeague(migrated, "career-migrated", dependencyVariant, true);
+  const migratedState = loadDynastyState<any>(path.join(migrated, "dynasty-state.json"));
+  assert.ok(migratedState.decisionRecords.some((record: any) => record.decision === "显式迁移生涯记忆的依赖环境"));
   console.log("Career archive, inherited memory, and compact evidence smoke test passed");
 } finally {
   fs.rmSync(temporary, {recursive: true, force: true});
 }
 
-function runLeague(output: string, seed: string, checkpoint = ""): void {
-  const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "draftLeagueV12.ts")], {
+function runLeague(output: string, seed: string, checkpoint = "", allowDependencyUpgrade = false): void {
+  const result = runLeagueProcess(output, seed, checkpoint, allowDependencyUpgrade);
+  if (result.status !== 0) throw new Error(result.stderr || result.stdout);
+}
+
+function runLeagueProcess(output: string, seed: string, checkpoint = "", allowDependencyUpgrade = false) {
+  return spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "draftLeagueV12.ts")], {
     cwd: root,
-    env: {...process.env, V12_OUT: output, V12_SEASONS: "1", V12_RESUME: "false", V12_SEED: seed, V12_MANAGER_LIMIT: "6", V12_PAIRS: "1", V12_POOL_SIZE: "100", V12_AUCTION_LOTS: "10", V12_REGULAR_ROUNDS: "2", V12_MAX_TURNS: "20", V12_MIN_ROSTER: "6", V12_MAX_ROSTER: "6", V12_EVIDENCE_RETENTION: "compact", V12_EVIDENCE_SAMPLE_RATE: "0", V12_CAREER_CHECKPOINT: checkpoint},
+    env: {...process.env, V12_OUT: output, V12_SEASONS: "1", V12_RESUME: "false", V12_SEED: seed, V12_MANAGER_LIMIT: "6", V12_PAIRS: "1", V12_POOL_SIZE: "100", V12_AUCTION_LOTS: "10", V12_REGULAR_ROUNDS: "2", V12_MAX_TURNS: "20", V12_MIN_ROSTER: "6", V12_MAX_ROSTER: "6", V12_EVIDENCE_RETENTION: "compact", V12_EVIDENCE_SAMPLE_RATE: "0", V12_CAREER_CHECKPOINT: checkpoint, V12_ALLOW_DEPENDENCY_UPGRADE: String(allowDependencyUpgrade)},
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });
-  if (result.status !== 0) throw new Error(result.stderr || result.stdout);
+}
+
+function writeDependencyVariant(checkpoint: ReturnType<typeof loadCareerMemoryCheckpoint>, directory: string): string {
+  const changed = structuredClone(checkpoint);
+  changed.source.fingerprint.dependencyHash = "0".repeat(64);
+  const source = Buffer.from(JSON.stringify(changed)), archive = path.join(directory, "dependency-variant.json.gz");
+  fs.writeFileSync(archive, zlib.gzipSync(source));
+  const manifest = path.join(directory, "dependency-variant.json");
+  fs.writeFileSync(manifest, JSON.stringify({archive: path.basename(archive), sha256: crypto.createHash("sha256").update(source).digest("hex")}));
+  return manifest;
 }
 
 function findFiles(directory: string, name: string): string[] {

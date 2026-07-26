@@ -165,6 +165,7 @@ const resume = /^(1|true|yes)$/i.test(process.env.V4_RESUME || "false");
 const expandFromV5 = /^(1|true|yes)$/i.test(process.env.V4_EXPAND_FROM_V5 || "false");
 const adoptRegistry = /^(1|true|yes)$/i.test(process.env.V4_ADOPT_REGISTRY || "false");
 const allowCodeUpgrade = /^(1|true|yes)$/i.test(process.env.V4_ALLOW_CODE_UPGRADE || "false");
+const allowDependencyUpgrade = /^(1|true|yes)$/i.test(process.env.V4_ALLOW_DEPENDENCY_UPGRADE || "false");
 const careerCheckpointPath = process.env.V4_CAREER_CHECKPOINT ? path.resolve(process.env.V4_CAREER_CHECKPOINT) : "";
 const evidenceRetention = process.env.V4_EVIDENCE_RETENTION || "full";
 if (evidenceRetention !== "full" && evidenceRetention !== "compact") throw new Error("V4_EVIDENCE_RETENTION must be full or compact");
@@ -233,9 +234,11 @@ function initializeFromCareerCheckpoint(): void {
   if (checkpoint.managers.length !== managerLimit) throw new Error(`Career checkpoint contains ${checkpoint.managers.length} managers; expected ${managerLimit}`);
   const expectedIds = initialProfiles.map(profile => profile.id);
   if (checkpoint.managers.some((manager, index) => manager.id !== expectedIds[index])) throw new Error("Career checkpoint manager identities do not match the new league");
-  for (const key of ["dataHash", "registryHash", "benchmarkHash", "dependencyHash", "pokemonShowdownVersion"] as const) {
+  for (const key of ["dataHash", "registryHash", "benchmarkHash", "pokemonShowdownVersion"] as const) {
     if (checkpoint.source.fingerprint[key] !== runtimeFingerprint[key]) throw new Error(`Career checkpoint ${key} does not match the current runtime`);
   }
+  const dependencyUpgrade = checkpoint.source.fingerprint.dependencyHash !== runtimeFingerprint.dependencyHash;
+  if (dependencyUpgrade && !allowDependencyUpgrade) throw new Error("Career checkpoint dependencyHash differs; confirm once with V4_ALLOW_DEPENDENCY_UPGRADE=true");
   if (checkpoint.source.fingerprint.codeHash !== runtimeFingerprint.codeHash && !allowCodeUpgrade) throw new Error("Career checkpoint codeHash differs; confirm once with V4_ALLOW_CODE_UPGRADE=true");
   managers = checkpoint.managers.map(memory => ({
     id: memory.id,
@@ -261,6 +264,23 @@ function initializeFromCareerCheckpoint(): void {
   punctuatedEvolution = {};
   leaguePool = 0;
   moneySupply = managerLimit * baseBudget;
+  if (dependencyUpgrade) ledger.add({
+    stage: "calibration",
+    actor: "system",
+    decision: "显式迁移生涯记忆的依赖环境",
+    selected: runtimeFingerprint.dependencyHash,
+    context: {
+      before: checkpoint.source.fingerprint.dependencyHash,
+      after: runtimeFingerprint.dependencyHash,
+      pokemonShowdownVersion: runtimeFingerprint.pokemonShowdownVersion,
+      resetCompetitiveState: true,
+    },
+    alternatives: [{option: "在旧依赖环境中导入记忆"}],
+    rationale: [
+      "迁移仅用于开启清空阵容、资产、合同与成绩的新旅程",
+      "数据、注册表、基准和 Pokemon Showdown 版本仍通过严格校验",
+    ],
+  });
   ledger.add({stage: "calibration", actor: "system", decision: "从生涯心智检查点开启新旅程", selected: path.basename(careerCheckpointPath), context: {sourceSeed: checkpoint.source.seed, sourceSeason: checkpoint.source.completedSeason, managers: checkpoint.managers.length, reset: ["season", "titles", "points", "contracts", "cash", "assets", "market"]}, alternatives: [{option: "让经理退回完全新手状态"}], rationale: ["保留已学习的人格后验、策略程序、配置经验、对手模型与谱系", "清零竞技成绩和稀缺资源归属，经验必须在新环境重新证明价值"]});
 }
 

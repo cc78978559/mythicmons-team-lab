@@ -24,6 +24,7 @@ const env = {
   V4_RESUME: process.env.V12_RESUME || "false",
   V4_ADOPT_REGISTRY: process.env.V12_ADOPT_REGISTRY || "false",
   V4_ALLOW_CODE_UPGRADE: process.env.V12_ALLOW_CODE_UPGRADE || "false",
+  V4_ALLOW_DEPENDENCY_UPGRADE: process.env.V12_ALLOW_DEPENDENCY_UPGRADE || "false",
   V4_CAREER_CHECKPOINT: importedCheckpoint,
   V4_EVIDENCE_RETENTION: process.env.V12_EVIDENCE_RETENTION || "compact",
   V4_EVIDENCE_SAMPLE_RATE: process.env.V12_EVIDENCE_SAMPLE_RATE || "0.02",

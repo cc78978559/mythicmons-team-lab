@@ -39,11 +39,12 @@ $env:V12_SEED="journey-02"
 $env:V12_SEASONS="1"
 $env:V12_RESUME="false"
 $env:V12_ALLOW_CODE_UPGRADE="true" # required once when league code changed after the source journey
+$env:V12_ALLOW_DEPENDENCY_UPGRADE="true" # required once when only imported memory crosses a reviewed dependency-lock change
 $env:V12_CAREER_CHECKPOINT="output/draft-league-v12-nine-season-valid-no-wigglytuff/career-portraits/career-memory.json"
 npm.cmd run draft-league-v12
 ```
 
-`V12_CAREER_CHECKPOINT` cannot be combined with `V12_RESUME`. Registry, benchmark, dependency, and Pokemon Showdown fingerprints must match. A code-only change requires the existing one-time `V12_ALLOW_CODE_UPGRADE=true` confirmation.
+`V12_CAREER_CHECKPOINT` cannot be combined with `V12_RESUME`. Registry, benchmark, and Pokemon Showdown fingerprints must match. A code-only change requires the one-time `V12_ALLOW_CODE_UPGRADE=true` confirmation. A reviewed dependency-lock change requires `V12_ALLOW_DEPENDENCY_UPGRADE=true`; this exception applies only to memory import into a new journey, is recorded in the decision ledger, and never relaxes an in-place dynasty resume.
 
 ## Evidence retention
 
