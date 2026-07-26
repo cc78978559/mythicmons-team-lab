@@ -138,3 +138,15 @@ npm run official-season-cycle -- `
 - Formal S21 season 12 reconstruction matched 60 assets, 1,783 positive bids, 30 manager limits, and 28 awards. The cheap gate found 176 screenable bids.
 - The first 5 prioritized deep screens completed in 11.948 seconds: 2 changed the global allocation and 3 were solver-confirmed no-ops. One change added a previously unawarded asset; the other caused a three-asset allocation chain.
 - Those 2 cases are now `executable` in unified evidence schema v4; the remaining 13,190 retained replicas stay `requires-gate`. No formal dynasty branch has been launched and no production bid policy has changed.
+
+## 2026-07-26 official-era-03 S1 update
+
+- The previously documented S1-S21 local formal archive is not present on this workstation or in the available backups. It was not reconstructed from summaries. `official-era-03` is therefore a clean new formal history starting at S1.
+- The new journey imports only the thirty managers' verified nine-season career memory checkpoint. Competitive records, titles, cash, contracts, assets, and market ownership were reset. The reviewed dependency transition is explicit in the permanent decision ledger; in-place dynasty resume remains dependency-strict.
+- Official S1 completed with manager 15 as champion. The forced audit covered 770 battles and 748 lineups with 0 fatal issues, 0 warnings, 0 protocol errors, 0 unended battles, and conserved money. Six recovered choice retries all completed legally.
+- Active AI diversity is 25 structural strategy programs and 14 behavior fingerprints across 30 managers. The season retained 312,668 bounded program observations and 3,504 compact samples with no invalid opportunity records.
+- `season-00` and `season-01` historical checkpoints, the frozen registry, and the historical runtime bundle all pass project verification. Canonical history is `output/official-era-03/official-history-ledger.json`.
+- Two reporting defects found during S1 review were fixed in commit `111abc3`: punctuated evolution no longer reports zero active program species, and equal integer bids in the portfolio solver are no longer mislabeled as random tie-break dominance. The raw equal-top-bid rate remains visible as an economic diagnostic.
+- The derived S1 health report was rebuilt without changing battles, dynasty state, or historical checkpoints. The repair is recorded in `output/official-era-03/maintenance-log.json`; the post-repair audit remains 0 fatal / 0 warning.
+- The canonical post-repair backup is `C:\ProjectHoly-Backups\mythicmons-team-lab\official-era-03-s1-post-healthfix-2026-07-26`: 3,463 files and 165,082,607 bytes, with all selected state, audit, history, health, and checkpoint SHA-256 values matching.
+- Configuration review remains an S2 observation target rather than a hand-authored ban list. Recharge and high-base-power attacks produced strong direct local evidence, while unsupported Dream Eater produced weak evidence and a lower posterior. S2 should test whether managers replace the latter through their own learned configuration memory.
