@@ -1452,6 +1452,7 @@ function lineupWhiteBoxCandidate(manager: Manager, lineup: Candidate[], opponent
   const input: WhiteBoxLineupInput = {
     id: lineupCandidateId(lineup),
     members,
+    opponents: opponentManager.roster.map(entry => ({id: entry.candidate.id, strength: entry.candidate.strength, roles: [...entry.candidate.roles]})),
     traits: manager.traits,
     roleTargets: manager.roleTargets,
   };

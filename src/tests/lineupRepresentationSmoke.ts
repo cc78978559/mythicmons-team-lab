@@ -9,6 +9,7 @@ const balanced = buildLineupWhiteBoxCandidate({
     [["hazards"], ["removal"], ["recovery"], ["pivot"], ["physical"], ["special"]],
     [[1, 0, 0], [1, 0, 0], [0, 1, 0], [0, 1, 0], [0, 0, 1], [0, 0, 1]],
   ),
+  opponents: opponents(),
   traits,
   roleTargets: {},
 });
@@ -18,6 +19,17 @@ const concentrated = buildLineupWhiteBoxCandidate({
     [["hazards"], ["hazards", "removal"], ["recovery"], ["pivot"], ["physical"], ["special"]],
     [[1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0]],
   ),
+  opponents: opponents(),
+  traits,
+  roleTargets: {},
+});
+const overloaded = buildLineupWhiteBoxCandidate({
+  id: "overloaded",
+  members: members(
+    [["hazards", "removal", "recovery", "pivot"], ["physical"], ["special"], [], [], []],
+    [[1, 1, 1], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
+  ),
+  opponents: opponents(),
   traits,
   roleTargets: {},
 });
@@ -32,7 +44,7 @@ assert.equal(concentrated.diagnostics?.["lineup.opponentMinimumAnswerDepth"], 0)
 assert.equal(balanced.diagnostics?.["lineup.structuralSinglePoints"], 4);
 assert.equal(concentrated.diagnostics?.["lineup.structuralSinglePoints"], 3);
 assert.equal(concentrated.diagnostics?.["lineup.structuralRedundancy"], 1);
-assert.equal(balanced.diagnostics?.["lineup.representationVersion"], 5);
+assert.equal(balanced.diagnostics?.["lineup.representationVersion"], 6);
 assert.equal(balanced.diagnostics?.["lineup.roleHazardsCount"], 1);
 assert.equal(concentrated.diagnostics?.["lineup.roleHazardsCount"], 2);
 assert.equal(balanced.diagnostics?.["lineup.rolePriorityCount"], 0);
@@ -44,6 +56,13 @@ assert.equal(concentrated.diagnostics?.["lineup.defensiveRedundancyFloor"], .2);
 assert.equal(balanced.diagnostics?.["lineup.physicalPressureFloor"], .25);
 assert.equal(balanced.diagnostics?.["lineup.priorityPressureFloor"], 0);
 assert.equal(balanced.diagnostics?.["lineup.roleRecoverySafetyFloor"], .2);
+assert.ok(balanced.diagnostics!["lineup.responsibilityLoadPeak"] < overloaded.diagnostics!["lineup.responsibilityLoadPeak"]);
+assert.ok(balanced.diagnostics!["lineup.responsibilityLoadConcentration"] < overloaded.diagnostics!["lineup.responsibilityLoadConcentration"]);
+assert.ok(balanced.diagnostics!["lineup.weightedRedundancyDeficit"] < concentrated.diagnostics!["lineup.weightedRedundancyDeficit"]);
+assert.ok(balanced.diagnostics!["lineup.singleRemovalWeightedLoss"] < overloaded.diagnostics!["lineup.singleRemovalWeightedLoss"]);
+assert.ok(overloaded.diagnostics!["lineup.roleResponsibilityOverlapPeak"] > balanced.diagnostics!["lineup.roleResponsibilityOverlapPeak"]);
+assert.equal(balanced.diagnostics?.["lineup.opponentRoleHazardsCount"], 1);
+assert.ok(balanced.diagnostics!["lineup.opponentRoleHazardsAnswerFloor"] > concentrated.diagnostics!["lineup.opponentRoleHazardsAnswerFloor"]);
 
 const trace = evaluateWhiteBoxDecision({
   decisionId: "lineup:representation-v2",
@@ -61,7 +80,15 @@ assert.throws(() => evaluateWhiteBoxDecision({
   styleContributionLimit: 0,
 }), /Non-finite diagnostic/);
 
-console.log("Lineup representation v5 smoke test passed");
+console.log("Lineup representation v6 responsibility-graph smoke test passed");
+
+function opponents() {
+  return [
+    {id: "opponent-0", strength: 100, roles: ["physical"]},
+    {id: "opponent-1", strength: 200, roles: ["hazards", "special"]},
+    {id: "opponent-2", strength: 300, roles: ["setup", "physical"]},
+  ];
+}
 
 function members(roles: readonly string[][], vectors: readonly number[][]): WhiteBoxLineupMember[] {
   return roles.map((memberRoles, index) => ({

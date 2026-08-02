@@ -38,9 +38,16 @@ export interface WhiteBoxLineupMember {
   tacticalMemory: number;
 }
 
+export interface WhiteBoxLineupOpponent {
+  id: string;
+  strength: number;
+  roles: readonly string[];
+}
+
 export interface WhiteBoxLineupInput {
   id: string;
   members: readonly WhiteBoxLineupMember[];
+  opponents?: readonly WhiteBoxLineupOpponent[];
   traits: WhiteBoxLineupTraits;
   roleTargets: Readonly<Record<string, WhiteBoxRoleTarget | undefined>>;
   programAdjustment?: number;
@@ -77,7 +84,7 @@ export function buildLineupWhiteBoxCandidate(input: WhiteBoxLineupInput): WhiteB
     contribution("lineup.counter", "matchup", "personality", sum(input.members, member => member.opponentCoverage) * input.traits.counter * .035, "Counter preference values opponent-specific coverage"),
     contribution("lineup.program", "strategy", "context", input.programAdjustment ?? 0, "Bounded strategy-program adjustment"),
   ];
-  return {id: input.id, rational, style, diagnostics: lineupDiagnostics(input.members, roleCounts)};
+  return {id: input.id, rational, style, diagnostics: lineupDiagnostics(input.members, roleCounts, input.opponents)};
 }
 
 export function whiteBoxCandidateTotal(candidate: WhiteBoxCandidate): number {
@@ -99,7 +106,7 @@ function countRoles(members: readonly WhiteBoxLineupMember[]): Record<string, nu
   return counts;
 }
 
-function lineupDiagnostics(members: readonly WhiteBoxLineupMember[], roleCounts: Readonly<Record<string, number>>): Record<string, number> {
+function lineupDiagnostics(members: readonly WhiteBoxLineupMember[], roleCounts: Readonly<Record<string, number>>, opponents?: readonly WhiteBoxLineupOpponent[]): Record<string, number> {
   const structuralRoles = ["hazards", "removal", "recovery", "pivot"];
   const representedRoles = ["hazards", "removal", "recovery", "pivot", "setup", "priority", "screens", "status", "physical", "special"] as const;
   const structuralDepths = structuralRoles.map(role => roleCounts[role] ?? 0);
@@ -107,7 +114,7 @@ function lineupDiagnostics(members: readonly WhiteBoxLineupMember[], roleCounts:
   const risks = members.map(member => member.risk);
   const memberCoverage = members.map(member => member.opponentCoverage);
   const diagnostics: Record<string, number> = {
-    "lineup.representationVersion": 5,
+    "lineup.representationVersion": 6,
     "lineup.roleTagBreadth": Object.keys(roleCounts).length,
     "lineup.structuralCoverage": structuralDepths.filter(depth => depth > 0).length,
     "lineup.structuralRedundancy": structuralDepths.reduce((total, depth) => total + Math.max(0, depth - 1), 0),
@@ -138,7 +145,85 @@ function lineupDiagnostics(members: readonly WhiteBoxLineupMember[], roleCounts:
     diagnostics["lineup.speedAdvantageMean"] = mean(members.map(member => member.speedAdvantage ?? 0));
   }
   addMatchupPressureDiagnostics(diagnostics, members, opponentCount);
+  addResponsibilityGraphDiagnostics(diagnostics, members, roleCounts, opponents, opponentCount);
   return diagnostics;
+}
+
+function addResponsibilityGraphDiagnostics(
+  diagnostics: Record<string, number>,
+  members: readonly WhiteBoxLineupMember[],
+  roleCounts: Readonly<Record<string, number>>,
+  opponents: readonly WhiteBoxLineupOpponent[] | undefined,
+  opponentCount: number,
+): void {
+  const offense = members.map(member => member.offensivePressureVector);
+  const defense = members.map(member => member.defensiveSafetyVector);
+  if (opponentCount <= 0 || !offense.every(vector => vector?.length === opponentCount) || !defense.every(vector => vector?.length === opponentCount)) return;
+  if (opponents && opponents.length !== opponentCount) throw new Error(`Opponent metadata length ${opponents.length} does not match matchup vectors ${opponentCount}`);
+
+  const capacities = members.map((_, memberIndex) => Array.from({length: opponentCount}, (_, opponentIndex) => {
+    const pressure = offense[memberIndex]?.[opponentIndex] ?? 0;
+    const normalizedOffense = pressure / (1 + pressure);
+    return Math.max(normalizedOffense, defense[memberIndex]?.[opponentIndex] ?? 0);
+  }));
+  const twoWay = members.map((_, memberIndex) => Array.from({length: opponentCount}, (_, opponentIndex) => {
+    const pressure = offense[memberIndex]?.[opponentIndex] ?? 0;
+    return Math.sqrt(pressure / (1 + pressure) * (defense[memberIndex]?.[opponentIndex] ?? 0));
+  }));
+  const rawWeights = opponents?.map(opponent => Math.max(1, opponent.strength)) ?? Array(opponentCount).fill(1);
+  const weightTotal = rawWeights.reduce((total, value) => total + value, 0);
+  const weights = rawWeights.map(value => value / weightTotal);
+  const best: number[] = [], second: number[] = [], bestTwoWay: number[] = [];
+  const responsibilityLoads = Array(members.length).fill(0) as number[];
+
+  for (let opponentIndex = 0; opponentIndex < opponentCount; opponentIndex++) {
+    const ranked = capacities.map((vector, memberIndex) => ({memberIndex, value: vector[opponentIndex]})).sort((left, right) => right.value - left.value || left.memberIndex - right.memberIndex);
+    best.push(ranked[0]?.value ?? 0);
+    second.push(ranked[1]?.value ?? 0);
+    bestTwoWay.push(Math.max(...twoWay.map(vector => vector[opponentIndex])));
+    const leaders = ranked.filter(entry => Math.abs(entry.value - (ranked[0]?.value ?? 0)) <= 1e-12);
+    for (const leader of leaders) responsibilityLoads[leader.memberIndex] += weights[opponentIndex] / leaders.length;
+  }
+
+  const baselineWeightedCapacity = weightedMean(best, weights);
+  let maximumRemovalLoss = 0;
+  let maximumRemovalFloorLoss = 0;
+  for (let removed = 0; removed < members.length; removed++) {
+    const afterRemoval = Array.from({length: opponentCount}, (_, opponentIndex) => Math.max(...capacities.filter((_, memberIndex) => memberIndex !== removed).map(vector => vector[opponentIndex])));
+    maximumRemovalLoss = Math.max(maximumRemovalLoss, baselineWeightedCapacity - weightedMean(afterRemoval, weights));
+    maximumRemovalFloorLoss = Math.max(maximumRemovalFloorLoss, Math.min(...best) - Math.min(...afterRemoval));
+  }
+
+  const structuralRoles = ["hazards", "removal", "recovery", "pivot"];
+  const uniqueStructuralLoads = members.map(member => member.roles.filter(role => structuralRoles.includes(role) && roleCounts[role] === 1).length);
+  diagnostics["lineup.responsibilityAnswerFloor"] = Math.min(...best);
+  diagnostics["lineup.responsibilityRedundancyFloor"] = Math.min(...second);
+  diagnostics["lineup.responsibilityTwoWayFloor"] = Math.min(...bestTwoWay);
+  diagnostics["lineup.weightedAnswerDeficit"] = weightedMean(best.map(value => 1 - value), weights);
+  diagnostics["lineup.weightedRedundancyDeficit"] = weightedMean(second.map(value => 1 - value), weights);
+  diagnostics["lineup.weightedAnswerMargin"] = weightedMean(best.map((value, index) => value - second[index]), weights);
+  diagnostics["lineup.responsibilityLoadPeak"] = Math.max(...responsibilityLoads);
+  diagnostics["lineup.responsibilityLoadConcentration"] = responsibilityLoads.reduce((total, value) => total + value ** 2, 0);
+  diagnostics["lineup.singleRemovalWeightedLoss"] = maximumRemovalLoss;
+  diagnostics["lineup.singleRemovalFloorLoss"] = maximumRemovalFloorLoss;
+  diagnostics["lineup.uniqueStructuralRoleLoadPeak"] = Math.max(...uniqueStructuralLoads);
+  diagnostics["lineup.roleResponsibilityOverlapPeak"] = Math.max(...responsibilityLoads.map((load, index) => load * uniqueStructuralLoads[index]));
+
+  if (!opponents) return;
+  const activeStructuralAnswerFloors: number[] = [], activeStructuralRedundancyFloors: number[] = [];
+  for (const role of ["hazards", "removal", "recovery", "pivot", "setup", "priority", "screens", "status", "physical", "special"] as const) {
+    const indices = opponents.flatMap((opponent, index) => opponent.roles.includes(role) ? [index] : []);
+    const name = `${role[0].toUpperCase()}${role.slice(1)}`;
+    diagnostics[`lineup.opponentRole${name}Count`] = indices.length;
+    diagnostics[`lineup.opponentRole${name}AnswerFloor`] = indices.length ? Math.min(...indices.map(index => best[index])) : 1;
+    diagnostics[`lineup.opponentRole${name}RedundancyFloor`] = indices.length ? Math.min(...indices.map(index => second[index])) : 1;
+    if (indices.length && !["physical", "special"].includes(role)) {
+      activeStructuralAnswerFloors.push(diagnostics[`lineup.opponentRole${name}AnswerFloor`]);
+      activeStructuralRedundancyFloors.push(diagnostics[`lineup.opponentRole${name}RedundancyFloor`]);
+    }
+  }
+  diagnostics["lineup.opponentStructureAnswerFloor"] = activeStructuralAnswerFloors.length ? Math.min(...activeStructuralAnswerFloors) : 1;
+  diagnostics["lineup.opponentStructureRedundancyFloor"] = activeStructuralRedundancyFloors.length ? Math.min(...activeStructuralRedundancyFloors) : 1;
 }
 
 function addMatchupPressureDiagnostics(
@@ -212,5 +297,6 @@ function sum<T>(values: readonly T[], value: (entry: T) => number): number {
 function mean(values: readonly number[]): number{return values.reduce((total,value)=>total+value,0)/values.length;}
 function median(values: readonly number[]): number{const sorted=[...values].sort((left,right)=>left-right),middle=Math.floor(sorted.length/2);return sorted.length%2?sorted[middle]:(sorted[middle-1]+sorted[middle])/2;}
 function standardDeviation(values: readonly number[]): number{const average=mean(values);return Math.sqrt(values.reduce((total,value)=>total+(value-average)**2,0)/values.length);}
+function weightedMean(values: readonly number[], weights: readonly number[]): number { return values.reduce((total, value, index) => total + value * weights[index], 0); }
 function traceContribution(candidate:WhiteBoxCandidateTrace,id:string):number{return candidate.contributions.find(entry=>entry.id===id)?.value??0;}
 function round(value:number):number{return Math.round((value+Number.EPSILON)*1e6)/1e6;}

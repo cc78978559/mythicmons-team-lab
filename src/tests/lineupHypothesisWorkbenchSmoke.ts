@@ -4,6 +4,8 @@ import {auditLineupHypotheses, buildLineupHypothesisCausalPlan, validateLineupHy
 const registry: LineupHypothesisRegistry = {schemaVersion: 1, activationStatus: "shadow-only", hypotheses: [
   {id: "speed-reviewed-v1", title: "Reviewed speed", rationale: "Already tested", stage: "causal-complete", combine: "weighted-geometric-percentile", factors: [{feature: "lineup.speedAdvantageMean", direction: "higher", weight: 1}], scope: ["all-lineups"], guardrails: [{feature: "lineup.strengthFloor", minimumDelta: -5}], causalEvidence: {study: "study", better: 0, neutral: 21, worse: 3, conclusion: "no-clear-benefit"}},
   {id: "pressure-combination-v1", title: "Pressure combination", rationale: "Synthetic positive mechanism", stage: "proposed", combine: "weighted-geometric-percentile", factors: [{feature: "lineup.speedAdvantageMean", direction: "higher", weight: 1}, {feature: "lineup.offensivePressureFloor", direction: "higher", weight: 1}], scope: ["all-lineups"], guardrails: []},
+  {id: "future-representation-v1", title: "Future representation", rationale: "Must not consume legacy rows", stage: "proposed", minimumRepresentationVersion: 6, combine: "weighted-geometric-percentile", factors: [{feature: "lineup.future", direction: "higher", weight: 1}], scope: ["all-lineups"], guardrails: []},
+  {id: "inverse-signal-v1", title: "Inverse signal", rationale: "A refuted direction must never pass", stage: "proposed", combine: "weighted-geometric-percentile", factors: [{feature: "lineup.speedAdvantageMean", direction: "lower", weight: 1}, {feature: "lineup.offensivePressureFloor", direction: "lower", weight: 1}], scope: ["all-lineups"], guardrails: []},
 ]};
 assert.equal(validateLineupHypothesisRegistry(registry), registry);
 assert.throws(() => validateLineupHypothesisRegistry({...registry, activationStatus: "active"} as any), /Invalid lineup hypothesis registry/);
@@ -22,6 +24,9 @@ assert.equal(audit.activationStatus, "shadow-only"); assert.equal(audit.metrics.
 assert.equal(audit.metrics.decisivePairs, 90, "same series ids in different seasons must remain distinct");
 assert.equal(proposed.observationalCandidate, true); assert.equal(proposed.auditStage, "observational-candidate");
 assert.equal(reviewed.auditStage, "causal-complete"); assert.equal(reviewed.causalConclusion, "no-clear-benefit");
+assert.equal(audit.findings.find(finding => finding.id === "future-representation-v1")?.pairs, 0);
+assert.ok(audit.findings.find(finding => finding.id === "inverse-signal-v1")!.standardizedEffect < 0);
+assert.equal(audit.findings.find(finding => finding.id === "inverse-signal-v1")?.observationalCandidate, false);
 assert.match(reviewed.nextAction, /do not reactivate/);
 const planRows: LineupHypothesisCandidateRow[] = [];
 for (let season = 1; season <= 3; season++) for (const outcome of ["win", "loss"] as const) for (let index = 0; index < 6; index++) {

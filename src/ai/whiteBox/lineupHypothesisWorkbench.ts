@@ -4,6 +4,7 @@ export interface LineupHypothesisFactor {feature: string; direction: HypothesisD
 export interface LineupHypothesisGuardrail {feature: string; minimumDelta?: number; maximumDelta?: number}
 export interface LineupAuditHypothesis {
   id: string; title: string; rationale: string; stage: HypothesisStage;
+  minimumRepresentationVersion?: number;
   combine: "weighted-geometric-percentile"; factors: LineupHypothesisFactor[];
   scope: string[]; guardrails: LineupHypothesisGuardrail[];
   causalEvidence?: {study: string; better: number; neutral: number; worse: number; conclusion: string};
@@ -19,7 +20,7 @@ export interface LineupHypothesisFinding {
 export interface LineupHypothesisAudit {
   schemaVersion: 1; activationStatus: "shadow-only"; conclusion: "hypotheses-ready" | "no-hypothesis-ready";
   metrics: {observations: number; decisivePairs: number; managers: number; seasons: number; hypotheses: number; observationalCandidates: number};
-  thresholds: {minimumManagers: number; minimumSeasons: number; minimumAbsoluteEffect: number; maximumAdjustedQ: number; permutations: number};
+  thresholds: {minimumManagers: number; minimumSeasons: number; minimumDirectionalEffect: number; maximumAdjustedQ: number; permutations: number};
   findings: LineupHypothesisFinding[];
 }
 export interface LineupHypothesisCandidateRow {
@@ -49,6 +50,7 @@ export function validateLineupHypothesisRegistry(value: LineupHypothesisRegistry
     if (!/^[a-z0-9-]+-v\d+$/.test(hypothesis.id) || ids.has(hypothesis.id)) throw new Error(`Invalid or duplicate hypothesis id: ${hypothesis.id}`);
     ids.add(hypothesis.id);
     if (!hypothesis.title || !hypothesis.rationale || hypothesis.combine !== "weighted-geometric-percentile" || !hypothesis.factors?.length) throw new Error(`Incomplete hypothesis: ${hypothesis.id}`);
+    if (hypothesis.minimumRepresentationVersion !== undefined && (!Number.isInteger(hypothesis.minimumRepresentationVersion) || hypothesis.minimumRepresentationVersion < 1)) throw new Error(`Invalid representation version: ${hypothesis.id}`);
     if (hypothesis.factors.some(factor => !/^lineup\.[A-Za-z0-9]+$/.test(factor.feature) || !["higher", "lower"].includes(factor.direction) || !Number.isFinite(factor.weight) || factor.weight <= 0)) throw new Error(`Invalid factors: ${hypothesis.id}`);
     if (!Array.isArray(hypothesis.guardrails) || hypothesis.guardrails.some(guardrail => !/^lineup\.[A-Za-z0-9]+$/.test(guardrail.feature) || (guardrail.minimumDelta === undefined && guardrail.maximumDelta === undefined) || (guardrail.minimumDelta !== undefined && !Number.isFinite(guardrail.minimumDelta)) || (guardrail.maximumDelta !== undefined && !Number.isFinite(guardrail.maximumDelta)))) throw new Error(`Invalid guardrails: ${hypothesis.id}`);
     if (hypothesis.stage === "causal-complete" && !hypothesis.causalEvidence) throw new Error(`Causal-complete hypothesis lacks evidence: ${hypothesis.id}`);
@@ -59,12 +61,16 @@ export function validateLineupHypothesisRegistry(value: LineupHypothesisRegistry
 export function auditLineupHypotheses(observations: readonly LineupHypothesisObservation[], registryValue: LineupHypothesisRegistry, permutations = 2000): LineupHypothesisAudit {
   const registry = validateLineupHypothesisRegistry(registryValue);
   if (!observations.length || !Number.isInteger(permutations) || permutations < 100 || permutations > 100000) throw new Error("Hypothesis audit requires observations and 100..100000 permutations");
-  const decisive = pairDecisive(observations), distributions = featureDistributions(observations, registry.hypotheses);
-  const thresholds = {minimumManagers: 20, minimumSeasons: 3, minimumAbsoluteEffect: .05, maximumAdjustedQ: .1, permutations};
-  const findings = registry.hypotheses.map(hypothesis => analyzeHypothesis(hypothesis, decisive, distributions, permutations));
+  const decisive = pairDecisive(observations);
+  const thresholds = {minimumManagers: 20, minimumSeasons: 3, minimumDirectionalEffect: .05, maximumAdjustedQ: .1, permutations};
+  const findings = registry.hypotheses.map(hypothesis => {
+    const eligibleObservations = hypothesis.minimumRepresentationVersion === undefined ? observations : observations.filter(row => Number(row.diagnostics["lineup.representationVersion"] ?? 0) >= hypothesis.minimumRepresentationVersion!);
+    const distributions = featureDistributions(eligibleObservations, hypothesis);
+    return analyzeHypothesis(hypothesis, pairDecisive(eligibleObservations), distributions, permutations);
+  });
   adjustBenjaminiHochberg(findings);
   for (const finding of findings) {
-    finding.observationalCandidate = finding.managers >= thresholds.minimumManagers && finding.seasons >= thresholds.minimumSeasons && Math.abs(finding.standardizedEffect) >= thresholds.minimumAbsoluteEffect && finding.adjustedQ <= thresholds.maximumAdjustedQ;
+    finding.observationalCandidate = finding.managers >= thresholds.minimumManagers && finding.seasons >= thresholds.minimumSeasons && finding.standardizedEffect >= thresholds.minimumDirectionalEffect && finding.adjustedQ <= thresholds.maximumAdjustedQ;
     finding.auditStage = finding.registeredStage === "causal-complete" ? "causal-complete" : finding.observationalCandidate ? "observational-candidate" : "observational-rejected";
     finding.nextAction = finding.registeredStage === "causal-complete"
       ? "Retain as reviewed causal evidence; do not reactivate from observational association."
@@ -154,8 +160,8 @@ function pairDecisive(rows: readonly LineupHypothesisObservation[]): Pair[] {
     return winner && loser ? [{seriesId: winner.seriesId, season: winner.season, winner, loser}] : [];
   });
 }
-function featureDistributions(rows: readonly LineupHypothesisObservation[], hypotheses: readonly LineupAuditHypothesis[]): Map<string, number[]> {
-  const features = new Set(hypotheses.flatMap(hypothesis => hypothesis.factors.map(factor => factor.feature))), result = new Map<string, number[]>();
+function featureDistributions(rows: readonly LineupHypothesisObservation[], hypothesis: LineupAuditHypothesis): Map<string, number[]> {
+  const features = new Set(hypothesis.factors.map(factor => factor.feature)), result = new Map<string, number[]>();
   for (const feature of features) {
     const values = rows.map(row => Number(row.diagnostics[feature])).filter(Number.isFinite).sort((left, right) => left - right);
     if (values.length !== rows.length) throw new Error(`Missing diagnostic required by hypothesis: ${feature}`);
