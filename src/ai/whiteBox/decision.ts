@@ -23,6 +23,7 @@ export interface WhiteBoxCandidate {
   hardRejections?: string[];
   rational: WhiteBoxContribution[];
   style?: WhiteBoxContribution[];
+  diagnostics?: Readonly<Record<string, number>>;
 }
 
 export interface WhiteBoxDecisionInput {
@@ -42,6 +43,7 @@ export interface WhiteBoxCandidateTrace {
   appliedStyleScore: number | null;
   finalScore: number | null;
   contributions: WhiteBoxContribution[];
+  diagnostics?: Record<string, number>;
 }
 
 export interface WhiteBoxDecisionTrace {
@@ -80,6 +82,7 @@ export function evaluateWhiteBoxDecision(input: WhiteBoxDecisionInput): WhiteBox
     if (ids.has(candidate.id)) throw new Error(`Duplicate white-box candidate id: ${candidate.id}`);
     ids.add(candidate.id);
     validateContributions(candidate.id, [...candidate.rational, ...(candidate.style ?? [])]);
+    validateDiagnostics(candidate.id, candidate.diagnostics);
     const hardRejections = [...(candidate.hardRejections ?? [])];
     const eligible = hardRejections.length === 0;
     return {
@@ -92,6 +95,7 @@ export function evaluateWhiteBoxDecision(input: WhiteBoxDecisionInput): WhiteBox
       appliedStyleScore: eligible ? 0 : null,
       finalScore: eligible ? 0 : null,
       contributions: [...candidate.rational, ...(candidate.style ?? [])].map(entry => ({...entry, value: round(entry.value)})),
+      diagnostics: candidate.diagnostics ? mapDiagnostics(candidate.diagnostics) : undefined,
     };
   });
 
@@ -147,7 +151,12 @@ export function summarizeWhiteBoxShadow(trace: WhiteBoxDecisionTrace, incumbent:
     hardRejectedCount: trace.candidates.filter(candidate => !candidate.eligible).length,
     reasonableBand: trace.reasonableBand,
     styleContributionLimit: trace.styleContributionLimit,
-    candidates: [...retained.values()].map(candidate => ({...candidate, hardRejections: [...candidate.hardRejections], contributions: candidate.contributions.map(contribution => ({...contribution}))})),
+    candidates: [...retained.values()].map(candidate => ({
+      ...candidate,
+      hardRejections: [...candidate.hardRejections],
+      contributions: candidate.contributions.map(contribution => ({...contribution})),
+      diagnostics: candidate.diagnostics ? {...candidate.diagnostics} : undefined,
+    })),
   };
 }
 
@@ -165,6 +174,18 @@ function validateContributions(candidateId: string, contributions: WhiteBoxContr
     if (ids.has(contribution.id)) throw new Error(`Duplicate contribution ${contribution.id} for ${candidateId}`);
     ids.add(contribution.id);
   }
+}
+
+function validateDiagnostics(candidateId: string, diagnostics: Readonly<Record<string, number>> | undefined): void {
+  if (!diagnostics) return;
+  for (const [id, value] of Object.entries(diagnostics)) {
+    if (!id.trim()) throw new Error(`Empty diagnostic id for ${candidateId}`);
+    if (!Number.isFinite(value)) throw new Error(`Non-finite diagnostic ${id} for ${candidateId}`);
+  }
+}
+
+function mapDiagnostics(diagnostics: Readonly<Record<string, number>>): Record<string, number> {
+  return Object.fromEntries(Object.entries(diagnostics).sort(([left], [right]) => left.localeCompare(right)).map(([id, value]) => [id, round(value)]));
 }
 
 function sum(contributions: WhiteBoxContribution[]): number {

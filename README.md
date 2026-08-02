@@ -63,6 +63,56 @@ npm test
 
 For local iteration, `npm run check:affected` maps the current Git diff to the dependent smoke tests, keeps full stdout/stderr under `output/tooling/checks`, and prints only a compact summary. Successful checks are cached by their transitive source hash, so an unchanged rerun completes without repeating simulations. Use `npm run check:compact` for the complete test inventory with the same compact logging and resumable cache; add `-- --no-cache` when an unconditional rerun is required.
 
+For formal-league operation, use the compact controller instead of reading the large dynasty state directly:
+
+```powershell
+npm run league -- status
+npm run league -- doctor
+npm run league -- pause
+npm run league -- resume
+npm run league -- next
+npm run league -- report
+```
+
+`status` reads only the first 64 KB of `dynasty-state.json` and combines it with the cycle manifest, process locks, audit summary, and disk status. `pause` is cooperative: it records a durable request and the official cycle stops at the next atomic stage boundary. `resume` reconstructs the exact manifest-bound command, so completed development and promotion stages are not repeated. Add `--json` to `status` for automation and `--dry-run` to `resume` or `next` to inspect the reconstructed command without starting work. A reviewed runtime change still requires the explicit one-time `--allow-code-upgrade` flag.
+
+Formal audits aggregate one season at a time and reuse the content-hash index instead of traversing the league again to measure output size. `audit-run-state.json` records the current phase, season, elapsed time, and current/peak memory; `audit-failures.json` keeps the latest 20 failures, including an interrupted prior process detected on restart. `league status`, `doctor`, and `resume` verify that the clean audit signature still matches the current state boundary. A missing, failed, interrupted, or stale audit blocks resume.
+
+Use the unified local tooling doctor for storage and shared-source-cache maintenance:
+
+```powershell
+npm run tooling -- doctor
+npm run tooling -- storage
+npm run tooling -- cache-gc
+npm run tooling -- cache-gc --apply
+```
+
+The doctor writes a streaming top-level storage index and a cache-reference audit under `output/tooling/tooling-doctor`. Shared source caches record their last use, default to a 4096 MB budget, and are reclaimed oldest-first only when they have a valid content-addressed marker and no active-study reference. GC is a dry run unless `--apply` is present; use `--cache-budget-mb` and `--cache-max-age-days` to override the policy.
+
+Shadow diagnostics are also local-first:
+
+```powershell
+npm run shadow -- diagnose
+npm run shadow -- inventory
+npm run shadow -- report
+npm run shadow -- queue
+npm run shadow:refresh-lineup -- --limit 12 --target-season 6
+npm run shadow:compact-lineup -- --input output/tooling/shadow-lineup-counterfactual/case-id
+npm run shadow:lineup-pilot -- plan --target 30
+npm run shadow:lineup-pilot -- run --target 30 --max-cases 3
+npm run shadow:lineup-review
+```
+
+The scanner reads compact season decision ledgers and evolution packages, never raw battle logs. It measures incumbent/shadow disagreement, close-score collapse, inactive score groups, trade-gate suppression, strategy-program expression, and the causal results retained in `data/shadow-evidence-registry.json`. The experiment queue separates observed disagreements and bounded near-score flips from cases blocked by incomplete retained candidates, so a close score is not mistaken for an executable counterfactual. Normal stdout is a small navigation summary. Detailed metrics are gzip-compressed, the Markdown report is sectioned for selective reading, and unchanged inputs use a metadata-and-registry cache.
+
+`shadow:refresh-lineup` deterministically replays one target season while retaining full candidates only for selected queue entries. It materializes the preceding historical checkpoint, uses that season's recorded runtime, verifies the season result, extracts and compresses the traces, then removes the temporary replay. Omit `--target-season` to select the earliest queued season.
+
+After a paired lineup experiment is validated, `shadow:compact-lineup` stores the two season summaries, intervention record, runtime references, conclusions, and state hashes in a verified gzip capsule, then removes the reproducible branch trees.
+
+The capsule also stores a compact battle causal signature: changed-member participation, first action divergence, a three-turn normalized action chain, behavioral reconvergence, outcome changes, and aggregate switch/move/damage/heal/status/faint counts. It does not retain complete battle logs.
+
+`shadow:lineup-review` verifies completed pilot capsules and applies the independent-manager, season, stratification, treatment-expression, directional-effect, and regression gates. Its strongest possible result is a scoped-assist review candidate; it cannot activate official league behavior.
+
 Pull requests run the same compact full inventory on Node.js 24. Successful jobs retain only the concise summary; a failed job uploads the local check logs for seven days so detailed output does not flood the PR transcript.
 
 Convert between Showdown team formats:

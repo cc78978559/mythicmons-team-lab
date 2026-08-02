@@ -8,11 +8,12 @@ import {acquireNamedRunLock} from "../draft/runLock";
 
 interface State {version: number; seed: string; completedSeason: number; settings: Record<string, number | string | boolean | undefined>; managers: Array<{id: string}>; fingerprint: Record<string, string>}
 interface CycleManifest {
-  schemaVersion: 1; cycleId: string; status: "running" | "complete"; majorRoot: string; developmentOut: string; previousDevelopment?: string;
+  schemaVersion: 1; cycleId: string; status: "running" | "pause-requested" | "paused" | "interrupted" | "failed" | "complete"; majorRoot: string; developmentOut: string; previousDevelopment?: string;
   boundary: {internalSeason: number; globalSeason: number; stateSha256: string; seed: string}; promotionSlots: number;
   storage?: {minimumFreeGb: number; maximumDevelopmentOutputMb: number};
   configuration?: {globalSeasonOffset: number; historyLedger?: string; developmentSeasons: string; developmentRounds: string; developmentMaxTurns: string};
   stages: Record<string, {status: "complete"; at: string; evidence: Record<string, unknown>}>;
+  activeStage?: string; updatedAt?: string; pausedAt?: string; failure?: {at: string; message: string};
 }
 
 const args = process.argv.slice(2), root = process.cwd();
@@ -23,6 +24,7 @@ const storagePolicy = {minimumFreeGb: numberOption("--min-free-gb", 10, 0, 10000
 const historyLedger = option("--history-ledger", "") ? path.resolve(option("--history-ledger", "")) : undefined;
 const cycleConfiguration = {globalSeasonOffset: offset, ...(historyLedger ? {historyLedger} : {}), developmentSeasons: option("--development-seasons", "1"), developmentRounds: option("--development-rounds", "1"), developmentMaxTurns: option("--development-max-turns", "40")};
 const statePath = path.join(majorRoot, "dynasty-state.json");
+const pausePath = path.join(majorRoot, ".official-season-cycle.pause.json");
 if (!fs.existsSync(statePath)) {
   if (args.includes("--preflight-only")) {
     const result = {ready: false, reasonCodes: ["formal-state-missing"], source: {root: majorRoot, state: statePath, status: "missing"}, development: {target: developmentOut, status: fs.existsSync(developmentOut) ? "present-without-source" : "absent", previous: previousDevelopment ?? null, previousStatus: previousDevelopment && fs.existsSync(previousDevelopment) ? "present-unverified" : previousDevelopment ? "missing" : "not-configured"}, history: {path: historyLedger ?? null, status: historyLedger && fs.existsSync(historyLedger) ? "present-unverified" : historyLedger ? "missing" : "not-configured"}};
@@ -40,15 +42,43 @@ let manifest = loadOrCreateManifest();
 if (manifest.status === "complete") { verifyComplete(); finish(true); }
 if (args.includes("--preflight-only")) preflight();
 
-storageGate("cycle-start");
-audit("before-audit", initialState.completedSeason);
-development();
-promotion();
-compactDevelopment();
-nextSeason();
-audit("after-audit", manifest.boundary.internalSeason + 1);
-updateHistory();
-manifest.status = "complete"; persist(); finish(false);
+try {
+  if (manifest.status !== "running") { manifest.status = "running"; manifest.failure = undefined; manifest.pausedAt = undefined; persist(); }
+  storageGate("cycle-start");
+  stage("before-audit", () => audit("before-audit", initialState.completedSeason));
+  stage("development", development);
+  stage("promotion", promotion);
+  stage("development-retention", compactDevelopment);
+  stage("season", nextSeason);
+  stage("after-audit", () => audit("after-audit", manifest.boundary.internalSeason + 1));
+  if (historyLedger) stage("history", updateHistory);
+  manifest.status = "complete"; manifest.activeStage = undefined; manifest.updatedAt = new Date().toISOString(); fs.rmSync(pausePath, {force: true}); persist(); finish(false);
+} catch (error) {
+  if (fs.existsSync(manifestPath)) {
+    manifest.status = "failed"; manifest.activeStage = undefined; manifest.failure = {at: new Date().toISOString(), message: error instanceof Error ? error.message : String(error)}; persist();
+  }
+  throw error;
+}
+
+function stage(name: string, action: () => void): void {
+  if (manifest.stages[name]) return;
+  pauseBoundary(name);
+  manifest.status = "running"; manifest.activeStage = name; manifest.updatedAt = new Date().toISOString(); persist();
+  action();
+  manifest.activeStage = undefined; manifest.updatedAt = new Date().toISOString(); persist();
+  pauseBoundary(nextPendingStage());
+}
+
+function pauseBoundary(nextStage: string | null): void {
+  if (!fs.existsSync(pausePath)) return;
+  manifest.status = "paused"; manifest.activeStage = undefined; manifest.pausedAt = new Date().toISOString(); manifest.updatedAt = manifest.pausedAt; persist();
+  console.log(JSON.stringify({cycleId, status: "paused", internalSeason: readState().completedSeason, nextStage, manifest: manifestPath}, null, 2));
+  process.exit(0);
+}
+
+function nextPendingStage(): string | null {
+  return ["before-audit", "development", "promotion", "development-retention", "season", "after-audit", ...(historyLedger ? ["history"] : [])].find(name => !manifest.stages[name]) ?? null;
+}
 
 function audit(stage: string, expectedSeason: number): void {
   if (manifest.stages[stage]) return;
@@ -146,7 +176,11 @@ function developmentComplete(): boolean { return ["promotion-package.json", "pro
 function validPreviousDevelopment(directory: string): boolean { return ["entrants.json", "development-summary.json", "development-final-state.json", "development-final-state.json.gz"].every(file => fs.existsSync(path.join(directory, file))); }
 function promotionPayload(): any { const promotion = read<any>(path.join(developmentOut, "promotion-package.json")); return JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(developmentOut, promotion.archive))).toString("utf8")); }
 function completeStage(stage: string, evidence: Record<string, unknown>): void { manifest.stages[stage] = {status: "complete", at: new Date().toISOString(), evidence}; persist(); }
-function persist(): void { fs.mkdirSync(manifestDir, {recursive: true}); atomicJson(manifestPath, manifest); }
+function persist(): void {
+  manifest.updatedAt = new Date().toISOString(); fs.mkdirSync(manifestDir, {recursive: true}); atomicJson(manifestPath, manifest);
+  const completedSeason = readCompletedSeasonHeader(statePath) ?? manifest.boundary.internalSeason;
+  atomicJson(path.join(majorRoot, "league-status.json"), {schemaVersion: 1, updatedAt: manifest.updatedAt, completedSeason, cycleId: manifest.cycleId, status: manifest.status, activeStage: manifest.activeStage ?? null, completedStages: Object.keys(manifest.stages), nextStage: nextPendingStage()});
+}
 function loadOrCreateManifest(): CycleManifest {
   if (fs.existsSync(manifestPath)) {
     const saved = read<CycleManifest>(manifestPath);
@@ -161,7 +195,7 @@ function loadOrCreateManifest(): CycleManifest {
 function verifyComplete(): void { const state = readState(), audit = read<any>(path.join(majorRoot, "audit-summary.json")); if (state.completedSeason !== manifest.boundary.internalSeason + 1 || audit.completedSeasons !== state.completedSeason || audit.inputSignature !== cachedV12AuditSignature(majorRoot, state.completedSeason).signature || audit.fatalCount || audit.warningCount) throw new Error("Completed cycle manifest no longer matches the league"); }
 function finish(reused: boolean): never { console.log(JSON.stringify({cycleId, status: manifest.status, reused, internalSeason: manifest.boundary.internalSeason + 1, globalSeason: manifest.boundary.internalSeason + 1 + offset, manifest: manifestPath}, null, 2)); process.exit(0); }
 function readState(): State { return read<State>(path.join(majorRoot, "dynasty-state.json")); }
-function runningCycleId(): string | undefined { const directory = path.join(majorRoot, "season-cycles"); if (!fs.existsSync(directory)) return undefined; const running = fs.readdirSync(directory).filter(file => file.endsWith(".json")).map(file => read<CycleManifest>(path.join(directory, file))).filter(value => value.status === "running"); if (running.length > 1) throw new Error("Multiple unfinished season cycles require an explicit --cycle-id"); return running[0]?.cycleId; }
+function runningCycleId(): string | undefined { const directory = path.join(majorRoot, "season-cycles"); if (!fs.existsSync(directory)) return undefined; const running = fs.readdirSync(directory).filter(file => file.endsWith(".json")).map(file => read<CycleManifest>(path.join(directory, file))).filter(value => value.status !== "complete"); if (running.length > 1) throw new Error("Multiple unfinished season cycles require an explicit --cycle-id"); return running[0]?.cycleId; }
 function run(file: string, commandArgs: string[], env: NodeJS.ProcessEnv, label: string): void { const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, file), ...commandArgs], {cwd: root, env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024}); if (result.status !== 0) throw new Error(`${label} failed:\n${result.stderr || result.stdout}`); }
 function atomicJson(file: string, value: unknown): void { const temporary = `${file}.${process.pid}.${crypto.randomBytes(5).toString("hex")}.tmp`; fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, "utf8"); fs.renameSync(temporary, file); }
 function storageGate(stage: string, output?: string): Record<string, unknown> {
@@ -176,6 +210,7 @@ function existingDirectory(directory: string): string { let current = path.resol
 function directorySize(directory: string): number { return fs.readdirSync(directory, {withFileTypes: true}).reduce((sum, entry) => { const target = path.join(directory, entry.name); return sum + (entry.isDirectory() ? directorySize(target) : entry.isFile() ? fs.statSync(target).size : 0); }, 0); }
 function round(value: number): number { return Math.round(value * 100) / 100; }
 function fileHash(file: string): string { return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex"); }
+function readCompletedSeasonHeader(file: string): number | undefined { const descriptor = fs.openSync(file, "r"); try { const buffer = Buffer.alloc(65536), bytes = fs.readSync(descriptor, buffer, 0, buffer.length, 0), match = buffer.subarray(0, bytes).toString("utf8").match(/"completedSeason"\s*:\s*(\d+)/); return match ? Number(match[1]) : undefined; } finally { fs.closeSync(descriptor); } }
 function read<T>(file: string): T { return JSON.parse(fs.readFileSync(file, "utf8")) as T; }
 function requiredOption(name: string): string { const value = option(name, ""); if (!value) throw new Error(`${name} is required`); return value; }
 function option(name: string, fallback: string): string { const index = args.indexOf(name); return index >= 0 ? args[index + 1] ?? fallback : fallback; }

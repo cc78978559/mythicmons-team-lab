@@ -56,7 +56,7 @@ export function buildDynastyCheckpointBranchManifest(sourceRoot: string): Dynast
     if (!fs.existsSync(registrySnapshot) || !fs.statSync(registrySnapshot).isDirectory()) throw new Error(`Missing dynasty registry snapshot: ${registrySnapshot}`);
     collectFiles(root, registrySnapshot, immutable);
   }
-  for (const reference of [state.stateStorage?.decisionRecords, state.stateStorage?.evolutionArchive]) {
+  for (const reference of [state.stateStorage?.decisionRecords, state.stateStorage?.evolutionArchive, state.stateStorage?.mechanismLedgers]) {
     if (!reference) continue;
     const archive = resolveWithin(root, reference.file);
     immutable.set(normalize(path.relative(root, archive)), fileReference(root, archive));

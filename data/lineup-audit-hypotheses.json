@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "activationStatus": "shadow-only",
+  "hypotheses": [
+    {
+      "id": "lineup-speed-alone-v1",
+      "title": "Raw relative speed advantage",
+      "rationale": "Faster lineups may act first more often, but speed without pressure or safety may have no marginal value.",
+      "stage": "causal-complete",
+      "combine": "weighted-geometric-percentile",
+      "factors": [{"feature": "lineup.speedAdvantageMean", "direction": "higher", "weight": 1}],
+      "scope": ["all-lineups"],
+      "guardrails": [{"feature": "lineup.strengthFloor", "minimumDelta": -5}, {"feature": "lineup.roleTagBreadth", "minimumDelta": -1}],
+      "causalEvidence": {"study": "lineup-speed-causal-v1", "better": 0, "neutral": 21, "worse": 3, "conclusion": "no-clear-benefit"}
+    },
+    {
+      "id": "lineup-effective-speed-pressure-v1",
+      "title": "Effective speed pressure",
+      "rationale": "Acting first should matter chiefly when the lineup can also apply reliable offensive pressure.",
+      "stage": "causal-complete",
+      "combine": "weighted-geometric-percentile",
+      "factors": [
+        {"feature": "lineup.speedAdvantageMean", "direction": "higher", "weight": 1},
+        {"feature": "lineup.offensivePressureFloor", "direction": "higher", "weight": 1}
+      ],
+      "scope": ["all-lineups"],
+      "guardrails": [{"feature": "lineup.defensiveSafetyFloor", "minimumDelta": -0.05}, {"feature": "lineup.roleTagBreadth", "minimumDelta": -1}],
+      "causalEvidence": {"study": "lineup-effective-speed-pressure-causal-v1", "better": 1, "neutral": 18, "worse": 5, "conclusion": "no-clear-benefit"}
+    },
+    {
+      "id": "lineup-safe-speed-pressure-v1",
+      "title": "Safe two-way speed pressure",
+      "rationale": "Speed is more useful when the same lineup has pressure, defensive safety, and no catastrophic two-way matchup.",
+      "stage": "causal-complete",
+      "combine": "weighted-geometric-percentile",
+      "factors": [
+        {"feature": "lineup.speedAdvantageMean", "direction": "higher", "weight": 1},
+        {"feature": "lineup.offensivePressureFloor", "direction": "higher", "weight": 1},
+        {"feature": "lineup.defensiveSafetyFloor", "direction": "higher", "weight": 1},
+        {"feature": "lineup.twoWayMatchupFloor", "direction": "higher", "weight": 1}
+      ],
+      "scope": ["all-lineups"],
+      "guardrails": [{"feature": "lineup.roleTagBreadth", "minimumDelta": -1}],
+      "causalEvidence": {"study": "lineup-safe-speed-pressure-causal-v1", "better": 2, "neutral": 19, "worse": 3, "conclusion": "no-clear-benefit"}
+    },
+    {
+      "id": "lineup-answer-redundancy-v1",
+      "title": "Answer redundancy",
+      "rationale": "A lineup should be more robust when critical opposing members have multiple offensive and defensive answers.",
+      "stage": "proposed",
+      "combine": "weighted-geometric-percentile",
+      "factors": [
+        {"feature": "lineup.opponentMinimumAnswerDepth", "direction": "higher", "weight": 1},
+        {"feature": "lineup.offensiveRedundancyFloor", "direction": "higher", "weight": 1},
+        {"feature": "lineup.defensiveRedundancyFloor", "direction": "higher", "weight": 1}
+      ],
+      "scope": ["all-lineups"],
+      "guardrails": [{"feature": "lineup.strengthFloor", "minimumDelta": -5}]
+    },
+    {
+      "id": "lineup-role-compression-v1",
+      "title": "Role compression with strength",
+      "rationale": "Broad functional coverage is valuable only when the weakest selected member remains competitively viable.",
+      "stage": "causal-complete",
+      "combine": "weighted-geometric-percentile",
+      "factors": [
+        {"feature": "lineup.roleTagBreadth", "direction": "higher", "weight": 1},
+        {"feature": "lineup.structuralCoverage", "direction": "higher", "weight": 1},
+        {"feature": "lineup.strengthFloor", "direction": "higher", "weight": 1}
+      ],
+      "scope": ["all-lineups"],
+      "guardrails": [{"feature": "lineup.opponentUnansweredCount", "maximumDelta": 0}, {"feature": "lineup.offensivePressureFloor", "minimumDelta": -0.5}, {"feature": "lineup.defensiveSafetyFloor", "minimumDelta": -0.05}],
+      "causalEvidence": {"study": "lineup-role-compression-causal-v1", "better": 3, "neutral": 18, "worse": 3, "conclusion": "no-clear-benefit"}
+    },
+    {
+      "id": "lineup-no-blind-spot-v1",
+      "title": "No-blind-spot resilience",
+      "rationale": "Avoiding unanswered and singleton matchups may matter more than maximizing average matchup quality.",
+      "stage": "proposed",
+      "combine": "weighted-geometric-percentile",
+      "factors": [
+        {"feature": "lineup.opponentUnansweredCount", "direction": "lower", "weight": 1},
+        {"feature": "lineup.opponentSingletonCount", "direction": "lower", "weight": 1},
+        {"feature": "lineup.twoWayMatchupFloor", "direction": "higher", "weight": 1}
+      ],
+      "scope": ["all-lineups"],
+      "guardrails": [{"feature": "lineup.strengthFloor", "minimumDelta": -5}]
+    }
+  ]
+}

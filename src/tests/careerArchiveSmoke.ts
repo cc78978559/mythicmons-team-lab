@@ -17,6 +17,7 @@ try {
   assert.ok(archive.compressedBytes < archive.checkpointBytes);
   const checkpoint = loadCareerMemoryCheckpoint(archive.checkpointManifest);
   assert.equal(checkpoint.managers.length, 6);
+  assert.equal(checkpoint.managers.filter(manager => manager.mechanismLedger?.activationStatus === "shadow-only").length, 6);
   const portrait = readCareerPortrait(archive.destination, "manager-01");
   assert.equal(portrait.schemaVersion, 2);
   assert.equal(portrait.record.seasons, 1);
@@ -34,6 +35,7 @@ try {
   assert.equal(nextState.completedSeason, 1);
   assert.equal(nextState.managers.reduce((sum: number, manager: any) => sum + manager.titles, 0), 1, "old titles must not carry into the new journey");
   assert.ok(nextState.managers.every((manager: any, index: number) => manager.currentProfile.development.seasons >= sourceState.managers[index].currentProfile.development.seasons));
+  assert.deepEqual(nextState.mechanismLedgers, sourceState.mechanismLedgers, "personal mechanism evidence must survive a new journey");
   assert.ok(nextState.decisionRecords.some((record: any) => record.decision === "从生涯心智检查点开启新旅程"));
   const budgets = read<any>(path.join(next, "season-01", "starting-budgets.json"));
   assert.ok(Object.values(budgets.managers).every(value => value === 40));
@@ -44,6 +46,8 @@ try {
   assert.ok(battleArchive.compactEvidenceBattles > 0);
   assert.equal(findFiles(path.join(next, "season-01", "battles"), "public.log.gz").length, battleArchive.battles);
   assert.ok(findFiles(path.join(next, "season-01", "battles"), "ai-summary.json").length > 0);
+  assert.equal(findFiles(path.join(next, "season-01", "battles"), "ai-timing.json.gz").length, battleArchive.compactEvidenceBattles);
+  assert.ok(battleArchive.timingSummaryBytes > 0);
   const dependencyVariant = writeDependencyVariant(checkpoint, temporary);
   const rejected = runLeagueProcess(path.join(temporary, "rejected"), "career-rejected", dependencyVariant);
   assert.notEqual(rejected.status, 0);
