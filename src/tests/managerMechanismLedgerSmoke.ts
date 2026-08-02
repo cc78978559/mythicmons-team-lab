@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import {createManagerMechanismLedger, managerMechanismLedgerSummary, managerMechanismPopulationSummary, recordManagerMechanismEvidence, validateManagerMechanismLedger} from "../ai/managerMechanismLedger";
+
+let ledger = createManagerMechanismLedger("manager-01", 21);
+const evidence = (index: number, effect: number, level: "exact-counterfactual" | "natural-outcome" = "exact-counterfactual") => ({evidenceId: `evidence:manager-01:${index}`, managerId: "manager-01", mechanismId: "lineup-effective-speed-pressure-v1", season: 21 + index, level, expressed: true, effect, context: {sourceOutcome: index % 2 ? "loss" : "win", seasonBand: index < 3 ? "early" : "late", scoreDelta: .12 + index / 100}} as const);
+ledger = recordManagerMechanismEvidence(ledger, evidence(1, 1));
+const duplicate = recordManagerMechanismEvidence(ledger, evidence(1, -1)); assert.deepEqual(duplicate, ledger, "duplicate evidence must be idempotent");
+ledger = recordManagerMechanismEvidence(ledger, evidence(2, 1));
+ledger = recordManagerMechanismEvidence(ledger, evidence(3, 1));
+ledger = recordManagerMechanismEvidence(ledger, evidence(4, 1));
+validateManagerMechanismLedger(ledger);
+const entry = ledger.mechanisms["lineup-effective-speed-pressure-v1"];
+assert.equal(entry.better, 4); assert.equal(entry.worse, 0); assert.equal(entry.status, "locally-promising"); assert.equal(entry.contexts.length, 4);
+const natural = recordManagerMechanismEvidence(ledger, evidence(5, -1, "natural-outcome"));
+assert.ok(natural.mechanisms[entry.mechanismId].posterior.mean > 0, "low-confidence natural result must not erase exact evidence");
+const summary = managerMechanismLedgerSummary(natural) as any; assert.equal(summary.activationStatus, "shadow-only"); assert.equal(summary.mechanisms, 1); assert.equal(summary.expressed, 5);
+const population = managerMechanismPopulationSummary([natural, createManagerMechanismLedger("manager-02")]) as any; assert.equal(population.coverage.withEvidence, 1); assert.equal(population.coverage.withoutEvidence, 1); assert.equal(population.coverage.gini, .5); assert.equal(population.underSampledManagers[0].managerId, "manager-02");
+assert.throws(() => recordManagerMechanismEvidence(natural, {...evidence(6, 0), managerId: "manager-02"}), /manager mismatch/);
+assert.throws(() => recordManagerMechanismEvidence(natural, {...evidence(6, 0), effect: 2}), /Invalid manager mechanism evidence/);
+console.log("Manager mechanism ledger smoke passed: evidence levels, contexts, posterior, deduplication, bounds, and shadow isolation");

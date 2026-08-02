@@ -1,0 +1,223 @@
+{
+  "schemaVersion": 1,
+  "studies": [
+    {
+      "id": "lineup-sixty-source-v1",
+      "domain": "lineup",
+      "samples": 60,
+      "seeds": 60,
+      "better": 9,
+      "neutral": 37,
+      "worse": 14,
+      "conclusion": "no-predictive-signal",
+      "metrics": {
+        "decisive": 23,
+        "directionCorrect": 15,
+        "directionP": 0.105,
+        "lossImprovementPercent": 3.69,
+        "requiredLossImprovementPercent": 5,
+        "decisivenessBrier": 0.2522,
+        "decisivenessBaselineBrier": 0.2364
+      },
+      "provenance": "docs/STRATEGY_PROGRAM_EVOLUTION.md#lineup-sixty-source"
+    },
+    {
+      "id": "lineup-boundary-historical-pilot-v1",
+      "domain": "lineup",
+      "samples": 2,
+      "seeds": 1,
+      "better": 0,
+      "neutral": 2,
+      "worse": 0,
+      "conclusion": "bounded-expression-competitive-neutral",
+      "metrics": {
+        "historicalRuntimeVerified": true,
+        "completeCandidateTraces": 2,
+        "minimumStyleScales": [1.01, 1.02],
+        "localSeriesOutcomes": ["win-remained-win", "loss-remained-loss"],
+        "battleCausalPilot": {
+          "games": 2,
+          "changedMembersParticipated": 2,
+          "actionDivergences": 2,
+          "behavioralReconvergences": 0,
+          "outcomeChanges": 0,
+          "classification": "trajectory-change-outcome-neutral"
+        },
+        "branchStorageReductionRate": 0.999916
+      },
+      "provenance": "docs/SHADOW_DIAGNOSTICS.md#historical-boundary-pilot"
+    },
+    {
+      "id": "lineup-stratified-boundary-pilot-v2",
+      "domain": "lineup",
+      "samples": 30,
+      "seeds": 30,
+      "better": 7,
+      "neutral": 15,
+      "worse": 8,
+      "conclusion": "keep-shadow-no-clear-benefit",
+      "metrics": {
+        "sourceUnit": "unique-manager",
+        "seasons": 12,
+        "decisive": 15,
+        "pairedScore": 0.483333,
+        "improvementP": 0.696381,
+        "regressionP": 0.5,
+        "expressionRate": 1,
+        "battleGames": 60,
+        "outcomeChangingGames": 20,
+        "unusedSubstitutions": 0,
+        "eraCoverage": {
+          "early": 10,
+          "middle": 10,
+          "late": 10
+        },
+        "scaleCoverage": {
+          "low": 10,
+          "medium": 10,
+          "high": 10
+        },
+        "marginCoverage": {
+          "razor": 10,
+          "close": 10,
+          "wide": 10
+        }
+      },
+      "provenance": "docs/SHADOW_DIAGNOSTICS.md#completed-stratified-result"
+    },
+    {
+      "id": "program-observed-boundary-v1",
+      "domain": "program-evolution",
+      "samples": 20,
+      "seeds": 20,
+      "better": 4,
+      "neutral": 14,
+      "worse": 2,
+      "conclusion": "no-clear-benefit",
+      "metrics": {
+        "decisionChanged": 13,
+        "meanPoints": 0.3,
+        "meanRankImprovement": 0.15,
+        "meanTitles": 0.1,
+        "improvementP": 0.34375
+      },
+      "provenance": "docs/STRATEGY_PROGRAM_EVOLUTION.md#observed-boundary-v1"
+    },
+    {
+      "id": "program-compound-boundary-v2",
+      "domain": "program-evolution",
+      "samples": 20,
+      "seeds": 20,
+      "better": 3,
+      "neutral": 12,
+      "worse": 5,
+      "conclusion": "no-clear-benefit",
+      "metrics": {
+        "decisionChanged": 16,
+        "meanPoints": -0.3,
+        "meanRankImprovement": -0.05,
+        "meanTitles": 0.05,
+        "meanCash": 0.7,
+        "improvementP": 0.855469,
+        "regressionP": 0.363281
+      },
+      "provenance": "docs/STRATEGY_PROGRAM_EVOLUTION.md#compound-observed-boundary-v2"
+    },
+    {
+      "id": "program-decision-margin-v3",
+      "domain": "program-evolution",
+      "samples": 20,
+      "seeds": 20,
+      "better": 4,
+      "neutral": 9,
+      "worse": 7,
+      "conclusion": "no-clear-benefit",
+      "metrics": {
+        "decisionChanged": 16,
+        "meanPoints": -0.05,
+        "meanRankImprovement": -0.3,
+        "meanTitles": -0.05,
+        "meanCash": -0.85,
+        "improvementP": 0.886719,
+        "regressionP": 0.274414
+      },
+      "provenance": "docs/STRATEGY_PROGRAM_EVOLUTION.md#decision-margin-v3"
+    },
+    {
+      "id": "memory-seasonal-decay-holdout",
+      "domain": "tactical-memory",
+      "samples": 121,
+      "seeds": 53,
+      "better": 0,
+      "neutral": 117,
+      "worse": 4,
+      "conclusion": "insufficient-evidence-negative-direction",
+      "metrics": {
+        "directionalSeedClusters": 2
+      },
+      "provenance": "docs/TACTICAL_MEMORY_ABLATION.md#seasonal-decay-shadow-experiment"
+    },
+    {
+      "id": "memory-low-confidence-holdout",
+      "domain": "tactical-memory",
+      "samples": 10,
+      "seeds": 10,
+      "better": 1,
+      "neutral": 0,
+      "worse": 9,
+      "conclusion": "rejected-and-confidence-floor-activated",
+      "metrics": {
+        "regressionP": 0.0107,
+        "activeConfidenceFloor": 0.15
+      },
+      "provenance": "docs/WHITE_BOX_AI.md#tactical-memory"
+    },
+    {
+      "id": "trade-structure-v2-agreement",
+      "domain": "trade",
+      "samples": 1297,
+      "seeds": 10,
+      "better": 0,
+      "neutral": 1297,
+      "worse": 0,
+      "conclusion": "observability-only-no-treatment-contrast",
+      "metrics": {
+        "agreements": 1297,
+        "disagreements": 0
+      },
+      "provenance": "docs/WHITE_BOX_AI.md#trade-structure-v2"
+    },
+    {
+      "id": "keeper-v1-paired",
+      "domain": "keeper",
+      "samples": 10,
+      "seeds": 10,
+      "better": 0,
+      "neutral": 0,
+      "worse": 0,
+      "conclusion": "rejected-competitive-regression",
+      "metrics": {
+        "outcomeCountsReported": false,
+        "competitiveResult": "degraded",
+        "mechanism": "salary-savings-overweighted-reacquisition-and-depth-underweighted"
+      },
+      "provenance": "docs/WHITE_BOX_AI.md#keeper-policy-v2"
+    },
+    {
+      "id": "academy-contract-cycle-21",
+      "domain": "academy-contract",
+      "samples": 7,
+      "seeds": 1,
+      "better": 0,
+      "neutral": 7,
+      "worse": 0,
+      "conclusion": "competitive-neutral-economic-tradeoff",
+      "metrics": {
+        "meanPayrollDeltaForConcessions": -0.192,
+        "meanTreasuryDeltaForConcessions": 0.166,
+        "releaseReversalPayrollDelta": 2.359
+      },
+      "provenance": "docs/WHITE_BOX_AI.md#academy-contract-cycle-21"
+    }
+  ]
+}

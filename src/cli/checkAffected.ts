@@ -15,8 +15,9 @@ const testScripts = Object.entries(packageJson.scripts).filter(([name, command])
 const sourceFiles = files("src", ".ts"), dependencyGraph = buildDependencyGraph(sourceFiles);
 const scriptFiles = new Map(testScripts.map(([name, command]) => [name, normalize(command.match(/tsx\s+([^\s]+\.ts)/)![1])]));
 const explicitFiles = option("--files", "").split(",").map(normalize).filter(Boolean);
-const changed = all ? [] : explicitFiles.length ? explicitFiles : changedFiles(base), globalChange = changed.some(file => ["package.json", "package-lock.json", "tsconfig.json"].includes(file));
-const selectedBeforeShard = all || globalChange ? testScripts.map(([name]) => name) : selectAffected(changed);
+const changed = all ? [] : explicitFiles.length ? explicitFiles : changedFiles(base), packageImpact = analyzePackageImpact(changed.includes("package.json"));
+const globalChange = changed.some(file => ["package-lock.json", "tsconfig.json"].includes(file)) || packageImpact.global;
+const selectedBeforeShard = all || globalChange ? testScripts.map(([name]) => name) : [...new Set([...selectAffected(changed), ...packageImpact.tests])].sort();
 const selected = shard ? selectedBeforeShard.filter(name => shardFor(name, shard.count) === shard.index) : selectedBeforeShard;
 const checks = [...(!shard || shard.index === 0 ? ["typecheck"] : []), ...selected.filter(name => name !== "typecheck")];
 
@@ -52,24 +53,58 @@ function selectAffected(changed: string[]): string[] {
   const selected = new Set<string>(), unmappedSource: string[] = [];
   for (const changedFile of changed.filter(file => file.startsWith("src/") && file.endsWith(".ts"))) {
     let matched = false;
-    for (const [name, testFile] of scriptFiles) if (testFile === changedFile || dependencies(testFile).has(changedFile) || relatedStem(testFile, changedFile) || explicitImpact(testFile, changedFile)) { selected.add(name); matched = true; }
+    for (const [name, testFile] of scriptFiles) if (testFile === changedFile || dependencies(testFile).has(changedFile) || relatedStem(testFile, changedFile) || mappedImpact(testFile, changedFile)) { selected.add(name); matched = true; }
     if (!matched && !changedFile.startsWith("src/tests/")) unmappedSource.push(changedFile);
   }
+  for (const changedFile of changed) for (const [name, testFile] of scriptFiles) if (mappedImpact(testFile, changedFile)) selected.add(name);
   if (unmappedSource.length && packageJson.scripts["test:regressions"]) selected.add("test:regressions");
   return [...selected].sort();
 }
 function dependencies(file: string, seen = new Set<string>()): Set<string> { if (seen.has(file)) return seen; seen.add(file); for (const dependency of dependencyGraph.get(file) ?? []) dependencies(dependency, seen); return seen; }
 function buildDependencyGraph(source: string[]): Map<string, string[]> { const known = new Set(source), graph = new Map<string, string[]>(); for (const file of source) { const text = fs.readFileSync(path.join(root, file), "utf8"), imports = [...text.matchAll(/(?:from\s+|import\s*)["'](\.[^"']+)["']/g)].map(match => resolveImport(file, match[1])).filter((value): value is string => Boolean(value && known.has(value))), spawned = [...text.matchAll(/["'](src\/[a-zA-Z0-9_./-]+\.ts)["']/g)].map(match => normalize(match[1])).filter(value => known.has(value)); graph.set(file, [...new Set([...imports, ...spawned])]); } return graph; }
 function resolveImport(from: string, request: string): string | undefined { const candidate = normalize(path.join(path.dirname(from), request)); for (const value of [candidate, `${candidate}.ts`, `${candidate}/index.ts`]) if (fs.existsSync(path.join(root, value))) return value; return undefined; }
-function checkHash(name: string): string { const digest = crypto.createHash("sha256"), testFile = scriptFiles.get(name) ?? "", relevant = name === "typecheck" ? sourceFiles : [...dependencies(testFile), ...sourceFiles.filter(file => relatedStem(testFile, file) || explicitImpact(testFile, file))]; for (const file of [...new Set([...relevant, "package.json", "package-lock.json", "tsconfig.json"])].sort()) if (file && fs.existsSync(path.join(root, file))) digest.update(file).update(fs.readFileSync(path.join(root, file))); return digest.digest("hex"); }
+function checkHash(name: string): string { const digest = crypto.createHash("sha256"), testFile = scriptFiles.get(name) ?? "", relevant = name === "typecheck" ? sourceFiles : [...dependencies(testFile), ...sourceFiles.filter(file => relatedStem(testFile, file) || mappedImpact(testFile, file))]; for (const file of [...new Set([...relevant, "package-lock.json", "tsconfig.json"])].sort()) if (file && fs.existsSync(path.join(root, file))) digest.update(file).update(fs.readFileSync(path.join(root, file))); digest.update(packageCheckFingerprint(name)); return digest.digest("hex"); }
 function changedFiles(reference: string): string[] { const tracked = git(["diff", "--name-only", reference, "--"]), untracked = git(["ls-files", "--others", "--exclude-standard"]); return [...new Set([...tracked, ...untracked].map(normalize).filter(Boolean))].sort(); }
 function git(command: string[]): string[] { const result = spawnSync("git", command, {cwd: root, encoding: "utf8"}); if (result.status !== 0) throw new Error(result.stderr || `git ${command.join(" ")} failed`); return result.stdout.split(/\r?\n/).filter(Boolean); }
+function gitText(command: string[]): string | null { const result = spawnSync("git", command, {cwd: root, encoding: "utf8"}); return result.status === 0 ? result.stdout : null; }
 function files(directory: string, extension: string): string[] { const result: string[] = []; const visit = (current: string) => { for (const entry of fs.readdirSync(path.join(root, current), {withFileTypes: true})) { const relative = normalize(path.join(current, entry.name)); if (entry.isDirectory()) visit(relative); else if (relative.endsWith(extension)) result.push(relative); } }; visit(directory); return result; }
 function atomicJson(file: string, value: unknown): void { const temporary = `${file}.${process.pid}.tmp`; fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, "utf8"); fs.renameSync(temporary, file); }
 function read(file: string): CacheManifest { return JSON.parse(fs.readFileSync(file, "utf8")) as CacheManifest; }
 function normalize(value: string): string { return value.replaceAll("\\", "/").replace(/^\.\//, ""); }
 function relatedStem(testFile: string, changedFile: string): boolean { const clean = (file: string) => path.basename(file, ".ts").toLowerCase().replace(/smoke$|^run/g, ""); const test = clean(testFile), changed = clean(changedFile); return changed.length >= 8 && (test.includes(changed) || changed.includes(test)); }
-function explicitImpact(testFile: string, changedFile: string): boolean { const impacts: Record<string, string[]> = {"src/draft/runLock.ts": ["parallelRegistrySmoke.ts", "officialSeasonCycleSmoke.ts", "unifiedWhiteBoxEvidenceSmoke.ts", "programDecisionCounterfactualSmoke.ts"]}; return (impacts[changedFile] ?? []).includes(path.basename(testFile)); }
+function explicitImpact(testFile: string, changedFile: string): boolean { const impacts: Record<string, string[]> = {"src/draft/runLock.ts": ["parallelRegistrySmoke.ts", "officialSeasonCycleSmoke.ts", "unifiedWhiteBoxEvidenceSmoke.ts", "programDecisionCounterfactualSmoke.ts"], "src/cli/leagueControl.ts": ["leagueControlSmoke.ts", "officialSeasonCycleSmoke.ts"], "src/cli/runOfficialSeasonCycle.ts": ["leagueControlSmoke.ts", "officialSeasonCycleSmoke.ts"], "src/cli/shadowDiagnostics.ts": ["shadowDiagnosticsSmoke.ts"], "src/cli/refreshShadowLineupTraces.ts": ["shadowExperimentPlannerSmoke.ts", "lineupTraceRetentionSmoke.ts", "historicalRuntimeCheckpointSmoke.ts"], "src/cli/counterfactualWhiteBoxLineup.ts": ["lineupsSmoke.ts", "historicalRuntimeCheckpointSmoke.ts"], "src/cli/compactLineupCounterfactual.ts": ["counterfactualCapsuleSmoke.ts"], "src/cli/reviewShadowLineupPilot.ts": ["lineupPilotReviewSmoke.ts"], "src/cli/discoverShadowLineupMechanisms.ts": ["lineupMechanismDiscoverySmoke.ts"], "src/cli/auditShadowLineupRepresentation.ts": ["lineupRepresentationAuditSmoke.ts"], "src/cli/benchmarkLineupRepresentationAccumulation.ts": ["lineupRepresentationAuditSmoke.ts", "historicalRuntimeCheckpointSmoke.ts"], "src/cli/reviewLineupRepresentationOutcomes.ts": ["lineupRepresentationOutcomeReviewSmoke.ts"], "src/cli/planLineupSpeedCausalStudy.ts": ["lineupSpeedCausalPlanSmoke.ts"], "src/cli/auditLineupHypotheses.ts": ["lineupHypothesisWorkbenchSmoke.ts"], "src/cli/planLineupHypothesisStudy.ts": ["lineupHypothesisWorkbenchSmoke.ts"], "src/cli/runLineupSpeedCausalStudy.ts": ["lineupSpeedCausalResultSmoke.ts", "lineupHypothesisWorkbenchSmoke.ts", "historicalRuntimeCheckpointSmoke.ts", "counterfactualCapsuleSmoke.ts"], "src/cli/draftLeagueV3.ts": ["lineupRepresentationSmoke.ts"], "data/shadow-evidence-registry.json": ["shadowDiagnosticsSmoke.ts"], "data/lineup-audit-hypotheses.json": ["lineupHypothesisWorkbenchSmoke.ts"]}; return (impacts[changedFile] ?? []).includes(path.basename(testFile)); }
+function mappedImpact(testFile: string, changedFile: string): boolean {
+  const impacts: Record<string, string[]> = {
+    "src/draft/v12Audit.ts": ["v12Smoke.ts", "officialSeasonCycleSmoke.ts", "leagueControlSmoke.ts"],
+    "src/cli/auditV12.ts": ["v12Smoke.ts", "officialSeasonCycleSmoke.ts", "leagueControlSmoke.ts"],
+    "src/draft/storageIndex.ts": ["toolingDoctorSmoke.ts"],
+    "src/draft/sourceCacheMaintenance.ts": ["toolingDoctorSmoke.ts", "lineupSpeedCausalResultSmoke.ts"],
+    "src/cli/toolingDoctor.ts": ["toolingDoctorSmoke.ts"],
+    "src/cli/runLineupSpeedCausalStudy.ts": ["toolingDoctorSmoke.ts"],
+  };
+  return explicitImpact(testFile, changedFile) || (impacts[changedFile] ?? []).includes(path.basename(testFile));
+}
+function analyzePackageImpact(enabled: boolean): {global: boolean; tests: string[]} {
+  if (!enabled) return {global: false, tests: []};
+  const previousText = gitText(["show", `${base}:package.json`]); if (!previousText) return {global: true, tests: []};
+  try {
+    const previous = JSON.parse(previousText), current = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+    const runtimeKeys = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "engines", "packageManager", "type", "main"];
+    if (runtimeKeys.some(key => stable(previous[key]) !== stable(current[key]))) return {global: true, tests: []};
+    const ignored = new Set([...runtimeKeys, "scripts", "name", "version", "description", "private", "license", "author", "keywords"]), keys = new Set([...Object.keys(previous), ...Object.keys(current)]);
+    if ([...keys].some(key => !ignored.has(key) && stable(previous[key]) !== stable(current[key]))) return {global: true, tests: []};
+    const changedScripts = new Set([...new Set([...Object.keys(previous.scripts ?? {}), ...Object.keys(current.scripts ?? {})])].filter(name => previous.scripts?.[name] !== current.scripts?.[name]));
+    let expanded = true; while (expanded) { expanded = false; for (const [name, command] of Object.entries(current.scripts ?? {}) as Array<[string, string]>) if (!changedScripts.has(name) && referencedScripts(command).some(reference => changedScripts.has(reference))) { changedScripts.add(name); expanded = true; } }
+    return {global: false, tests: testScripts.map(([name]) => name).filter(name => changedScripts.has(name))};
+  } catch { return {global: true, tests: []}; }
+}
+function packageCheckFingerprint(name: string): string {
+  const value = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")), scripts: Record<string, string> = {}, queue = name === "typecheck" ? [] : [name], seen = new Set<string>();
+  while (queue.length) { const script = queue.shift()!; if (seen.has(script)) continue; seen.add(script); scripts[script] = String(value.scripts?.[script] ?? ""); queue.push(...referencedScripts(scripts[script])); }
+  return stable({dependencies: value.dependencies, devDependencies: value.devDependencies, optionalDependencies: value.optionalDependencies, peerDependencies: value.peerDependencies, engines: value.engines, packageManager: value.packageManager, type: value.type, main: value.main, scripts});
+}
+function referencedScripts(command: string): string[] { return [...command.matchAll(/npm(?:\.cmd)?\s+run\s+([a-zA-Z0-9:_-]+)/g)].map(match => match[1]); }
+function stable(value: unknown): string { if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`; if (value && typeof value === "object") return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stable((value as any)[key])}`).join(",")}}`; return JSON.stringify(value); }
 function safe(value: string): string { return value.replace(/[^a-z0-9.-]+/gi, "-"); }
 function option(name: string, fallback: string): string { const index = args.indexOf(name); return index >= 0 ? args[index + 1] ?? fallback : fallback; }
 function shardFor(name: string, count: number): number { return Number.parseInt(crypto.createHash("sha256").update(name).digest("hex").slice(0, 8), 16) % count; }

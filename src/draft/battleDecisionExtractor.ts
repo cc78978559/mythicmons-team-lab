@@ -14,12 +14,35 @@ export interface KeyBattleDecision {
   personalityId: string;
 }
 
+export interface CompactBattleDecision {
+  turn: number;
+  playerId: "p1" | "p2";
+  decisionOrdinal: number;
+  selected: string;
+  selectedScore: number | null;
+  runnerUp: string | null;
+  runnerUpScore: number | null;
+  margin: number | null;
+  kind: "move" | "switch" | "other";
+  terastallize: boolean;
+  personalityId: string;
+}
+
 const STRATEGIC_MOVES = new Set(["stealthrock", "spikes", "toxicspikes", "stickyweb", "defog", "rapidspin", "tidyup", "trickroom", "reflect", "lightscreen", "auroraveil", "nastyplot", "swordsdance", "dragondance", "shellsmash", "recover", "roost", "wish", "trick", "encore", "taunt", "yawn"]);
 
 export function extractKeyBattleDecisions(decisionLogPath: string, limit = 6): KeyBattleDecision[] {
   const traces = JSON.parse(fs.readFileSync(decisionLogPath, "utf8")) as AiDecisionTrace[];
   const candidates = traces.map(trace => classifyTrace(trace)).filter((value): value is KeyBattleDecision & {importance: number} => value !== null);
   return candidates.sort((left, right) => right.importance - left.importance || left.turn - right.turn).slice(0, limit).map(({importance: _importance, ...decision}) => decision);
+}
+
+export function extractCompactBattleDecisions(decisionLogPath: string): CompactBattleDecision[] {
+  const traces = JSON.parse(fs.readFileSync(decisionLogPath, "utf8")) as AiDecisionTrace[];
+  return traces.map((trace, index) => {
+    const ranked = [...trace.candidates].sort((left, right) => right.score - left.score), selected = ranked.find(candidate => candidate.choice === trace.selected) ?? null;
+    const runnerUp = ranked.find(candidate => candidate.choice !== trace.selected) ?? null, margin = selected && runnerUp ? selected.score - runnerUp.score : null;
+    return {turn: trace.turn, playerId: trace.playerId, decisionOrdinal: index + 1, selected: trace.selected, selectedScore: selected?.score ?? null, runnerUp: runnerUp?.choice ?? null, runnerUpScore: runnerUp?.score ?? null, margin, kind: trace.selected.startsWith("switch ") ? "switch" : trace.selected.startsWith("move ") ? "move" : "other", terastallize: trace.selected.includes("terastallize"), personalityId: trace.personalityId};
+  });
 }
 
 function classifyTrace(trace: AiDecisionTrace): (KeyBattleDecision & {importance: number}) | null {

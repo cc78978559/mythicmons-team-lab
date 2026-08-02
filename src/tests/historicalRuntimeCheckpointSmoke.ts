@@ -3,10 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
-import {hasHistoricalReplayPlan, inspectHistoricalReplayPlan, materializeHistoricalReplayCheckpoint, planHistoricalReplaySegments, verifyHistoricalDynastyCheckpoint} from "../draft/historicalRuntimeCheckpoint";
+import {hasHistoricalReplayPlan, inspectHistoricalReplayPlan, materializeHistoricalDynastyBoundary, materializeHistoricalReplayCheckpoint, materializeSpawnWorkingDirectory, planHistoricalReplaySegments, verifyHistoricalDynastyCheckpoint} from "../draft/historicalRuntimeCheckpoint";
 import {auditV12Output} from "../draft/v12Audit";
 
 const project = process.cwd(), workspace = fs.mkdtempSync(path.join(os.tmpdir(), "mythic-historical-runtime-")), runtimeProject = path.join(workspace, "project"), source = path.join(workspace, "source"), replayRoot = path.join(workspace, "replay");
+const linkedWorkingDirectory = materializeSpawnWorkingDirectory(workspace, "win32", 0); assert.equal(fs.realpathSync(linkedWorkingDirectory.cwd), fs.realpathSync(workspace)); linkedWorkingDirectory.cleanup(); assert.equal(fs.existsSync(linkedWorkingDirectory.cwd), false); assert.equal(materializeSpawnWorkingDirectory(workspace, "linux").cwd, path.resolve(workspace));
 const common = {NODE_PATH: path.join(project, "node_modules"), V12_REGISTRY_SOURCE: path.join(project, "data", "draft"), V12_SEED: "historical-runtime-smoke", V12_MANAGER_LIMIT: "6", V12_PAIRS: "1", V12_POOL_SIZE: "100", V12_AUCTION_LOTS: "10", V12_REGULAR_ROUNDS: "1", V12_MAX_TURNS: "20", V12_MIN_ROSTER: "6", V12_MAX_ROSTER: "6", V12_EVOLUTION_MODE: "punctuated", V12_EVOLUTION_POLICY: "shadow", V12_EVIDENCE_RETENTION: "compact", V12_EVIDENCE_SAMPLE_RATE: "0"};
 try {
   copyRuntimeProject();
@@ -32,6 +33,7 @@ try {
   assert.equal(materialized.runtimeId, seasonZero.runtime.runtimeId, "season one must use its recorded runtime");
   assert.equal(read<any>(path.join(replayRoot, "dynasty-state.json")).completedSeason, 0);
   assert(fs.existsSync(path.join(materialized.registrySource, "registry-manifest.json")));
+  const boundaryRoot=path.join(workspace,"boundary"),boundary=materializeHistoricalDynastyBoundary(source,1,boundaryRoot);assert.equal(boundary.completedSeason,1);assert.equal(read<any>(path.join(boundaryRoot,"dynasty-state.json")).completedSeason,1);assert(fs.existsSync(path.join(boundaryRoot,"season-01","season.json")));assert(fs.existsSync(path.join(boundary.registrySource,"registry-manifest.json")));
 
   const final = read<any>(path.join(source, "dynasty-state.json")), settings = final.settings;
   for (const segment of segments) run(path.join(segment.runtimeWorkspace, "src", "cli", "draftLeagueV12.ts"), segment.runtimeWorkspace, {...common, NODE_PATH: segment.nodePath, V12_OUT: replayRoot, V12_SEASONS: String(segment.lastSeason), V12_RESUME: "true", V12_ALLOW_CODE_UPGRADE: "true", V12_REGISTRY_SOURCE: materialized.registrySource, V12_REGISTRY_REVISION: final.registry.revision, V12_AUCTION_MODE: String(settings.auctionMode ?? "sequential")});

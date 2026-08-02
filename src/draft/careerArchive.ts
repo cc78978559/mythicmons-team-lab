@@ -6,6 +6,7 @@ import {classifyEmergentStyle, type ManagerProfile, type ManagerTraits} from "./
 import type {LineageIdentity} from "./naturalEvolution";
 import {countProgramNodes, strategyProgramHash} from "./strategyProgram";
 import {loadDynastyState} from "./dynastyStateStore";
+import {validateManagerMechanismLedger, type ManagerMechanismLedger} from "../ai/managerMechanismLedger";
 
 interface StoredRosterMember {
   assetId?: string;
@@ -53,6 +54,7 @@ interface StoredState {
   fingerprint: CareerFingerprint;
   registry?: {hash?: string; revision?: string};
   decisionRecords?: Array<{id: string; stage: string; actor: string; decision: string; selected: unknown; context?: Record<string, unknown>; outcome?: Record<string, unknown>}>;
+  mechanismLedgers?: ManagerMechanismLedger[];
 }
 
 export interface CareerFingerprint {
@@ -106,6 +108,7 @@ export interface CareerMemoryCheckpoint {
     lineageHistory: LineageIdentity[];
     pendingProfile?: ManagerProfile;
     pendingLineage?: LineageIdentity;
+    mechanismLedger?: ManagerMechanismLedger;
   }>;
 }
 
@@ -208,6 +211,12 @@ export function loadCareerMemoryCheckpoint(manifestOrArchive: string): CareerMem
   if (expectedHash && hash !== expectedHash) throw new Error(`Career checkpoint hash mismatch: ${hash} != ${expectedHash}`);
   const checkpoint = JSON.parse(source.toString("utf8")) as CareerMemoryCheckpoint;
   if (checkpoint.schemaVersion !== 1 || !Array.isArray(checkpoint.managers) || !checkpoint.managers.length) throw new Error("Invalid career memory checkpoint");
+  for (const manager of checkpoint.managers) {
+    if (manager.mechanismLedger) {
+      validateManagerMechanismLedger(manager.mechanismLedger);
+      if (manager.mechanismLedger.managerId !== manager.id) throw new Error(`Career mechanism ledger identity mismatch: ${manager.id}`);
+    }
+  }
   return checkpoint;
 }
 
@@ -432,10 +441,12 @@ function managerName(id: string): string {
 }
 
 function exportCareerMemoryCheckpoint(state: StoredState, destination: string): Pick<CareerArchiveResult, "checkpointManifest" | "checkpointBytes" | "compressedBytes"> {
+  const mechanismLedgers = new Map((state.mechanismLedgers ?? []).map(ledger => [ledger.managerId, ledger]));
+  for (const ledger of mechanismLedgers.values()) validateManagerMechanismLedger(ledger);
   const checkpoint: CareerMemoryCheckpoint = {
     schemaVersion: 1,
     source: {seed: state.seed, completedSeason: state.completedSeason, stateVersion: state.version, fingerprint: state.fingerprint, registry: state.registry},
-    managers: state.managers.map(manager => ({id: manager.id, name: manager.name, baseProfile: manager.baseProfile, currentProfile: manager.currentProfile, lineage: manager.lineage, lineageHistory: manager.lineageHistory, pendingProfile: manager.pendingProfile, pendingLineage: manager.pendingLineage})),
+    managers: state.managers.map(manager => ({id: manager.id, name: manager.name, baseProfile: manager.baseProfile, currentProfile: manager.currentProfile, lineage: manager.lineage, lineageHistory: manager.lineageHistory, pendingProfile: manager.pendingProfile, pendingLineage: manager.pendingLineage, mechanismLedger: mechanismLedgers.get(manager.id)})),
   };
   const source = Buffer.from(`${JSON.stringify(checkpoint)}\n`, "utf8"), compressed = zlib.gzipSync(source, {level: 9});
   const archive = path.join(destination, "career-memory.json.gz"), manifestPath = path.join(destination, "career-memory.json");
@@ -448,7 +459,7 @@ function exportCareerMemoryCheckpoint(state: StoredState, destination: string): 
     compressedBytes: compressed.length,
     managers: checkpoint.managers.length,
     completedSeason: state.completedSeason,
-    carries: ["baseProfile", "currentProfile", "lineage", "lineageHistory", "pendingProfile", "pendingLineage"],
+    carries: ["baseProfile", "currentProfile", "lineage", "lineageHistory", "pendingProfile", "pendingLineage", "mechanismLedger"],
     resets: ["season", "titles", "points", "cash", "contracts", "assets", "market"],
   });
   return {checkpointManifest: manifestPath, checkpointBytes: source.length, compressedBytes: compressed.length};

@@ -18,10 +18,11 @@ import {createRegistrySnapshot, loadRegistrySnapshot, type RegistrySnapshot} fro
 import {acquireRunLock} from "../draft/runLock";
 import {writeSeasonBrief} from "../draft/seasonBrief";
 import {loadCareerMemoryCheckpoint} from "../draft/careerArchive";
-import {extractKeyBattleDecisions} from "../draft/battleDecisionExtractor";
+import {extractCompactBattleDecisions, extractKeyBattleDecisions} from "../draft/battleDecisionExtractor";
 import {buildTacticalMemoryTrace, evaluateConfigurationEvidence, evaluateConfigurationPosterior} from "../ai/whiteBox/memory";
 import {loadDynastyState, persistDynastyState} from "../draft/dynastyStateStore";
 import {captureHistoricalDynastyCheckpoint} from "../draft/historicalRuntimeCheckpoint";
+import {createManagerMechanismLedger, validateManagerMechanismLedger, type ManagerMechanismLedger} from "../ai/managerMechanismLedger";
 
 interface SeasonResult {
   season: number;
@@ -100,6 +101,7 @@ interface DynastyState {
   fingerprint: RuntimeFingerprint;
   decisionRecords: DecisionRecord[];
   evolutionArchive?: Array<QualityDiversityCandidate<EvolutionCompetitor>>;
+  mechanismLedgers?: ManagerMechanismLedger[];
   punctuatedEvolution?: Record<string, ManagerEvolutionState>;
   leaguePool?: number;
   moneySupply?: number;
@@ -207,6 +209,7 @@ let market = new Map<string, MarketAggregate>();
 let assets = new Map<string, AssetLedgerEntry>();
 let ledger = new DecisionLedger();
 let evolutionArchive: Array<QualityDiversityCandidate<EvolutionCompetitor>> = [];
+let mechanismLedgers: ManagerMechanismLedger[] = managers.map(manager => createManagerMechanismLedger(manager.id));
 let punctuatedEvolution: Record<string, ManagerEvolutionState> = {};
 let leaguePool = 0;
 let moneySupply = stateVersion >= 10 ? managerLimit * 40 : 0;
@@ -261,6 +264,10 @@ function initializeFromCareerCheckpoint(): void {
   assets = new Map();
   ledger = new DecisionLedger();
   evolutionArchive = [];
+  mechanismLedgers = checkpoint.managers.map(memory => memory.mechanismLedger
+    ? structuredClone(memory.mechanismLedger)
+    : createManagerMechanismLedger(memory.id));
+  for (const mechanismLedger of mechanismLedgers) validateManagerMechanismLedger(mechanismLedger);
   punctuatedEvolution = {};
   leaguePool = 0;
   moneySupply = managerLimit * baseBudget;
@@ -313,6 +320,7 @@ function restoreCheckpoint(): number {
   ledger = new DecisionLedger(state.decisionRecords);
   if (codeUpgrade) ledger.add({stage: "calibration", actor: "system", decision: "显式采用联盟代码升级", selected: runtimeFingerprint.codeHash, context: {before: state.fingerprint.codeHash, after: runtimeFingerprint.codeHash, registryHash: runtimeFingerprint.registryHash, benchmarkHash: runtimeFingerprint.benchmarkHash, dependencyHash: runtimeFingerprint.dependencyHash}, alternatives: [{option: "继续使用原代码版本"}], rationale: ["仅放宽代码哈希，配置、基准、依赖和Showdown版本仍需通过兼容性校验", "迁移记录进入联盟永久决策账本"]});
   evolutionArchive = state.evolutionArchive ?? [];
+  mechanismLedgers = state.mechanismLedgers ?? managers.map(manager => createManagerMechanismLedger(manager.id, state.completedSeason));
   punctuatedEvolution = state.punctuatedEvolution ?? {};
   leaguePool = state.leaguePool ?? 0;
   moneySupply = state.moneySupply ?? (stateVersion >= 10 ? state.managers.reduce((sum, manager) => sum + manager.cash, 0) + leaguePool : 0);
@@ -331,6 +339,7 @@ function migrateNaturalEvolutionState(state: LegacyV6State): number {
   assets = new Map(Object.entries(state.assets));
   ledger = new DecisionLedger(state.decisionRecords);
   evolutionArchive = [];
+  mechanismLedgers = migrateMechanismLedgers(state.mechanismLedgers, state.completedSeason);
   punctuatedEvolution = {};
   ledger.add({stage: "calibration", actor: "system", decision: "迁移到自然进化经理种群", selected: `${managers.length}条创始谱系`, context: {season: state.completedSeason}, alternatives: [{option: "继续固定人格后验"}], rationale: ["球队席位保留合同和历史", "策略谱系从当前经理状态建立创始种群", "后续赛季通过繁殖、变异和生态位保护更替"]});
   checkpoint(state.completedSeason);
@@ -342,6 +351,16 @@ function validateMigrationCompatibility(state: Pick<DynastyState, "seed" | "comp
   if (state.settings.managerLimit !== managerLimit || state.settings.pairs !== pairs || state.settings.poolSize !== poolSize || state.settings.auctionLots !== auctionLots || state.settings.maxTurns !== maxTurns || state.settings.regularRounds !== regularRounds) throw new Error("Migrated league settings do not match the requested league");
   if (seasonCount < state.completedSeason) throw new Error("V4_SEASONS cannot be lower than the migrated league's completed season count");
   for (const key of ["dataHash", "dependencyHash", "pokemonShowdownVersion"] as const) if (state.fingerprint?.[key] !== runtimeFingerprint[key]) throw new Error(`Migrated league ${key} does not match the current runtime`);
+}
+
+function migrateMechanismLedgers(previous: ManagerMechanismLedger[] | undefined, completedSeason: number): ManagerMechanismLedger[] {
+  const byManager = new Map<string, ManagerMechanismLedger>();
+  for (const ledger of previous ?? []) {
+    validateManagerMechanismLedger(ledger);
+    if (byManager.has(ledger.managerId)) throw new Error(`Duplicate migrated manager mechanism ledger: ${ledger.managerId}`);
+    byManager.set(ledger.managerId, ledger);
+  }
+  return managers.map(manager => structuredClone(byManager.get(manager.id) ?? createManagerMechanismLedger(manager.id, completedSeason)));
 }
 
 function migrateExpansionState(state: LegacyDynastyState): number {
@@ -365,6 +384,7 @@ function migrateExpansionState(state: LegacyDynastyState): number {
   market = new Map(Object.entries(state.market));
   ledger = new DecisionLedger(state.decisionRecords);
   evolutionArchive = [];
+  mechanismLedgers = migrateMechanismLedgers(state.mechanismLedgers, state.completedSeason);
   punctuatedEvolution = {};
   assets = new Map();
   syncAssetLedger(state.completedSeason, path.join(outDir, `season-${String(state.completedSeason).padStart(2, "0")}`));
@@ -1038,7 +1058,7 @@ function assetLabel(member: Pick<DynastyRosterMember, "scarcity"> | undefined, p
 }
 
 function checkpoint(completedSeason: number): void {
-  const snapshot: DynastyState = {version: stateVersion, seed, completedSeason, settings: currentSettings(), managers, market: Object.fromEntries(market), assets: Object.fromEntries(assets), fingerprint: runtimeFingerprint, registry: registryState(), decisionRecords: [...ledger.all()], evolutionArchive, punctuatedEvolution, leaguePool, moneySupply};
+  const snapshot: DynastyState = {version: stateVersion, seed, completedSeason, settings: currentSettings(), managers, market: Object.fromEntries(market), assets: Object.fromEntries(assets), fingerprint: runtimeFingerprint, registry: registryState(), decisionRecords: [...ledger.all()], evolutionArchive, mechanismLedgers, punctuatedEvolution, leaguePool, moneySupply};
   validateDynastyState(snapshot);
   persistDynastyState(path.join(outDir, "dynasty-state.json"), snapshot);
   if (stateVersion >= 12) captureHistoricalDynastyCheckpoint(root, outDir, completedSeason);
@@ -1271,7 +1291,7 @@ function registryState(): NonNullable<DynastyState["registry"]> {
 function archiveBattleLogs(seasonDir: string): void {
   const battleRoot = path.join(seasonDir, "battles");
   if (!fs.existsSync(battleRoot)) return;
-  let files = 0, battles = 0, sourceBytes = 0, compressedBytes = 0, fullEvidenceBattles = 0, compactEvidenceBattles = 0, deletedBytes = 0;
+  let files = 0, battles = 0, sourceBytes = 0, compressedBytes = 0, fullEvidenceBattles = 0, compactEvidenceBattles = 0, deletedBytes = 0, timingSummaryBytes = 0;
   const endFiles = listFiles(battleRoot, candidate => candidate.endsWith("end.json"));
   for (const endFile of endFiles) {
     battles += 1;
@@ -1299,7 +1319,9 @@ function archiveBattleLogs(seasonDir: string): void {
       compactEvidenceBattles += 1;
       if (fs.existsSync(decisions)) {
         const stat = fs.statSync(decisions);
-        writeJson(path.join(gameDir, "ai-summary.json"), {schemaVersion: 1, sourceDecisions: readJson<unknown[]>(decisions).length, keyDecisions: extractKeyBattleDecisions(decisions, 6)});
+        const compact = extractCompactBattleDecisions(decisions), timingBytes = zlib.gzipSync(Buffer.from(`${JSON.stringify({schemaVersion: 1, samplingFrame: "all-decisions", decisions: compact})}\n`), {level: 9});
+        fs.writeFileSync(path.join(gameDir, "ai-timing.json.gz"), timingBytes); timingSummaryBytes += timingBytes.length;
+        writeJson(path.join(gameDir, "ai-summary.json"), {schemaVersion: 1, sourceDecisions: compact.length, keyDecisions: extractKeyBattleDecisions(decisions, 6)});
         fs.rmSync(decisions, {force: true});
         deletedBytes += stat.size;
       }
@@ -1309,7 +1331,7 @@ function archiveBattleLogs(seasonDir: string): void {
       }
     }
   }
-  writeJson(path.join(seasonDir, "battle-archive.json"), {schemaVersion: 2, retention: evidenceRetention, sampleRate: evidenceSampleRate, battles, files, fullEvidenceBattles, compactEvidenceBattles, deletedBytes, sourceBytes, compressedBytes, ratio: sourceBytes ? compressedBytes / sourceBytes : 0});
+  writeJson(path.join(seasonDir, "battle-archive.json"), {schemaVersion: 3, retention: evidenceRetention, sampleRate: evidenceSampleRate, battles, files, fullEvidenceBattles, compactEvidenceBattles, compactAllDecisionBattles: compactEvidenceBattles, timingSummaryBytes, deletedBytes, sourceBytes, compressedBytes, ratio: sourceBytes ? compressedBytes / sourceBytes : 0});
 }
 
 function gzipAndRemove(file: string): {sourceBytes: number; compressedBytes: number} {
@@ -1396,6 +1418,11 @@ function validateDynastyState(state: DynastyState): void {
     if (conserved !== state.moneySupply) throw new Error(`Saved V10 dynasty violates money conservation: ${conserved} != ${state.moneySupply}`);
   }
   if (state.evolutionArchive && (!Array.isArray(state.evolutionArchive) || state.evolutionArchive.length > 300)) throw new Error("Saved dynasty has an invalid evolution archive");
+  if (state.mechanismLedgers !== undefined) {
+    if (!Array.isArray(state.mechanismLedgers) || state.mechanismLedgers.length !== state.managers.length) throw new Error("Saved dynasty has invalid manager mechanism ledgers");
+    const ledgerIds = state.mechanismLedgers.map(value => value.managerId).sort(); if (JSON.stringify(ledgerIds) !== JSON.stringify(expectedIds)) throw new Error("Saved dynasty mechanism ledger identities do not match managers");
+    for (const mechanismLedger of state.mechanismLedgers) validateManagerMechanismLedger(mechanismLedger);
+  }
   state.decisionRecords.forEach((record, index) => {
     const sequence = index + 1;
     if (record.sequence !== sequence || record.id !== `decision-${String(sequence).padStart(5, "0")}`) throw new Error("Saved dynasty has a non-contiguous decision ledger");

@@ -24,7 +24,8 @@ import {analyzeConfigurationTelemetry, emptyConfigurationEvidence, mergeConfigur
 import {acquireRunLock} from "../draft/runLock";
 import {tacticalFamilyValue, tacticalOpponentModel, tacticalSignals} from "../draft/tacticalMemory";
 import {evaluateWhiteBoxDecision, summarizeWhiteBoxShadow, type WhiteBoxCandidate} from "../ai/whiteBox/decision";
-import {buildLineupWhiteBoxCandidate, evaluateLineupAssistGate, whiteBoxCandidateTotal, type WhiteBoxLineupInput} from "../ai/whiteBox/lineup";
+import {buildLineupWhiteBoxCandidate, evaluateLineupAssistGate, whiteBoxCandidateTotal, type WhiteBoxLineupInput, type WhiteBoxLineupMember} from "../ai/whiteBox/lineup";
+import {shouldRetainFullLineupTrace} from "../ai/whiteBox/lineupTraceRetention";
 import {LINEUP_SHADOW_PARAMETERS} from "../ai/whiteBox/parameters";
 import {buildAcquisitionWhiteBoxCandidate, whiteBoxAcquisitionTotal} from "../ai/whiteBox/acquisition";
 import {ACQUISITION_SHADOW_PARAMETERS, BID_SHADOW_PARAMETERS, MARKET_FLOW_SHADOW_PARAMETERS, REGISTRATION_SHADOW_PARAMETERS} from "../ai/whiteBox/parameters";
@@ -921,8 +922,9 @@ function chooseLineup(manager: Manager, opponent: Manager, dex: ReturnType<typeo
   const incumbent = combinations[0];
   if (!incumbent) throw new Error(`${manager.id} has no legal six-member lineup`);
   assertBattleLineup(incumbent.lineup, manager.id);
+  const preparedWhiteBoxMembers = prepareLineupWhiteBoxMembers(manager, manager.roster.map(entry => entry.candidate), opponent, dex);
   const whiteBoxCandidates = combinations.map(option => {
-    const candidate = lineupWhiteBoxCandidate(manager, option.lineup.map(entry => entry.candidate), opponent, dex);
+    const candidate = lineupWhiteBoxCandidate(manager, option.lineup.map(entry => entry.candidate), opponent, dex, preparedWhiteBoxMembers);
     const difference = Math.abs(whiteBoxCandidateTotal(candidate) - option.value);
     if (difference > 1e-8) throw new Error(`White-box lineup decomposition drifted by ${difference} for ${candidate.id}`);
     return candidate;
@@ -941,7 +943,7 @@ function chooseLineup(manager: Manager, opponent: Manager, dex: ReturnType<typeo
   if(intervention&&experiment)throw new Error(`Decision ${decisionId} cannot run two experiment policies`);
   const experimental=intervention?combinations.find(option=>option.candidateId===intervention.candidateId):experimentTrace?.selected?combinations.find(option=>lineupCandidateId(option.lineup.map(entry=>entry.candidate))===experimentTrace.selected):undefined,selected=experimental??incumbent,experimentGate=experimentTrace?evaluateLineupAssistGate(experimentTrace.candidates.find(candidate=>candidate.id===incumbentId),experimentTrace.candidates.find(candidate=>candidate.id===experimentTrace.selected)):null;
   if (programEvolution) programOpportunities.recordDecision(manager.id, "lineup", decisionId, [selected.candidateId], combinations.map(option => ({id: option.candidateId, score: option.value})));
-  ledger.add({stage: "lineup", actor: manager.id, decision: `对阵${opponent.name}的8选6`, selected: selected.lineup.map(entry => entry.candidate.name), context: {seriesId, roles: [...new Set(selected.lineup.flatMap(entry => [...entry.candidate.roles]))], opponentRoster: opponent.roster.map(entry => entry.candidate.name), benched: manager.roster.filter(entry => !selected.lineup.includes(entry)).map(entry => entry.candidate.name), policy:intervention?"forced-alternative-experiment":experiment?"whitebox-experiment":"incumbent",...(intervention?{programDecisionExperiment:intervention}:{}),whiteBoxShadow: summarizeWhiteBoxShadow(whiteBoxTrace, incumbentId, process.env.V4_WHITEBOX_FULL_LINEUP_TRACE==="true"?whiteBoxTrace.candidates.length:3),...(experimentTrace?{whiteBoxLineupExperiment:{band:experimentBand,styleLimit:experimentStyleLimit,styleScale:experimentStyleScale,gate:experimentGate,trace:summarizeWhiteBoxShadow(experimentTrace,incumbentId,experimentTrace.candidates.length)}}:{})}, alternatives: combinations.filter(option=>option.candidateId!==selected.candidateId).slice(0,3).map(option => ({option: option.lineup.map(entry => entry.candidate.name).join("/"), score: option.value})), rationale: lineupReasons(selected.lineup, opponent, dex), expectedValue: selected.value, confidence: confidence(combinations[0].value, combinations[1]?.value)});
+  ledger.add({stage: "lineup", actor: manager.id, decision: `对阵${opponent.name}的8选6`, selected: selected.lineup.map(entry => entry.candidate.name), context: {seriesId, roles: [...new Set(selected.lineup.flatMap(entry => [...entry.candidate.roles]))], opponentRoster: opponent.roster.map(entry => entry.candidate.name), benched: manager.roster.filter(entry => !selected.lineup.includes(entry)).map(entry => entry.candidate.name), policy:intervention?"forced-alternative-experiment":experiment?"whitebox-experiment":"incumbent",...(intervention?{programDecisionExperiment:intervention}:{}),whiteBoxShadow: summarizeWhiteBoxShadow(whiteBoxTrace, incumbentId, shouldRetainFullLineupTrace(decisionId)?whiteBoxTrace.candidates.length:3),...(experimentTrace?{whiteBoxLineupExperiment:{band:experimentBand,styleLimit:experimentStyleLimit,styleScale:experimentStyleScale,gate:experimentGate,trace:summarizeWhiteBoxShadow(experimentTrace,incumbentId,experimentTrace.candidates.length)}}:{})}, alternatives: combinations.filter(option=>option.candidateId!==selected.candidateId).slice(0,3).map(option => ({option: option.lineup.map(entry => entry.candidate.name).join("/"), score: option.value})), rationale: lineupReasons(selected.lineup, opponent, dex), expectedValue: selected.value, confidence: confidence(combinations[0].value, combinations[1]?.value)});
   return selected.lineup;
 }
 
@@ -1445,22 +1447,8 @@ function tradeTypePressure(roster: Candidate[], dex: ReturnType<typeof Dex.mod>)
   return pressure;
 }
 
-function lineupWhiteBoxCandidate(manager: Manager, lineup: Candidate[], opponentManager: Manager, dex: ReturnType<typeof Dex.mod>): WhiteBoxCandidate {
-  const opponent = opponentManager.roster.map(entry => entry.candidate);
-  const matchup = manager.matchupMemory[opponentManager.id];
-  const members = lineup.map(candidate => {
-    const moveTypes = candidate.set.moves.map(move => dex.moves.get(move)).filter(move => move.category !== "Status").map(move => move.type);
-    return {
-      id: candidate.id,
-      strength: candidate.strength,
-      market: candidate.market,
-      roles: [...candidate.roles],
-      risk: riskValue(candidate, dex),
-      opponentCoverage: opponent.filter(target => moveTypes.some(type => dex.getEffectiveness(type, target.types) > 0)).length,
-      historicalMatchup: matchup?.familyScores[candidate.family] ?? 0,
-      tacticalMemory: tacticalFamilyValue(manager.tacticalMemory, opponentManager.id, candidate.family),
-    };
-  });
+function lineupWhiteBoxCandidate(manager: Manager, lineup: Candidate[], opponentManager: Manager, dex: ReturnType<typeof Dex.mod>, preparedMembers?: ReadonlyMap<string, WhiteBoxLineupMember>): WhiteBoxCandidate {
+  const members = preparedMembers ? lineup.map(candidate => { const member = preparedMembers.get(candidate.id); if (!member) throw new Error(`Prepared lineup member missing: ${candidate.id}`); return member; }) : [...prepareLineupWhiteBoxMembers(manager, lineup, opponentManager, dex).values()];
   const input: WhiteBoxLineupInput = {
     id: lineupCandidateId(lineup),
     members,
@@ -1469,10 +1457,62 @@ function lineupWhiteBoxCandidate(manager: Manager, lineup: Candidate[], opponent
   };
   const base = buildLineupWhiteBoxCandidate(input);
   const baseline = whiteBoxCandidateTotal(base);
+  const opponent = opponentManager.roster.map(entry => entry.candidate);
   const programAdjustment = programEvolution
     ? observedProgram(manager.id, manager.strategyProgram, "lineup", {baseline: baseline / 10, strength: lineup.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800, roleBreadth: new Set(lineup.flatMap(candidate => [...candidate.roles])).size / 10, rosterSize: manager.roster.length / maximumRosterSize, opponentPressure: opponent.reduce((sum, candidate) => sum + candidate.strength, 0) / 1800}) * .2
     : 0;
   return buildLineupWhiteBoxCandidate({...input, programAdjustment});
+}
+
+function prepareLineupWhiteBoxMembers(manager: Manager, candidates: readonly Candidate[], opponentManager: Manager, dex: ReturnType<typeof Dex.mod>): Map<string, WhiteBoxLineupMember> {
+  const opponent = opponentManager.roster.map(entry => entry.candidate);
+  const matchup = manager.matchupMemory[opponentManager.id];
+  const members = candidates.map(candidate => {
+    const moves = candidate.set.moves.map(move => dex.moves.get(move)).filter(move => move.category !== "Status");
+    const moveTypes = moves.map(move => move.type);
+    const opponentCoverageVector = opponent.map(target => moveTypes.some(type => dex.getEffectiveness(type, target.types) > 0) ? 1 : 0);
+    const offensivePressureVector = opponent.map(target => matchupPressure(candidate, target, dex));
+    const physicalPressureVector = opponent.map(target => matchupPressure(candidate, target, dex, move => move.category === "Physical"));
+    const specialPressureVector = opponent.map(target => matchupPressure(candidate, target, dex, move => move.category === "Special"));
+    const priorityPressureVector = opponent.map(target => matchupPressure(candidate, target, dex, move => move.priority > 0));
+    const defensiveSafetyVector = opponent.map(target => 1 / (1 + matchupPressure(target, candidate, dex)));
+    return {
+      id: candidate.id,
+      strength: candidate.strength,
+      market: candidate.market,
+      roles: [...candidate.roles],
+      risk: riskValue(candidate, dex),
+      opponentCoverage: opponentCoverageVector.reduce<number>((total, value) => total + value, 0),
+      opponentCoverageVector,
+      speed: candidate.stats.spe,
+      speedAdvantage: opponent.filter(target => candidate.stats.spe > target.stats.spe).length / Math.max(1, opponent.length),
+      offensivePressureVector,
+      physicalPressureVector,
+      specialPressureVector,
+      priorityPressureVector,
+      defensiveSafetyVector,
+      historicalMatchup: matchup?.familyScores[candidate.family] ?? 0,
+      tacticalMemory: tacticalFamilyValue(manager.tacticalMemory, opponentManager.id, candidate.family),
+    };
+  });
+  return new Map(members.map(member => [member.id, member]));
+}
+
+function matchupPressure(attacker: Candidate, target: Candidate, dex: ReturnType<typeof Dex.mod>, include: (move: ReturnType<ReturnType<typeof Dex.mod>["moves"]["get"]>) => boolean = () => true): number {
+  let best = 0;
+  for (const moveName of attacker.set.moves) {
+    const move = dex.moves.get(moveName);
+    if (!move.exists || move.category === "Status" || move.basePower <= 0) continue;
+    if (!include(move)) continue;
+    if (!dex.getImmunity(move.type, target.types)) continue;
+    const effectiveness = 2 ** dex.getEffectiveness(move.type, target.types);
+    const stab = attacker.types.includes(move.type) ? 1.5 : 1;
+    const attack = move.category === "Physical" ? attacker.stats.atk : attacker.stats.spa;
+    const defense = move.category === "Physical" ? target.stats.def : target.stats.spd;
+    const pressure = move.basePower / 100 * stab * effectiveness * Math.sqrt(Math.max(1, attack) / Math.max(1, defense));
+    best = Math.max(best, pressure);
+  }
+  return best;
 }
 
 function lineupCandidateId(lineup: Candidate[]): string {

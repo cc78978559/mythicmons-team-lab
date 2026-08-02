@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
 import {loadDynastyState, loadDynastyStateCore, verifyDynastyStateStorage, type DynastyStateStorage} from "./dynastyStateStore";
@@ -45,8 +46,17 @@ export interface HistoricalReplaySegment extends HistoricalReplayCheckpoint {
   firstSeason: number;
   lastSeason: number;
 }
+export interface MaterializedHistoricalBoundary {completedSeason: number; registrySource: string}
 export type HistoricalReplayPlanIssue = "invalid-request" | "source-invalid" | "checkpoint-missing" | "checkpoint-invalid" | "runtime-missing" | "runtime-invalid" | "registry-transition-unsupported" | "registry-invalid" | "environment-mismatch" | "unknown";
 export type HistoricalReplayPlanInspection = {ready: true; segments: HistoricalReplaySegment[]} | {ready: false; issue: HistoricalReplayPlanIssue; message: string};
+
+export function materializeSpawnWorkingDirectory(directory: string, platform = process.platform, maximumLength = 240): {cwd: string; cleanup: () => void} {
+  const resolved = path.resolve(directory);
+  if (platform !== "win32" || resolved.length <= maximumLength) return {cwd: resolved, cleanup: () => undefined};
+  const parent = path.join(os.tmpdir(), "mythicmons-runtime-cwd"), link = path.join(parent, `${process.pid}-${crypto.randomBytes(8).toString("hex")}`);
+  fs.mkdirSync(parent, {recursive: true}); fs.symlinkSync(resolved, link, "junction");
+  return {cwd: link, cleanup: () => { if (fs.existsSync(link)) fs.unlinkSync(link); }};
+}
 
 type StoredBoundary = {completedSeason: number; fingerprint: HistoricalRuntimeFingerprint; registry?: {snapshot?: string; hash?: string}; stateStorage?: DynastyStateStorage};
 const capturedCheckpoints = new Map<string, HistoricalDynastyCheckpoint>();
@@ -158,7 +168,7 @@ export function materializeHistoricalReplayCheckpoint(dynastyRoot: string, targe
   try {
     const compressed = fs.readFileSync(resolveWithin(directory, stateCheckpoint.state.archive)), stateBytes = zlib.gunzipSync(compressed);
     atomicWrite(path.join(target, "dynasty-state.json"), stateBytes);
-    for (const reference of [stateCheckpoint.stateStorage?.decisionRecords, stateCheckpoint.stateStorage?.evolutionArchive]) if (reference) copyFile(dynasty, target, reference.file);
+    for (const reference of [stateCheckpoint.stateStorage?.decisionRecords, stateCheckpoint.stateStorage?.evolutionArchive, stateCheckpoint.stateStorage?.mechanismLedgers]) if (reference) copyFile(dynasty, target, reference.file);
     copyTree(replay.registrySource, resolveWithin(target, stateCheckpoint.registrySnapshot));
     for (let season = 1; season < targetSeason; season += 1) for (const name of ["season.json", "evolution.json", "health.json"]) {
       const relative = `season-${String(season).padStart(2, "0")}/${name}`, source = resolveWithin(dynasty, relative);
@@ -169,6 +179,31 @@ export function materializeHistoricalReplayCheckpoint(dynastyRoot: string, targe
     const materialized = {...replay, registrySource: resolveWithin(target, stateCheckpoint.registrySnapshot)};
     atomicWrite(path.join(target, "historical-replay.json"), Buffer.from(`${JSON.stringify(materialized, null, 2)}\n`, "utf8"));
     return materialized;
+  } catch (error) {
+    fs.rmSync(target, {recursive: true, force: true});
+    throw error;
+  }
+}
+
+export function materializeHistoricalDynastyBoundary(dynastyRoot: string, completedSeason: number, targetRoot: string): MaterializedHistoricalBoundary {
+  const dynasty = path.resolve(dynastyRoot), target = path.resolve(targetRoot), checkpoint = verifyHistoricalDynastyCheckpoint(dynasty, completedSeason), directory = checkpointDirectory(dynasty, completedSeason);
+  assertSeparateRoots(dynasty, target);
+  if (fs.existsSync(target)) throw new Error(`Historical boundary target exists: ${target}`);
+  fs.mkdirSync(target, {recursive: true});
+  try {
+    const compressed = fs.readFileSync(resolveWithin(directory, checkpoint.state.archive)), stateBytes = zlib.gunzipSync(compressed);
+    atomicWrite(path.join(target, "dynasty-state.json"), stateBytes);
+    for (const reference of [checkpoint.stateStorage?.decisionRecords, checkpoint.stateStorage?.evolutionArchive, checkpoint.stateStorage?.mechanismLedgers]) if (reference) copyFile(dynasty, target, reference.file);
+    const registrySource = resolveWithin(target, checkpoint.registrySnapshot);
+    copyTree(resolveWithin(dynasty, checkpoint.registrySnapshot), registrySource);
+    for (let season = 1; season <= completedSeason; season++) for (const name of ["season.json", "evolution.json", "health.json"]) {
+      const relative = `season-${String(season).padStart(2, "0")}/${name}`, source = resolveWithin(dynasty, relative);
+      if (fs.existsSync(source)) copyFile(dynasty, target, relative);
+      else if (name === "season.json") throw new Error(`Missing historical season summary: ${relative}`);
+    }
+    const state = loadDynastyState<any>(path.join(target, "dynasty-state.json"));
+    if (state.completedSeason !== completedSeason) throw new Error("Materialized historical boundary has the wrong season");
+    return {completedSeason, registrySource};
   } catch (error) {
     fs.rmSync(target, {recursive: true, force: true});
     throw error;
@@ -221,7 +256,7 @@ function checkpointDirectory(root: string, season: number): string { return path
 function listFiles(directory: string, include: (file: string) => boolean): string[] { const output: string[] = []; const visit = (current: string): void => {for (const entry of fs.readdirSync(current, {withFileTypes: true})) {const target = path.join(current, entry.name); if (entry.isSymbolicLink()) throw new Error(`Runtime bundle source contains a symbolic link: ${target}`); if (entry.isDirectory()) visit(target); else if (entry.isFile() && include(target)) output.push(target);}}; visit(directory); return output.sort(); }
 function reference(root: string, file: string): FileReference { const bytes = fs.readFileSync(file); return {file: normalize(path.relative(root, file)), sha256: digest(bytes), bytes: bytes.length}; }
 function verifyFile(root: string, file: FileReference): void { const target = resolveWithin(root, file.file), bytes = fs.readFileSync(target); if (bytes.length !== file.bytes || digest(bytes) !== file.sha256) throw new Error(`Historical runtime file hash mismatch: ${file.file}`); }
-function hashReferences(root: string, files: FileReference[]): string { const hash = crypto.createHash("sha256"); for (const file of [...files].sort((a, b) => a.file.localeCompare(b.file))) {hash.update(file.file).update("\0").update(fs.readFileSync(resolveWithin(root, file.file))).update("\0");} return hash.digest("hex"); }
+function hashReferences(root: string, files: FileReference[]): string { const hash = crypto.createHash("sha256"); for (const file of [...files].sort((a, b) => a.file < b.file ? -1 : a.file > b.file ? 1 : 0)) {hash.update(file.file).update("\0").update(fs.readFileSync(resolveWithin(root, file.file))).update("\0");} return hash.digest("hex"); }
 function copyTree(source: string, target: string): void { for (const entry of fs.readdirSync(source, {withFileTypes: true})) {const from = path.join(source, entry.name), to = path.join(target, entry.name); if (entry.isSymbolicLink()) throw new Error(`Historical checkpoint contains a symbolic link: ${from}`); if (entry.isDirectory()) copyTree(from, to); else if (entry.isFile()) {fs.mkdirSync(path.dirname(to), {recursive: true}); fs.copyFileSync(from, to, fs.constants.COPYFILE_FICLONE);}} }
 function copyFile(sourceRoot: string, targetRoot: string, relative: string): void { const source = resolveWithin(sourceRoot, relative), target = resolveWithin(targetRoot, relative); fs.mkdirSync(path.dirname(target), {recursive: true}); fs.copyFileSync(source, target, fs.constants.COPYFILE_FICLONE); }
 function writeContentAddressed(file: string, bytes: Buffer): void { if (fs.existsSync(file)) {if (digest(fs.readFileSync(file)) !== digest(bytes)) throw new Error(`Historical content-addressed file mismatch: ${file}`);} else atomicWrite(file, bytes); }

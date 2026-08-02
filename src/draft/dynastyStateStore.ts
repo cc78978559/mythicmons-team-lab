@@ -19,6 +19,7 @@ export interface DynastyStateStorage {
   schemaVersion: typeof DYNASTY_STATE_STORAGE_SCHEMA_VERSION;
   decisionRecords?: DynastyStateArchiveReference;
   evolutionArchive?: DynastyStateArchiveReference;
+  mechanismLedgers?: DynastyStateArchiveReference;
 }
 
 export interface PreparedDynastyState {
@@ -29,6 +30,7 @@ export interface PreparedDynastyState {
 type ExternalizableState = {
   decisionRecords?: unknown[];
   evolutionArchive?: unknown[];
+  mechanismLedgers?: unknown[];
   stateStorage?: DynastyStateStorage;
 };
 
@@ -43,6 +45,7 @@ export function loadDynastyState<T>(stateFile: string): T {
   if (storage.schemaVersion !== DYNASTY_STATE_STORAGE_SCHEMA_VERSION) throw new Error(`Unsupported dynasty state storage schema ${storage.schemaVersion}`);
   if (storage.decisionRecords) state.decisionRecords = hydrateArchiveField(stateFile, storage.decisionRecords, "decisionRecords", state.decisionRecords);
   if (storage.evolutionArchive) state.evolutionArchive = hydrateArchiveField(stateFile, storage.evolutionArchive, "evolutionArchive", state.evolutionArchive);
+  if (storage.mechanismLedgers) state.mechanismLedgers = hydrateArchiveField(stateFile, storage.mechanismLedgers, "mechanismLedgers", state.mechanismLedgers);
   return state as T;
 }
 
@@ -64,8 +67,11 @@ export function prepareDynastyState<T extends object>(stateFile: string, input: 
   else if (previous?.decisionRecords) storage.decisionRecords = verifyArchive(stateFile, previous.decisionRecords, "decisionRecords");
   if (Array.isArray(state.evolutionArchive)) storage.evolutionArchive = writeArchive(stateFile, "evolution-archive", state.evolutionArchive);
   else if (previous?.evolutionArchive) storage.evolutionArchive = verifyArchive(stateFile, previous.evolutionArchive, "evolutionArchive");
+  if (Array.isArray(state.mechanismLedgers)) storage.mechanismLedgers = writeArchive(stateFile, "mechanism-ledgers", state.mechanismLedgers);
+  else if (previous?.mechanismLedgers) storage.mechanismLedgers = verifyArchive(stateFile, previous.mechanismLedgers, "mechanismLedgers");
   delete state.decisionRecords;
   delete state.evolutionArchive;
+  delete state.mechanismLedgers;
   state.stateStorage = storage;
   return {bytes: Buffer.from(`${JSON.stringify(state)}\n`, "utf8"), storage};
 }
@@ -82,6 +88,7 @@ export function verifyDynastyStateStorage(stateFile: string, storage: DynastySta
   if (storage.schemaVersion !== DYNASTY_STATE_STORAGE_SCHEMA_VERSION) throw new Error(`Unsupported dynasty state storage schema ${storage.schemaVersion}`);
   if (storage.decisionRecords) loadArchive(stateFile, storage.decisionRecords, "decisionRecords");
   if (storage.evolutionArchive) loadArchive(stateFile, storage.evolutionArchive, "evolutionArchive");
+  if (storage.mechanismLedgers) loadArchive(stateFile, storage.mechanismLedgers, "mechanismLedgers");
 }
 
 function writeArchive(stateFile: string, label: string, value: unknown[]): DynastyStateArchiveReference {
