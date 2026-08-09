@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
 import crypto from "node:crypto";
+import {AI_VERSION} from "../showdown/choice";
+import {buildEvidenceEpoch} from "../showdown/evidenceEpoch";
 
 const root = process.cwd(), workspace = fs.mkdtempSync(path.join(os.tmpdir(), "mythic-league-control-")), league = path.join(workspace, "league");
 try {
@@ -11,7 +13,7 @@ try {
   const stateFile = path.join(league, "dynasty-state.json"); fs.writeFileSync(stateFile, `${JSON.stringify({version: 12, seed: "control-smoke", completedSeason: 4, payload: "x".repeat(100000)})}\n`);
   const stat = fs.statSync(stateFile), stateHash = crypto.createHash("sha256").update(fs.readFileSync(stateFile)).digest("hex"), signature = crypto.createHash("sha256").update(`dynasty-state.json\0${stateHash}\0`).digest("hex");
   fs.writeFileSync(path.join(league, ".audit-signature-cache.json"), `${JSON.stringify({schemaVersion: 1, seasons: 4, files: {"dynasty-state.json": {size: stat.size, mtimeMs: stat.mtimeMs, sha256: stateHash}}})}\n`);
-  fs.writeFileSync(path.join(league, "audit-summary.json"), `${JSON.stringify({completedSeasons: 4, fatalCount: 0, warningCount: 0, inputSignature: signature})}\n`);
+  fs.writeFileSync(path.join(league, "audit-summary.json"), `${JSON.stringify({schemaVersion: 6, completedSeasons: 4, fatalCount: 0, warningCount: 0, inputSignature: signature, evidenceEpoch: {policySha256: buildEvidenceEpoch(AI_VERSION, "gen9ou").policySha256, formalActivationReady: true}})}\n`);
   fs.writeFileSync(path.join(league, "audit-run-state.json"), `${JSON.stringify({schemaVersion: 1, status: "complete", phase: "complete"})}\n`);
   const development = path.join(workspace, "development-season-05"), history = path.join(workspace, "official-history.json"), manifestPath = path.join(league, "season-cycles", "after-s4.json");
   fs.writeFileSync(manifestPath, `${JSON.stringify({schemaVersion: 1, cycleId: "after-s4", status: "running", majorRoot: league, developmentOut: development, boundary: {internalSeason: 4, globalSeason: 4, seed: "control-smoke"}, promotionSlots: 3, storage: {minimumFreeGb: 1, maximumDevelopmentOutputMb: 512}, configuration: {globalSeasonOffset: 0, historyLedger: history, developmentSeasons: "1", developmentRounds: "1", developmentMaxTurns: "40"}, stages: {"before-audit": {status: "complete"}, development: {status: "complete"}}}, null, 2)}\n`);

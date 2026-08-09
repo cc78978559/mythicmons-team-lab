@@ -7,7 +7,7 @@ export const WHITE_BOX_EVOLUTION_VERSION = "white-box-evolution-v1";
 
 const TRAITS = ["risk", "stars", "synergy", "counter", "value", "flexibility"] as const;
 const ECONOMICS = ["starPremium", "cashUtility", "bidAggression", "marketAwareness"] as const;
-const TACTICS = ["aggression", "setupBias", "pivotBias", "recoveryBias", "statusBias", "teraBias", "switchBias"] as const;
+const TACTICS = ["aggression", "setupBias", "pivotBias", "recoveryBias", "statusBias", "switchBias"] as const;
 const ROLES: DraftRole[] = ["hazards", "removal", "recovery", "pivot", "setup", "priority", "screens", "status", "physical", "special"];
 const CONFIGURATION = ["speedInvestment", "bulkBias", "statusMoveBias", "coverageBias", "accuracyRisk", "choiceItemBias", "recoveryItemBias"] as const;
 const SYSTEMS = ["weather", "trickRoom", "balance", "offense", "stall", "hazardPressure", "pivotCycle", "setupCore"] as const;

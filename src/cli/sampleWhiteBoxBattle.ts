@@ -4,6 +4,9 @@ import {spawnSync} from "node:child_process";
 import {buildUnifiedEvidencePlan, type UnifiedEvidenceCase, type UnifiedEvidenceReplica} from "../ai/whiteBox/unifiedEvidence";
 import {aggregateUnifiedBattleEvidence} from "../ai/whiteBox/unifiedAggregation";
 import type {BattleCounterfactualSample} from "../ai/whiteBox/battleAggregation";
+import {classifyReplayEvidence} from "../draft/evidenceEpochAudit";
+import {AI_VERSION} from "../showdown/choice";
+import {buildEvidenceEpoch} from "../showdown/evidenceEpoch";
 
 type RunStatus = "complete" | "failed";
 interface SamplerRun {replicaId:string;seed:string;status:RunStatus;directory:string;startedAt:string;completedAt:string;error?:string}
@@ -13,6 +16,7 @@ interface SamplerManifest {
   hypothesis:{id:string;scopeId:string;priority:number;availableReplicas:number;availableSeeds:number};
   runs:SamplerRun[];
   stopReason:string|null;
+  evidenceEpoch:{policySha256:string;formalActivationAllowed:boolean};
 }
 
 const args=process.argv.slice(2),root=process.cwd(),inputs=option("--inputs","").split(",").map(value=>value.trim()).filter(Boolean).map(value=>path.resolve(value));
@@ -22,7 +26,7 @@ const config={inputs,targetSamples,minimumSeeds,maximumSamples,maximumPerSeed,ma
 fs.mkdirSync(out,{recursive:true});
 const manifestFile=path.join(out,"battle-sampler-manifest.json"),previous=fs.existsSync(manifestFile)?read<SamplerManifest>(manifestFile):null;
 if(previous&&JSON.stringify(previous.config)!==JSON.stringify(config))throw new Error("Battle sampler configuration differs from the existing manifest; use a new --out directory");
-const plan=buildUnifiedEvidencePlan(inputs,{maximumCases:10000,maximumPerDomain:1000}),candidates=plan.cases.filter(entry=>entry.domain==="battle"&&entry.status==="executable"&&entry.runner==="battle");
+const plan=buildUnifiedEvidencePlan(inputs,{maximumCases:10000,maximumPerDomain:1000,domains:["battle"]}),candidates=plan.cases.filter(entry=>entry.domain==="battle"&&entry.status==="executable"&&entry.runner==="battle").map(entry=>({...entry,replicas:entry.replicas.filter(replica=>Boolean(replica.battleTarget)&&classifyReplayEvidence(path.join(replica.battleTarget!.sourceGame,"replay-input.json")).formalActivationAllowed)})).filter(entry=>entry.replicas.length>0);
 const selectedHypothesis=selectHypothesis(candidates,previous?.hypothesis.id??requestedHypothesis);
 if(!selectedHypothesis){
   const summary={schemaVersion:1,stage:"not-started",conclusion:"no-eligible-hypothesis",promotion:"not-started",completed:0,failed:0,stopReason:"no-gate-approved-replayable-hypothesis",candidateBattleHypotheses:candidates.length,planMetrics:plan.metrics,outputMb:round(directorySize(out)/1048576)};
@@ -31,7 +35,7 @@ if(!selectedHypothesis){
 const hypothesis:UnifiedEvidenceCase=selectedHypothesis;
 const available=boundedReplicas(hypothesis.replicas,maximumPerSeed),availableSeeds=new Set(available.map(entry=>entry.sourceSeed)).size;
 if(!hypothesis.battleScopeId)throw new Error(`Battle hypothesis has no activation scope: ${hypothesis.id}`);
-const manifest:SamplerManifest={schemaVersion:1,config,hypothesis:{id:hypothesis.id,scopeId:hypothesis.battleScopeId,priority:hypothesis.priority,availableReplicas:available.length,availableSeeds},runs:previous?.runs??[],stopReason:null};
+const manifest:SamplerManifest={schemaVersion:1,config,hypothesis:{id:hypothesis.id,scopeId:hypothesis.battleScopeId,priority:hypothesis.priority,availableReplicas:available.length,availableSeeds},runs:previous?.runs??[],stopReason:null,evidenceEpoch:{policySha256:buildEvidenceEpoch(AI_VERSION,"gen9ou").policySha256,formalActivationAllowed:true}};
 save();
 
 if(args.includes("--run")){

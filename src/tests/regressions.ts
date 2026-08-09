@@ -10,8 +10,9 @@ import {evaluateCandidate} from "../eval/evaluator";
 import {analyzePublicLog} from "../eval/logAnalysis";
 import {numberArg, parseArgs} from "../showdown/args";
 import {adjudicateMaxTurns, queueBattleSideUpdate, runBattle} from "../showdown/battle";
+import {leagueBattleFormat} from "../showdown/mechanics";
 import {pairedDeltaSummary, summarizeCandidate} from "../cli/modernHybrids";
-import {chooseAction, createBattleAiContext, recordAiChoice, updateAiContextFromPublicLine} from "../showdown/choice";
+import {chooseAction, createBattleAiContext, normalizeTacticalProfile, recordAiChoice, updateAiContextFromPublicLine} from "../showdown/choice";
 import {loadTeam} from "../showdown/team";
 import {closeTeamDatabase, getTeam, listTeams, openTeamDatabase, saveTeam} from "../store/teamDatabase";
 import type {SandboxTeam} from "../sandbox/types";
@@ -49,6 +50,7 @@ async function main() {
   testSportsMarketMathIsBoundedAndAuditable();
   testBundledDraftRegistryIsComplete();
   testCustomFormatsMergePreservesJavaScript();
+  testLeagueFormatDisablesTerastallization();
   testCompositeItemIncludesControlHooks();
   testCompositeSourceHooksUseSourceHolder();
   testCompositeItemsStackSharedStatModifiers();
@@ -67,9 +69,9 @@ async function main() {
   testAiAllowsForcedRechargeMove();
   testSearchAiUsesOpenTeamSheets();
   testSearchTracksBenchStateAcrossSwitches();
-  testSearchFiltersChoiceLockAndModelsOpponentTera();
+  testSearchFiltersChoiceLockWithoutOpponentTera();
   testSearchScoresStatusConsequencesAndTrapping();
-  testSearchTreatsOwnTeraAsSeparateAction();
+  testSearchDoesNotGenerateOwnTeraAction();
   testTacticalAiPrefersBatonPassSetup();
   testAiAvoidsTypeAndKnownAbilityImmunities();
   testTacticalAiPassesAccumulatedBoosts();
@@ -492,6 +494,8 @@ exports.Formats = [
   assert.match(merged, /battle: \{ trunc: Math\.trunc \}/);
   assert.match(merged, /mythicmons:start/);
   assert.match(merged, /\[Gen 9\] MythicMons Sandbox/);
+  assert.match(merged, /Dynamax Clause/);
+  assert.match(merged, /Terastal Clause/);
 }
 
 function testCompositeItemIncludesControlHooks(): void {
@@ -861,7 +865,7 @@ Ability: Good as Gold
   assert.ok((context.active.p2?.stats.spe ?? 0) > 0);
 }
 
-function testSearchFiltersChoiceLockAndModelsOpponentTera(): void {
+function testSearchFiltersChoiceLockWithoutOpponentTera(): void {
   const opponentTeam = Teams.import(`Gholdengo @ Choice Scarf
 Ability: Good as Gold
 Tera Type: Steel
@@ -889,9 +893,9 @@ Timid Nature
   assert.equal(choice, "move protect");
   const responses = context.lastDecision.p1?.candidates[0].responses.map(response => response.response) ?? [];
   const moveResponses = responses.filter(response => response.startsWith("move "));
-  assert.ok(moveResponses.length >= 2);
+  assert.equal(moveResponses.length, 1);
   assert.ok(moveResponses.every(response => response.includes("makeitrain")));
-  assert.ok(moveResponses.some(response => response.includes("terastallize Steel")));
+  assert.equal(moveResponses.some(response => response.includes("terastallize")), false);
 }
 
 function testSearchScoresStatusConsequencesAndTrapping(): void {
@@ -922,7 +926,7 @@ Ability: Natural Cure
   assert.equal(responses.some(response => response.response.startsWith("switch ")), false);
 }
 
-function testSearchTreatsOwnTeraAsSeparateAction(): void {
+function testSearchDoesNotGenerateOwnTeraAction(): void {
   const opponentTeam = Teams.import(`Blissey @ Leftovers
 Ability: Natural Cure
 - Seismic Toss`)!;
@@ -939,7 +943,16 @@ Ability: Natural Cure
   }, "p1", "search", context);
   const choices = context.lastDecision.p1?.candidates.map(candidate => candidate.choice) ?? [];
   assert.ok(choices.includes("move earthquake"));
-  assert.ok(choices.includes("move earthquake terastallize"));
+  assert.equal(choices.some(choice => choice.includes("terastallize")), false);
+}
+
+function testLeagueFormatDisablesTerastallization(): void {
+  assert.equal(leagueBattleFormat("gen9ou"), "gen9ou@@@Dynamax Clause,Terastal Clause");
+  assert.equal(leagueBattleFormat("gen9ou@@@Sleep Clause Mod"), "gen9ou@@@Sleep Clause Mod,Dynamax Clause,Terastal Clause");
+  assert.equal(leagueBattleFormat("gen9ou@@@Dynamax Clause,Terastal Clause"), "gen9ou@@@Dynamax Clause,Terastal Clause");
+  assert.equal(leagueBattleFormat("gen9custom", ["Team Preview", "Dynamax Clause", "Terastal Clause"]), "gen9custom");
+  assert.equal(leagueBattleFormat("gen8ou"), "gen8ou");
+  assert.equal("teraBias" in normalizeTacticalProfile({id: "legacy", teraBias: 1} as any), false);
 }
 
 function testTacticalAiPrefersBatonPassSetup(): void {

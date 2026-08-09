@@ -39,7 +39,7 @@ export interface ManagerOrganizationGenome { scarceConcentration: number; backgr
 
 export interface ManagerGenome {
   economics: Partial<Record<keyof ManagerEconomics, number>>;
-  tactics: Partial<Record<"aggression" | "setupBias" | "pivotBias" | "recoveryBias" | "statusBias" | "teraBias" | "switchBias", number>>;
+  tactics: Partial<Record<"aggression" | "setupBias" | "pivotBias" | "recoveryBias" | "statusBias" | "switchBias", number>>;
   roles: Partial<Record<DraftRole, number>>;
   learning: Partial<Record<keyof ManagerLearning, number>>;
   configuration: Partial<Record<keyof ManagerConfigurationGenome, number>>;
@@ -141,7 +141,6 @@ export function materializeManagerProfile(profile: ManagerProfile): ManagerProfi
       pivotBias: clampBias(scaleBias((t.synergy + t.flexibility) / 2) * .7 + (genome.tactics.pivotBias ?? 0)),
       recoveryBias: clampBias(-scaleBias(t.risk) * .65 + (genome.tactics.recoveryBias ?? 0)),
       statusBias: clampBias(scaleBias(t.counter) * .55 + (genome.tactics.statusBias ?? 0)),
-      teraBias: clampBias(scaleBias(t.risk) * .6 + (genome.tactics.teraBias ?? 0)),
       switchBias: clampBias(scaleBias(t.flexibility) * .55 + (genome.tactics.switchBias ?? 0)),
     }),
     learning: {
@@ -176,7 +175,7 @@ export function classifyEmergentStyle(profile: ManagerProfile): {label: string; 
 }
 
 function tactical(id: string, expectedWeight: number, downsideWeight: number, worstWeight: number, biases: Partial<AiTacticalProfile> = {}): AiTacticalProfile {
-  return {id, expectedWeight, downsideWeight, worstWeight, aggression: 0, setupBias: 0, pivotBias: 0, recoveryBias: 0, statusBias: 0, teraBias: 0, switchBias: 0, ...biases};
+  return {id, expectedWeight, downsideWeight, worstWeight, aggression: 0, setupBias: 0, pivotBias: 0, recoveryBias: 0, statusBias: 0, switchBias: 0, ...biases};
 }
 
 function scaleBias(value: number): number { return Math.max(-1, Math.min(1, (value - .5) * 2)); }

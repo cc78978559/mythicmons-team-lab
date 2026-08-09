@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import {spawnSync} from "node:child_process";
 import {loadTeam} from "../showdown/team";
-import {applyApprovedBattleAssist,loadBattleReplayCapsule, runBattle} from "../showdown/battle";
+import {applyApprovedBattleAssist,createBattleReplayCapsule,loadBattleReplayCapsule, runBattle} from "../showdown/battle";
 import {buildBattleAssistScope} from "../ai/whiteBox/battleScope";
 
 async function main(): Promise<void> {
@@ -36,6 +37,14 @@ async function main(): Promise<void> {
     },
   });
   const capsule = loadBattleReplayCapsule(first.replayInputPath);
+  assert.equal(capsule.schemaVersion, 2);
+  assert.equal(capsule.input.evidenceEpoch?.battlePolicy.mechanics.terastallization, false);
+  assert.equal(capsule.input.evidenceEpoch?.battlePolicy.mechanics.dynamax, false);
+  assert.equal(capsule.input.evidenceEpoch?.battlePolicy.mechanics.megaEvolution, true);
+  assert.equal(capsule.input.evidenceEpoch?.formalContextComplete, false);
+  const {evidenceEpoch: _discardedEpoch, ...legacyInput} = capsule.input;
+  const legacyPath = path.join(root, "legacy-replay.json"); fs.writeFileSync(legacyPath, JSON.stringify(createBattleReplayCapsule({...legacyInput, schemaVersion: 1})), "utf8");
+  assert.equal(loadBattleReplayCapsule(legacyPath).schemaVersion, 1);
   assert.equal(capsule.sha256, first.replayInputSha256);
   assert.equal(capsule.input.aiProfiles.p1.id, "replay-p1");
   assert.equal(capsule.input.aiOpponentModels.p1.moveUsageBySpecies.greattusk.earthquake, 3);
@@ -52,6 +61,7 @@ async function main(): Promise<void> {
   assert.equal(fs.readFileSync(replay.decisionLogPath, "utf8"), fs.readFileSync(first.decisionLogPath, "utf8"));
   assert.equal(replay.winner, first.winner);
   assert.equal(replay.turns, first.turns);
+  assert.equal(loadBattleReplayCapsule(replay.replayInputPath).input.evidenceEpoch?.epochSha256, capsule.input.evidenceEpoch?.epochSha256);
 
   const sourceTraces = JSON.parse(fs.readFileSync(first.decisionLogPath, "utf8"));
   const target = sourceTraces.find((trace: any) => trace.whiteBoxShadow?.trace?.candidates.some((candidate: any) => candidate.id !== trace.selected && candidate.eligible && candidate.reasonable && candidate.finalScore !== null));
@@ -71,6 +81,9 @@ async function main(): Promise<void> {
   assert.equal(branchTraces[target.decisionOrdinal - 1].incumbentSelected, target.selected);
   assert.equal(branchTraces[target.decisionOrdinal - 1].selected, selected);
   assert.equal(branchTraces[target.decisionOrdinal - 1].intervention.applied, true);
+
+  const researchOut=path.join(root,"research-counterfactual"),research=spawnSync(process.execPath,[require.resolve("tsx/cli"),path.join(path.resolve(__dirname,"../.."),"src/cli/counterfactualWhiteBoxBattle.ts"),"--source-game",path.dirname(first.replayInputPath),"--out",researchOut,"--decision-ordinal",String(target.decisionOrdinal),"--research-alternative",selected],{cwd:path.resolve(__dirname,"../.."),encoding:"utf8",maxBuffer:16*1024*1024});
+  assert.equal(research.status,0,research.stderr||research.stdout);const researchSummary=JSON.parse(fs.readFileSync(path.join(researchOut,"counterfactual-summary.json"),"utf8"));assert.equal(researchSummary.evidenceStatus,"manager-selected-research-only");assert.equal(researchSummary.activationAllowed,false);assert.equal(researchSummary.intervention.selected,selected);assert.equal(researchSummary.prefixVerified,true);
 
   const assistCandidate=(id:string,rational:number,style:number)=>({id,eligible:true,reasonable:true,hardRejections:[],rationalScore:rational,rawStyleScore:style,appliedStyleScore:style,finalScore:rational+style,contributions:[{id:"battle.expected",group:"expected",source:"competence",value:rational,reason:"expected"},{id:"battle.downside",group:"risk",source:"risk",value:0,reason:"downside"},{id:"battle.worst",group:"risk",source:"risk",value:0,reason:"worst"}]});
   const assistTrace:any={turn:1,playerId:"p1",strategy:"search",selected:"move tackle",personalityId:"test",battleContext:{ownSpecies:"Alpha",opponentSpecies:"Beta"},whiteBoxShadow:{comparison:{incumbent:"move tackle",shadow:"switch 2",agrees:false},trace:{candidates:[assistCandidate("move tackle",2,0),assistCandidate("switch 2",3,.1)]}}};

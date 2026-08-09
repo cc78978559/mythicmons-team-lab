@@ -732,6 +732,7 @@ function runV3Season(season: number, seasonDir: string, profilePath: string, kee
       V3_COMPACT_OUTPUT: String(evidenceRetention === "compact"),
       V3_TACTICAL_MEMORY_CONFIDENCE_FLOOR: String(tacticalMemoryConfidenceFloor),
       V3_TACTICAL_MEMORY_BEHAVIOR_POLICY: tacticalMemoryBehaviorPolicy,
+      V3_LINEUP_ASSIST_APPROVAL: process.env.V4_LINEUP_ASSIST_APPROVAL || "",
       V4_DUAL_LAYER: String(dualLayer),
       V3_UNLOCK_GENERATION: String(Math.min(9, season)),
       V4_CURRENT_SEASON: String(season),
@@ -743,7 +744,7 @@ function runV3Season(season: number, seasonDir: string, profilePath: string, kee
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
   });
-  if (child.status !== 0) throw new Error(`Season ${season} failed:\n${child.stderr || child.stdout}`);
+  if (child.status !== 0) throw new Error(`Season ${season} failed:\nstatus=${child.status ?? "null"} signal=${child.signal ?? "none"} spawnError=${child.error ? `${child.error.name}: ${child.error.message}` : "none"}\n${child.stderr || child.stdout || "<empty child output>"}`);
   process.stdout.write(`V4 season ${season}/${seasonCount} complete\n`);
 }
 

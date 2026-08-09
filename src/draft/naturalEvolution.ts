@@ -63,7 +63,7 @@ const ECONOMICS: Array<keyof ManagerEconomics> = ["starPremium", "cashUtility", 
 const CONFIGURATION: Array<keyof ManagerConfigurationGenome> = ["speedInvestment", "bulkBias", "statusMoveBias", "coverageBias", "accuracyRisk", "choiceItemBias", "recoveryItemBias"];
 const SYSTEMS: Array<keyof ManagerSystemGenome> = ["weather", "trickRoom", "balance", "offense", "stall", "hazardPressure", "pivotCycle", "setupCore"];
 const ORGANIZATION: Array<keyof ManagerOrganizationGenome> = ["scarceConcentration", "backgroundReliance", "continuity", "experimentation", "rebuildPatience"];
-const TACTICS = ["aggression", "setupBias", "pivotBias", "recoveryBias", "statusBias", "teraBias", "switchBias"] as const;
+const TACTICS = ["aggression", "setupBias", "pivotBias", "recoveryBias", "statusBias", "switchBias"] as const;
 const ROLES: DraftRole[] = ["hazards", "removal", "recovery", "pivot", "setup", "priority", "screens", "status", "physical", "special"];
 const PROGRAM_INPUTS = ["baseline", "strength", "price", "roleBreadth", "typeOverlap", "speed", "bulk", "accuracy", "usage", "production", "teamResult", "opponentPressure", "rosterSize", "tacticalConfidence", "historicalWinRate", "opponentLeadConcentration", "opponentSwitchRate"];
 

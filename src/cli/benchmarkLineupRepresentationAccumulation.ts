@@ -6,6 +6,8 @@ import {spawnSync} from "node:child_process";
 import {auditLineupRepresentation, type LineupRepresentationObservation} from "../ai/whiteBox/lineupRepresentationAudit";
 import {materializeHistoricalDynastyBoundary} from "../draft/historicalRuntimeCheckpoint";
 import {acquireNamedRunLock} from "../draft/runLock";
+import {lineupStudySourceEvidence, lineupStudySourceIdentity, lineupStudySourceKey} from "../draft/lineupStudySource";
+import {gcSourceCaches, touchSourceCache} from "../draft/sourceCacheMaintenance";
 
 const args = process.argv.slice(2);
 const root = process.cwd();
@@ -17,9 +19,19 @@ const trialSeasons = integerOption("--seasons", 1, 1, 9);
 const firstSeason = Number(sourceState.completedSeason) + 1;
 const finalSeason = Number(sourceState.completedSeason) + trialSeasons;
 const work = path.join(out, ".trial-work");
+const progressFile = path.join(out, "accumulation-progress.json");
 const sourceHash = fileHash(sourceStateFile);
 const recoverCompletedWork = args.includes("--recover-completed-work");
-const recoveredDurationMs = recoverCompletedWork ? integerOption("--recovered-duration-ms", 0, 1, 86_400_000) : 0;
+const checkpointProcessPerSeason = args.includes("--checkpoint-process-per-season");
+const recoveryAvailable = recoverCompletedWork && fs.existsSync(work) && fs.existsSync(progressFile);
+const publishSourceCache = args.includes("--publish-source-cache");
+const sourceCacheRoot = path.resolve(option("--source-cache", "output/tooling/shadow-lineup-source-cache"));
+const sourceCacheIdentity = lineupStudySourceIdentity(root, sourceStateFile, finalSeason);
+const sourceCacheKey = lineupStudySourceKey(sourceCacheIdentity);
+const sourceCacheTarget = path.join(sourceCacheRoot, sourceCacheKey);
+const sourceCacheBudgetBytes = integerOption("--source-cache-max-mb", Number(process.env.LINEUP_SOURCE_CACHE_MAX_MB ?? 4096), 512, 102400) * 1048576;
+const sourceCacheMaxAgeDays = integerOption("--source-cache-max-age-days", Number(process.env.LINEUP_SOURCE_CACHE_MAX_AGE_DAYS ?? 30), 0, 3650);
+const recoveredDurationMs = recoveryAvailable ? Number(read<any>(progressFile).durationMs ?? 0) : 0;
 fs.mkdirSync(out, {recursive: true});
 if (recoverCompletedWork) clearStaleRecoveryLock(path.join(out, ".lineup-representation-efficiency.lock"));
 const lock = acquireNamedRunLock(out, ".lineup-representation-efficiency.lock", {workflow: "lineup-representation-efficiency", source, firstSeason, finalSeason});
@@ -27,20 +39,29 @@ let completed = false;
 try {
   if (fs.existsSync(work)) {
     assertSafeWork(work);
-    if (!recoverCompletedWork) fs.rmSync(work, {recursive: true, force: true});
+    if (!recoveryAvailable) fs.rmSync(work, {recursive: true, force: true});
   }
   let durationMs = recoveredDurationMs;
-  if (recoverCompletedWork) validateCompletedTrial(work, firstSeason, finalSeason);
-  else {
-    const boundary = materializeHistoricalDynastyBoundary(source, sourceState.completedSeason, work);
-    const started = Date.now(), settings = sourceState.settings;
+  let boundary: ReturnType<typeof materializeHistoricalDynastyBoundary>;
+  if (recoveryAvailable) {
+    validateRecoverableTrial(work, sourceState.completedSeason, finalSeason);
+    const progress = read<any>(progressFile), registrySource = String(progress.registrySource ?? "");
+    if (!registrySource || !fs.existsSync(registrySource)) throw new Error(`Recovered trial registry source is missing: ${registrySource}`);
+    boundary = {registrySource} as ReturnType<typeof materializeHistoricalDynastyBoundary>;
+  } else boundary = materializeHistoricalDynastyBoundary(source, sourceState.completedSeason, work);
+  const settings = sourceState.settings;
+  let completedSeason = Number(read<any>(path.join(work, "dynasty-state.json")).completedSeason);
+  write(progressFile, {schemaVersion: 1, sourceStateSha256: sourceHash, registrySource: boundary.registrySource, firstSeason, finalSeason, completedSeason, durationMs, status: "running", updatedAt: new Date().toISOString()});
+  const targets = checkpointProcessPerSeason ? Array.from({length: finalSeason - completedSeason}, (_, index) => completedSeason + index + 1) : [finalSeason];
+  for (const targetSeason of targets) {
+    const started = Date.now();
     const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, "src", "cli", "draftLeagueV12.ts")], {
       cwd: root,
       env: {
         ...process.env,
         V12_OUT: work,
         V12_SEED: sourceState.seed,
-        V12_SEASONS: String(finalSeason),
+        V12_SEASONS: String(targetSeason),
         V12_RESUME: "true",
         V12_ALLOW_CODE_UPGRADE: "true",
         V12_MANAGER_LIMIT: String(settings.managerLimit),
@@ -68,8 +89,11 @@ try {
       encoding: "utf8",
       maxBuffer: 64 * 1024 * 1024,
     });
-    if (result.status !== 0) throw new Error(`Representation accumulation trial failed:\n${result.stderr || result.stdout}`);
-    durationMs = Date.now() - started;
+    if (result.status !== 0) throw new Error(`Representation accumulation trial failed at S${targetSeason}:\n${result.stderr || result.stdout}`);
+    durationMs += Date.now() - started;
+    completedSeason = Number(read<any>(path.join(work, "dynasty-state.json")).completedSeason);
+    if (completedSeason !== targetSeason) throw new Error(`Representation accumulation stopped at S${completedSeason}, expected S${targetSeason}`);
+    write(progressFile, {schemaVersion: 1, sourceStateSha256: sourceHash, registrySource: boundary.registrySource, firstSeason, finalSeason, completedSeason, durationMs, status: completedSeason === finalSeason ? "simulation-complete" : "running", updatedAt: new Date().toISOString()});
   }
   if (fileHash(sourceStateFile) !== sourceHash) throw new Error("Representation accumulation trial mutated the source dynasty");
   const observations: LineupRepresentationObservation[] = [], studyRows: any[] = [];
@@ -116,7 +140,8 @@ try {
     sourceStateSha256: sourceHash,
     sourceUnchanged: true,
     temporaryTrialRemoved: true,
-    recoveredCompletedWork: recoverCompletedWork,
+    reusableSourceCache: publishSourceCache ? {key: sourceCacheKey, directory: sourceCacheTarget, identity: sourceCacheIdentity} : null,
+    recoveredCompletedWork: recoveryAvailable,
     durationMs,
     metrics: audit.metrics,
     blockers: audit.blockers,
@@ -158,10 +183,12 @@ try {
   ].join("\n");
   fs.writeFileSync(path.join(out, "lineup-representation-efficiency.md"), report, "utf8");
   write(path.join(out, "token-budget.json"), {schemaVersion: 1, reportBytes: Buffer.byteLength(report), estimatedReportTokens: Math.ceil(Buffer.byteLength(report) / 4), rawBattleLogsReadByAudit: 0});
+  if (publishSourceCache) publishStudySourceCache();
+  write(progressFile, {schemaVersion: 1, sourceStateSha256: sourceHash, registrySource: null, firstSeason, finalSeason, completedSeason: finalSeason, durationMs, status: "complete", sampleArchive, reusableSourceCache: publishSourceCache ? sourceCacheTarget : null, updatedAt: new Date().toISOString()});
   completed = true;
   console.log(JSON.stringify({status: "complete", trialRange: `${firstSeason}-${finalSeason}`, durationMs, conclusion: audit.conclusion, ...audit.metrics, throughput: summary.throughput, sampleArchive, report: path.join(out, "lineup-representation-efficiency.md")}, null, 2));
 } finally {
-  if (fs.existsSync(work) && (!recoverCompletedWork || completed)) {
+  if (fs.existsSync(work) && completed) {
     assertSafeWork(work);
     fs.rmSync(work, {recursive: true, force: true});
   }
@@ -173,7 +200,27 @@ function assertSafeWork(directory: string): void {
   const resolved = path.resolve(directory);
   if (resolved !== path.join(out, ".trial-work") || !resolved.startsWith(`${out}${path.sep}`)) throw new Error(`Unsafe trial work directory: ${resolved}`);
 }
-function validateCompletedTrial(directory: string, first: number, final: number): void { if (!fs.existsSync(path.join(directory, "dynasty-state.json"))) throw new Error("Recovered trial lacks dynasty state"); for (let season = first; season <= final; season++) for (const file of ["season.json", "decision-ledger.json"]) if (!fs.existsSync(path.join(directory, `season-${String(season).padStart(2, "0")}`, file))) throw new Error(`Recovered trial is incomplete: season-${season}/${file}`); }
+function publishStudySourceCache(): void {
+  fs.mkdirSync(sourceCacheRoot, {recursive: true});
+  const cacheLock = acquireNamedRunLock(sourceCacheRoot, `.${sourceCacheKey.slice(0, 24)}.lock`, {workflow: "lineup-telemetry-source-cache-publish", sourceCacheKey, finalSeason});
+  try {
+    const evidence = lineupStudySourceEvidence(work, firstSeason, finalSeason);
+    if (fs.existsSync(sourceCacheTarget)) {
+      const markerFile = path.join(sourceCacheTarget, "source-cache.json");
+      if (!fs.existsSync(markerFile)) throw new Error(`Existing source cache has no marker: ${sourceCacheTarget}`);
+      const marker = read<any>(markerFile);
+      if (marker.key !== sourceCacheKey || JSON.stringify(marker.identity) !== JSON.stringify(sourceCacheIdentity) || JSON.stringify(marker.evidence) !== JSON.stringify(evidence)) throw new Error(`Existing source cache conflicts with telemetry source: ${sourceCacheTarget}`);
+      assertSafeWork(work); fs.rmSync(work, {recursive: true, force: true});
+      touchSourceCache(sourceCacheTarget, sourceCacheKey, "lineup-telemetry-reuse");
+      return;
+    }
+    write(path.join(work, "source-cache.json"), {schemaVersion: 1, key: sourceCacheKey, identity: sourceCacheIdentity, evidence});
+    fs.renameSync(work, sourceCacheTarget);
+    touchSourceCache(sourceCacheTarget, sourceCacheKey, "lineup-telemetry-created");
+    gcSourceCaches(sourceCacheRoot, path.dirname(sourceCacheRoot), {budgetBytes: sourceCacheBudgetBytes, maxAgeDays: sourceCacheMaxAgeDays, apply: true, protectedKeys: [sourceCacheKey]});
+  } finally { cacheLock.release(); }
+}
+function validateRecoverableTrial(directory: string, sourceSeason: number, final: number): void { if (!fs.existsSync(path.join(directory, "dynasty-state.json"))) throw new Error("Recovered trial lacks dynasty state"); const completedSeason = Number(read<any>(path.join(directory, "dynasty-state.json")).completedSeason); if (!Number.isInteger(completedSeason) || completedSeason < sourceSeason || completedSeason > final) throw new Error(`Recovered trial season is outside ${sourceSeason}..${final}: ${completedSeason}`); for (let season = sourceSeason + 1; season <= completedSeason; season++) for (const file of ["season.json", "decision-ledger.json"]) if (!fs.existsSync(path.join(directory, `season-${String(season).padStart(2, "0")}`, file))) throw new Error(`Recovered trial is incomplete: season-${season}/${file}`); }
 function clearStaleRecoveryLock(file: string): void { if (!fs.existsSync(file)) return; const owner = read<any>(file), pid = Number(owner.pid); if (!Number.isInteger(pid) || pid < 1) throw new Error(`Recovery lock has invalid owner: ${file}`); try { process.kill(pid, 0); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") { fs.rmSync(file); return; } throw error; } throw new Error(`Cannot recover while lock owner ${pid} is alive`); }
 function directoryBytes(directory: string): number { let total = 0; for (const entry of fs.readdirSync(directory, {withFileTypes: true})) { const file = path.join(directory, entry.name); total += entry.isDirectory() ? directoryBytes(file) : entry.isFile() ? fs.statSync(file).size : 0; } return total; }
 function allSeries(season: any): any[] { const playoffs = season.playoffs ?? {}; return [...(season.league ?? []), ...(playoffs.playIns ?? []), ...(playoffs.quarters ?? []), ...(playoffs.semifinals ?? []), ...(playoffs.final ? [playoffs.final] : [])].filter(Boolean); }

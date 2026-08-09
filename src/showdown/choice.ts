@@ -4,10 +4,11 @@ import type {Move} from "pokemon-showdown/dist/sim/dex-moves";
 import type {PokemonSet} from "pokemon-showdown/dist/sim/teams";
 import {compareWhiteBoxShadow, evaluateWhiteBoxDecision, type WhiteBoxDecisionTrace} from "../ai/whiteBox/decision";
 import {BATTLE_SHADOW_PARAMETERS} from "../ai/whiteBox/parameters";
+import {LEAGUE_MECHANICS} from "./mechanics";
 
 export type AiStrategy = "first" | "damage" | "basic" | "tactical" | "search";
 export type PlayerId = "p1" | "p2";
-export const AI_VERSION = "stateful-choice-v14-scoped-assist-v1";
+export const AI_VERSION = "stateful-choice-v16-no-tera-dynamax-v1";
 const BATTLE_SHADOW_VALUES = BATTLE_SHADOW_PARAMETERS.snapshot().values;
 const INVALID_MOVE_SCORE = Number.NEGATIVE_INFINITY;
 type BoostStat = "atk" | "def" | "spa" | "spd" | "spe" | "accuracy" | "evasion";
@@ -110,7 +111,6 @@ export interface AiTacticalProfile {
   pivotBias: number;
   recoveryBias: number;
   statusBias: number;
-  teraBias: number;
   switchBias: number;
 }
 
@@ -124,7 +124,6 @@ export const DEFAULT_TACTICAL_PROFILE: AiTacticalProfile = {
   pivotBias: 0,
   recoveryBias: 0,
   statusBias: 0,
-  teraBias: 0,
   switchBias: 0,
 };
 
@@ -158,6 +157,7 @@ export interface AiDecisionTrace {
     ownSpecies: string | null;
     opponentSpecies: string | null;
   };
+  positionSnapshot?: PositionSnapshot;
   actionTargets?: Record<string,string>;
   policyIncumbentSelected?: string;
   assistPolicy?: {scopeId:string;approved:boolean;gateRecommended:boolean;applied:boolean;reasons:string[]};
@@ -183,6 +183,31 @@ export interface AiDecisionTrace {
     personalityAdjustment: number;
     responses: Array<{response: string; policyShare: number; value: number}>;
   }>;
+}
+
+export interface PositionSnapshotSide {
+  remaining: number;
+  hpTotal: number;
+  activeHp: number;
+  statusCount: number;
+  activeStatus: boolean;
+  positiveBoosts: number;
+  negativeBoosts: number;
+  hazards: number;
+  screens: number;
+}
+
+export interface PositionSnapshot {
+  schemaVersion: 1;
+  encoderVersion: "position-snapshot-v1";
+  turn: number;
+  own: PositionSnapshotSide;
+  opponent: PositionSnapshotSide;
+  forcedSwitch: boolean;
+  trapped: boolean;
+  weather: string | null;
+  fieldConditions: string[];
+  information: {ownHp: "private-request"; opponentHp: "public-estimate"};
 }
 
 export function createBattleAiContext(format: string, options: BattleAiOptions = {}): BattleAiContext {
@@ -252,8 +277,7 @@ export function normalizeTacticalProfile(profile: Partial<AiTacticalProfile> = {
   const worstWeight = Math.max(0, profile.worstWeight ?? DEFAULT_TACTICAL_PROFILE.worstWeight);
   const total = expectedWeight + downsideWeight + worstWeight || 1;
   return {
-    ...DEFAULT_TACTICAL_PROFILE,
-    ...profile,
+    id: typeof profile.id === "string" ? profile.id : DEFAULT_TACTICAL_PROFILE.id,
     expectedWeight: expectedWeight / total,
     downsideWeight: downsideWeight / total,
     worstWeight: worstWeight / total,
@@ -262,7 +286,6 @@ export function normalizeTacticalProfile(profile: Partial<AiTacticalProfile> = {
     pivotBias: clamp(profile.pivotBias ?? 0, -1, 1),
     recoveryBias: clamp(profile.recoveryBias ?? 0, -1, 1),
     statusBias: clamp(profile.statusBias ?? 0, -1, 1),
-    teraBias: clamp(profile.teraBias ?? 0, -1, 1),
     switchBias: clamp(profile.switchBias ?? 0, -1, 1),
   };
 }
@@ -646,6 +669,7 @@ function chooseSearch(request: ChoiceRequest, playerId: PlayerId, context: Battl
     strategy: "search",
     selected,
     battleContext: {ownSpecies: context.active[playerId]?.species ?? null, opponentSpecies: context.active[opponentOf(playerId)]?.species ?? null},
+    positionSnapshot: buildPositionSnapshot(request, playerId, context),
     actionTargets:Object.fromEntries(ranked.map(entry=>[entry.action.choice,entry.action.kind==="switch"?switchTargetSpecies(entry.action.candidate):entry.action.move.id||entry.action.move.move])),
     personalityId: context.tacticalProfile.id,
     opponentModel: opponentModelTrace(context, playerId),
@@ -667,6 +691,28 @@ function chooseSearch(request: ChoiceRequest, playerId: PlayerId, context: Battl
   };
   return selected;
 }
+
+export function buildPositionSnapshot(request: ChoiceRequest, playerId: PlayerId, context: BattleAiContext): PositionSnapshot {
+  const opponentId = opponentOf(playerId), ownPokemon = request.side?.pokemon ?? [], ownActive = context.active[playerId], opponentActive = context.active[opponentId];
+  const ownConditions = ownPokemon.map(member => conditionState(member.condition));
+  const opponentRoster = [...context.roster[opponentId].values()].filter(member => !context.fainted[opponentId].has(toID(member.name)));
+  const own = positionSide({remaining: ownConditions.filter(value => value.hp > 0).length, hpTotal: ownConditions.reduce((sum, value) => sum + value.hp, 0), statusCount: ownConditions.filter(value => value.status).length, active: ownActive, conditions: context.sideConditions[playerId]});
+  const opponent = positionSide({remaining: opponentRoster.length, hpTotal: opponentRoster.reduce((sum, member) => sum + (member.hpPercent === null ? 1 : clamp(member.hpPercent / 100, 0, 1)), 0), statusCount: opponentRoster.filter(member => member.status).length, active: opponentActive, conditions: context.sideConditions[opponentId]});
+  return {schemaVersion: 1, encoderVersion: "position-snapshot-v1", turn: context.turn, own, opponent, forcedSwitch: Boolean(request.forceSwitch?.some(Boolean)), trapped: Boolean(request.active?.[0]?.trapped), weather: context.weather, fieldConditions: [...context.fieldConditions].sort(), information: {ownHp: "private-request", opponentHp: "public-estimate"}};
+}
+
+function positionSide(input: {remaining: number; hpTotal: number; statusCount: number; active: KnownActive | null; conditions: Record<string, number>}): PositionSnapshotSide {
+  const boosts = input.active?.boosts ?? createZeroBoosts();
+  return {remaining: input.remaining, hpTotal: roundDecisionValue(input.hpTotal), activeHp: roundDecisionValue((input.active?.hpPercent ?? 0) / 100), statusCount: input.statusCount, activeStatus: Boolean(input.active?.status), positiveBoosts: boostStats().reduce((sum, stat) => sum + Math.max(0, boosts[stat]), 0), negativeBoosts: boostStats().reduce((sum, stat) => sum + Math.max(0, -boosts[stat]), 0), hazards: hazardBurden(input.conditions), screens: ["reflect", "lightscreen", "auroraveil"].filter(id => input.conditions[id]).length};
+}
+
+function conditionState(condition: string): {hp: number; status: string | null} {
+  if (/^0(?:\s|$)/.test(condition) || /\bfnt\b/.test(condition)) return {hp: 0, status: null};
+  const match = condition.match(/^(\d+)\/(\d+)/), hp = match && Number(match[2]) > 0 ? clamp(Number(match[1]) / Number(match[2]), 0, 1) : 1;
+  return {hp, status: statusFromCondition(condition)};
+}
+
+function hazardBurden(conditions: Record<string, number>): number { return (conditions.stealthrock ? 1 : 0) + (conditions.spikes ?? 0) + (conditions.toxicspikes ?? 0) + (conditions.stickyweb ? 1 : 0); }
 
 function switchTargetSpecies(candidate:RequestPokemon):string{return candidate.details?.split(",",1)[0]?.trim()||candidate.ident.split(":",2)[1]?.trim()||candidate.ident;}
 
@@ -692,7 +738,6 @@ function tacticalPersonalityAdjustment(action: SearchAction, context: BattleAiCo
   if (move.selfSwitch) adjustment += profile.pivotBias * 8;
   if (move.flags.heal) adjustment += profile.recoveryBias * 8;
   if (move.boosts || move.self?.boosts || setupBoosts(move.id)) adjustment += profile.setupBias * 8;
-  if (action.teraType) adjustment += profile.teraBias * 8;
   return clamp(adjustment, -15, 15);
 }
 
@@ -705,7 +750,7 @@ function searchActions(request: ChoiceRequest, playerId: PlayerId, context: Batt
     const choice = `move ${move.id || move.move}`;
     actions.push({kind: "move", choice, move, prior: clamp(score, -250, 300) + (batonPlan === choice ? 45 : 0)});
     const teraType = request.active?.[0]?.canTerastallize;
-    if (teraType && !context.teraUsed[playerId]) {
+    if (LEAGUE_MECHANICS.terastallization && teraType && !context.teraUsed[playerId]) {
       const own = context.active[playerId];
       const previousTera = own?.teraType ?? null;
       if (own) own.teraType = teraType;
@@ -755,7 +800,7 @@ function opponentSearchResponses(request: ChoiceRequest, playerId: PlayerId, con
       * learnedMoveMultiplier(moveId, legalMoveIds, context.opponentModel, active.species);
     weighted.push({response: {kind: "move", moveId}, weight});
     const move = context.dex.moves.get(moveId);
-    if (!context.teraUsed[opponentId] && activeSheet?.teraType && move.category !== "Status") {
+    if (LEAGUE_MECHANICS.terastallization && !context.teraUsed[opponentId] && activeSheet?.teraType && move.category !== "Status") {
       weighted.push({response: {kind: "move", moveId, teraType: activeSheet.teraType}, weight: weight * 0.35});
     }
   }
@@ -1970,6 +2015,7 @@ function moveChoice(
 }
 
 function shouldTerastallize(moveId: string, request: ChoiceRequest, playerId: PlayerId, context: BattleAiContext): boolean {
+  if (!LEAGUE_MECHANICS.terastallization) return false;
   const teraType = request.active?.[0]?.canTerastallize;
   if (!teraType || context.teraUsed[playerId]) return false;
   const active = ownActive(request);

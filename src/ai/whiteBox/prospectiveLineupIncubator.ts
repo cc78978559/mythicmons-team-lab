@@ -45,10 +45,16 @@ export interface ProspectiveLineupIncubatorResult {
   discoverySeasons: number[];
   validationSeason: number;
   thresholds: {minimumManagers: number; minimumDiscoveryEffect: number; minimumValidationEffect: number; minimumIncrementalValidationEffect: number; maximumAdjustedQ: number; maximumIncrementalAdjustedQ: number; permutations: number};
+  searchBudget: {maximumProgramFeatures: number; minimumProgramDiscoveryEffect: number; eligibleProgramFeatures: number; retainedProgramFeatures: number; possiblePrograms: number; evaluatedPrograms: number; skippedPrograms: number};
   metrics: {features: number; programs: number; discoveryPairs: number; validationPairs: number; managers: number; promotedFeatures: number; promotedPrograms: number; novelPromoted: number};
   findings: ProspectiveLineupFeatureFinding[];
   programs: ProspectiveLineupProgramFinding[];
   promotedHypotheses: LineupAuditHypothesis[];
+}
+
+export interface ProspectiveLineupIncubatorOptions {
+  maximumProgramFeatures?: number;
+  minimumProgramDiscoveryEffect?: number;
 }
 
 type Pair = {winner: LineupHypothesisObservation; loser: LineupHypothesisObservation};
@@ -57,6 +63,7 @@ export function incubateProspectiveLineupFeatures(
   observationsInput: readonly LineupHypothesisObservation[],
   registeredHypotheses: readonly LineupAuditHypothesis[],
   permutations = 10000,
+  options: ProspectiveLineupIncubatorOptions = {},
 ): ProspectiveLineupIncubatorResult {
   if (!observationsInput.length || !Number.isInteger(permutations) || permutations < 100 || permutations > 100000) throw new Error("Prospective incubator requires observations and 100..100000 permutations");
   const observations = [...observationsInput], seasons = [...new Set(observations.map(row => row.season))].sort((left, right) => left - right);
@@ -71,8 +78,11 @@ export function incubateProspectiveLineupFeatures(
   const registered = new Set(registeredHypotheses.flatMap(hypothesis => hypothesis.factors.map(factor => factor.feature)));
   const findings = features.map(feature => analyzeFeature(feature, discoveryRows, discoveryPairs, validationPairs, registered.has(feature), permutations));
   adjustBenjaminiHochberg(findings);
+  const maximumProgramFeatures = integer(options.maximumProgramFeatures ?? 24, 2, 128, "maximumProgramFeatures");
+  const minimumProgramDiscoveryEffect = finite(options.minimumProgramDiscoveryEffect ?? .025, 0, 1, "minimumProgramDiscoveryEffect");
   const registeredPrograms = new Set(registeredHypotheses.filter(hypothesis => hypothesis.factors.length > 1).map(hypothesis => factorSignature(hypothesis.factors)));
-  const programFeatures = findings.filter(finding => Math.abs(finding.discoveryEffect) >= .025);
+  const eligibleProgramFeatures = findings.filter(finding => Math.abs(finding.discoveryEffect) >= minimumProgramDiscoveryEffect).sort((left, right) => Math.abs(right.discoveryEffect) - Math.abs(left.discoveryEffect) || left.feature.localeCompare(right.feature));
+  const programFeatures = eligibleProgramFeatures.slice(0, maximumProgramFeatures);
   const programs: ProspectiveLineupProgramFinding[] = [];
   for (let left = 0; left < programFeatures.length; left++) for (let right = left + 1; right < programFeatures.length; right++) programs.push(analyzeProgram([programFeatures[left], programFeatures[right]], discoveryRows, discoveryPairs, validationPairs, registeredPrograms, permutations));
   adjustProgramBenjaminiHochberg(programs);
@@ -98,6 +108,7 @@ export function incubateProspectiveLineupFeatures(
     discoverySeasons,
     validationSeason,
     thresholds,
+    searchBudget: {maximumProgramFeatures, minimumProgramDiscoveryEffect, eligibleProgramFeatures: eligibleProgramFeatures.length, retainedProgramFeatures: programFeatures.length, possiblePrograms: chooseTwo(eligibleProgramFeatures.length), evaluatedPrograms: programs.length, skippedPrograms: chooseTwo(eligibleProgramFeatures.length) - programs.length},
     metrics: {features: findings.length, programs: programs.length, discoveryPairs: discoveryPairs.length, validationPairs: validationPairs.length, managers: new Set(validationPairs.flatMap(pair => [pair.winner.managerId, pair.loser.managerId])).size, promotedFeatures: findings.filter(finding => finding.promoted).length, promotedPrograms: programs.filter(program => program.promoted).length, novelPromoted: promotedHypotheses.length},
     findings,
     programs,
@@ -119,7 +130,7 @@ function analyzeFeature(feature: string, discoveryRows: LineupHypothesisObservat
 
 function toHypothesis(finding: ProspectiveLineupFeatureFinding): LineupAuditHypothesis {
   const stem = finding.feature.replace(/^lineup\./, "").replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
-  return {id: `lineup-incubated-${stem}-v1`, title: `Incubated ${stem.replace(/-/g, " ")}`, rationale: `A direction frozen in earlier seasons replicated in a held-out later season for ${finding.feature}.`, stage: "observational-candidate", combine: "weighted-geometric-percentile", factors: [{feature: finding.feature, direction: finding.direction, weight: 1}], scope: ["all-lineups"], guardrails: finding.feature === "lineup.strengthFloor" ? [{feature: "lineup.roleTagBreadth", minimumDelta: -1}] : [{feature: "lineup.strengthFloor", minimumDelta: -5}]};
+  return {id: `lineup-incubated-${stem}-v1`, title: `Incubated ${stem.replace(/-/g, " ")}`, rationale: `A direction frozen in earlier seasons replicated in a held-out later season for ${finding.feature}.`, stage: "observational-candidate", minimumRepresentationVersion: 6, combine: "weighted-geometric-percentile", factors: [{feature: finding.feature, direction: finding.direction, weight: 1}], scope: ["all-lineups"], guardrails: finding.feature === "lineup.strengthFloor" ? [{feature: "lineup.roleTagBreadth", minimumDelta: -1}] : [{feature: "lineup.strengthFloor", minimumDelta: -5}]};
 }
 
 function analyzeProgram(features: [ProspectiveLineupFeatureFinding, ProspectiveLineupFeatureFinding], discoveryRows: LineupHypothesisObservation[], discoveryPairs: Pair[], validationPairs: Pair[], registeredPrograms: ReadonlySet<string>, permutations: number): ProspectiveLineupProgramFinding {
@@ -134,7 +145,7 @@ function analyzeProgram(features: [ProspectiveLineupFeatureFinding, ProspectiveL
   return {id, factors, discoveryPairs: discoveryPairs.length, validationPairs: validationPairs.length, managers: new Set(validationPairs.flatMap(pair => [pair.winner.managerId, pair.loser.managerId])).size, discoveryEffect: round(discoveryEffect), validationEffect: round(validationEffect), validationMeanDelta: round(observed), referenceFeature: hardest.feature, incrementalValidationEffect: hardest.effect, incrementalP: Math.max(...incrementalComparisons.map(value => value.p)), adjustedIncrementalQ: 1, incrementalComparisons, validationWinnerAlignedRate: round(nonZero.filter(value => value > 0).length / Math.max(1, nonZero.length)), validationP: round(extreme / (permutations + 1)), adjustedQ: 1, registered: registeredPrograms.has(factorSignature(factors)), promoted: false};
 }
 
-function programToHypothesis(program: ProspectiveLineupProgramFinding): LineupAuditHypothesis { return {id: program.id, title: `Incubated ${program.factors.map(factor => factor.feature.replace(/^lineup\./, "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()).join(" and ")}`, rationale: `A two-factor program frozen in earlier seasons replicated in a held-out later season and improved on either constituent alone.`, stage: "observational-candidate", combine: "weighted-geometric-percentile", factors: program.factors.map(factor => ({...factor, weight: 1})), scope: ["all-lineups"], guardrails: program.factors.some(factor => factor.feature === "lineup.strengthFloor") ? [{feature: "lineup.roleTagBreadth", minimumDelta: -1}] : [{feature: "lineup.strengthFloor", minimumDelta: -5}]}; }
+function programToHypothesis(program: ProspectiveLineupProgramFinding): LineupAuditHypothesis { return {id: program.id, title: `Incubated ${program.factors.map(factor => factor.feature.replace(/^lineup\./, "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()).join(" and ")}`, rationale: `A two-factor program frozen in earlier seasons replicated in a held-out later season and improved on either constituent alone.`, stage: "observational-candidate", minimumRepresentationVersion: 6, combine: "weighted-geometric-percentile", factors: program.factors.map(factor => ({...factor, weight: 1})), scope: ["all-lineups"], guardrails: program.factors.some(factor => factor.feature === "lineup.strengthFloor") ? [{feature: "lineup.roleTagBreadth", minimumDelta: -1}] : [{feature: "lineup.strengthFloor", minimumDelta: -5}]}; }
 function factorSignature(factors: readonly {feature: string; direction: HypothesisDirection}[]): string { return [...factors].sort((left, right) => left.feature.localeCompare(right.feature)).map(factor => `${factor.feature}:${factor.direction}`).join("|"); }
 
 function pairDecisive(rows: readonly LineupHypothesisObservation[]): Pair[] { const groups = new Map<string, LineupHypothesisObservation[]>(); for (const row of rows) { const key = `${row.season}:${row.seriesId}`, values = groups.get(key) ?? []; values.push(row); groups.set(key, values); } return [...groups].flatMap(([key, values]) => { if (values.length !== 2) throw new Error(`Prospective incubator requires exactly two sides: ${key}`); const winner = values.find(row => row.outcome === "win"), loser = values.find(row => row.outcome === "loss"); return winner && loser ? [{winner, loser}] : []; }); }
@@ -149,3 +160,6 @@ function add(map: Map<string, number[]>, key: string, value: number): void { con
 function mean(values: readonly number[]): number { return values.length ? values.reduce((total, value) => total + value, 0) / values.length : 0; }
 function random(seed: string): () => number { let state = Number.parseInt(crypto.createHash("sha256").update(seed).digest("hex").slice(0, 8), 16) || 1; return () => { state ^= state << 13; state ^= state >>> 17; state ^= state << 5; return (state >>> 0) / 0x100000000; }; }
 function round(value: number): number { return Math.round((value + Number.EPSILON) * 1e6) / 1e6; }
+function chooseTwo(value: number): number { return value < 2 ? 0 : value * (value - 1) / 2; }
+function integer(value: number, minimum: number, maximum: number, name: string): number { if (!Number.isInteger(value) || value < minimum || value > maximum) throw new Error(`${name} must be ${minimum}..${maximum}`); return value; }
+function finite(value: number, minimum: number, maximum: number, name: string): number { if (!Number.isFinite(value) || value < minimum || value > maximum) throw new Error(`${name} must be ${minimum}..${maximum}`); return value; }

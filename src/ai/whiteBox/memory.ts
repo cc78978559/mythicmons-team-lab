@@ -86,9 +86,10 @@ export function buildTacticalMemoryTrace(previous: TacticalMemory | undefined, e
 
 export function evaluateConfigurationPosterior(id: string, priorInput: {mean: number; confidence: number; effectiveSamples: number} | undefined, evidence: number, weight: number): ConfigurationPosteriorTrace {
   const parameters = MEMORY_SHADOW_PARAMETERS.snapshot().values, before = priorInput ?? {mean: .5, confidence: 0, effectiveSamples: 2};
-  const retainedSamples = Math.max(parameters["memory.configuration.minimumsamples"], before.effectiveSamples * parameters["memory.configuration.priorretention"]);
+  const retainedSamples = Math.min(parameters["memory.configuration.maximumsamples"], Math.max(parameters["memory.configuration.minimumsamples"], before.effectiveSamples * parameters["memory.configuration.priorretention"]));
   const effectiveSamples = Math.min(parameters["memory.configuration.maximumsamples"], retainedSamples + weight);
-  const after = {mean: (before.mean * retainedSamples + evidence * weight) / effectiveSamples, confidence: clamp01((effectiveSamples - parameters["memory.configuration.minimumsamples"]) / parameters["memory.configuration.confidencespan"]), effectiveSamples};
+  const addedSamples = Math.max(0, effectiveSamples - retainedSamples);
+  const after = {mean: (before.mean * retainedSamples + evidence * addedSamples) / effectiveSamples, confidence: clamp01((effectiveSamples - parameters["memory.configuration.minimumsamples"]) / parameters["memory.configuration.confidencespan"]), effectiveSamples};
   return {version: WHITE_BOX_MEMORY_VERSION, id, evidence, weight, parameters, before: {...before}, retainedSamples, after, rollback: {...before}};
 }
 
@@ -108,7 +109,7 @@ export function evaluateConfigurationEvidence(input: {kind: "move" | "item"; tea
   return {version: WHITE_BOX_MEMORY_VERSION, kind: input.kind, contributions, baseEvidence, programAdjustment, evidence: clamp01(baseEvidence + programAdjustment)};
 }
 
-function updatePosterior(prior:TacticalPosterior,evidence:number,p:Record<string,number>):TacticalPosterior{const samples=Math.min(p["memory.tactical.maximumsamples"],prior.effectiveSamples+1);return{mean:bounded((prior.mean*prior.effectiveSamples+evidence)/Math.max(1,samples)),confidence:Math.min(1,samples/p["memory.tactical.confidencesamples"]),effectiveSamples:samples};}
+function updatePosterior(prior:TacticalPosterior,evidence:number,p:Record<string,number>):TacticalPosterior{const maximum=p["memory.tactical.maximumsamples"],retained=Math.min(prior.effectiveSamples,Math.max(0,maximum-1)),samples=retained+1;return{mean:bounded((prior.mean*retained+evidence)/Math.max(1,samples)),confidence:Math.min(1,samples/p["memory.tactical.confidencesamples"]),effectiveSamples:samples};}
 function decayPosteriors(values:Record<string,TacticalPosterior>,decay:number,p:Record<string,number>):void{for(const posterior of Object.values(values)){posterior.mean*=decay;posterior.effectiveSamples*=decay;posterior.confidence=Math.min(1,posterior.effectiveSamples/p["memory.tactical.confidencesamples"]);}}
 function decayBehavior(memory:OpponentTacticalMemory,decay:number):void{memory.games*=decay;memory.wins*=decay;memory.losses*=decay;memory.draws*=decay;scaleCounts(memory.leadCounts,decay);scaleCounts(memory.opponentMoveCounts,decay);for(const counts of Object.values(memory.opponentMoveCountsByFamily??{}))scaleCounts(counts,decay);memory.opponentSwitches*=decay;memory.observedTurns*=decay;}
 function scaleCounts(values:Record<string,number>,scale:number):void{for(const key of Object.keys(values))values[key]*=scale;}

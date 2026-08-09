@@ -1,0 +1,19 @@
+import fs from "node:fs";
+import path from "node:path";
+import zlib from "node:zlib";
+import {buildLineupDeploymentPostmortem} from "../ai/whiteBox/lineupDeploymentPostmortem";
+
+const args = process.argv.slice(2), control = path.resolve(required("--control")), canary = path.resolve(required("--canary")), approvalSha256 = required("--approval-sha256"), out = path.resolve(option("--out", path.join(canary, "deployment-postmortem")));
+const first = integer("--first-season"), last = integer("--last-season"); if (last < first) throw new Error("--last-season must be >= --first-season");
+const result = buildLineupDeploymentPostmortem(control, canary, Array.from({length: last - first + 1}, (_, index) => first + index), approvalSha256);
+fs.mkdirSync(out, {recursive: true});
+const casePayload = zlib.gzipSync(Buffer.from(JSON.stringify(result.cases), "utf8"), {level: 9}), caseFile = path.join(out, "deployment-cases.json.gz"); fs.writeFileSync(caseFile, casePayload);
+const summary = {...result, cases: undefined, caseArchive: {file: path.basename(caseFile), bytes: casePayload.length, cases: result.cases.length}}; write(path.join(out, "deployment-postmortem.json"), summary); write(path.join(out, "research-options.json"), {schemaVersion: 1, activationStatus: "shadow-only", evidenceStatus: result.evidenceStatus, hypotheses: result.researchOptions});
+const report = ["# Lineup Deployment Postmortem", "", `- Applied/analyzable/failed: ${result.validity.inputApplications}/${result.validity.analyzableCases}/${result.failures.length}`, `- Cases/managers/decisive: ${result.audit.cases}/${result.audit.managers}/${result.audit.decisiveCases}`, `- Signals/findings/research options: ${result.audit.signals}/${result.audit.findings.length}/${result.researchOptions.length}`, `- Evidence: ${result.evidenceStatus}; cascade-confounded; no causal or activation authority`, ...(result.failures.length ? [`- Failures: ${result.failures.map(value => `${value.caseId}:${value.reason}`).join(", ")}`] : []), "", "| Signal | Boundary | Selected B/N/W | Excluded B/N/W | Lift |", "|---|---|---:|---:|---:|", ...result.audit.findings.slice(0, 12).map(value => `| ${value.signal} | ${value.operator} ${value.threshold} | ${value.better}/${value.neutral}/${value.worse} | ${value.excludedBetter}/${value.excludedNeutral}/${value.excludedWorse} | ${value.utilityLift} |`), "", "Generated options are questions for manager-selected future tests, not policy recommendations.", ""].join("\n");
+fs.writeFileSync(path.join(out, "deployment-postmortem.md"), report, "utf8"); write(path.join(out, "token-budget.json"), {schemaVersion: 1, reportBytes: Buffer.byteLength(report), estimatedReportTokens: Math.ceil(Buffer.byteLength(report) / 4), detailedCaseBytes: casePayload.length, battleLogsRead: 0, seasonLedgersRead: result.seasons.length * 2});
+console.log(JSON.stringify({status: result.failures.length ? "complete-with-failures" : "complete", applied: result.validity.inputApplications, cases: result.audit.cases, failures: result.failures, managers: result.audit.managers, decisive: result.audit.decisiveCases, signals: result.audit.signals, researchOptions: result.researchOptions.length, out}, null, 2));
+
+function write(file: string, value: unknown): void { const temporary = `${file}.${process.pid}.tmp`; fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, "utf8"); fs.renameSync(temporary, file); }
+function option(name: string, fallback: string): string { const index = args.indexOf(name); return index >= 0 ? args[index + 1] ?? fallback : fallback; }
+function required(name: string): string { const value = option(name, ""); if (!value) throw new Error(`Missing ${name}`); return value; }
+function integer(name: string): number { const value = Number(required(name)); if (!Number.isInteger(value) || value < 1) throw new Error(`Invalid ${name}`); return value; }

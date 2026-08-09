@@ -9,6 +9,7 @@ import type {SandboxTeam} from "../sandbox/types";
 import {loadBenchmarkPool, benchmarkTeamPath} from "../eval/benchmarkPool";
 import {analyzePublicLog} from "../eval/logAnalysis";
 import {runBattle} from "../showdown/battle";
+import {LEAGUE_CONFIGURATION_POLICY_VERSION} from "../showdown/evidenceEpoch";
 import {loadTeam, writeTeam} from "../showdown/team";
 import {DecisionLedger} from "../draft/decisionLedger";
 import {extractKeyBattleDecisions} from "../draft/battleDecisionExtractor";
@@ -33,6 +34,7 @@ import {evaluateWhiteBoxBid} from "../ai/whiteBox/auction";
 import {WHITE_BOX_BID_COUNTERFACTUAL_POLICY} from "../ai/whiteBox/bidApproval";
 import {buildTradeWhiteBoxCandidate, evaluateMarketReplacement, evaluateTradeAssistGate, evaluateWaiverPriority, type TradeCandidateInput} from "../ai/whiteBox/marketFlow";
 import {loadBattleAssistApproval} from "../ai/whiteBox/battleApproval";
+import {evaluateApprovedLineupAssist, loadLineupAssistApproval} from "../ai/whiteBox/lineupApproval";
 
 type Side = "p1" | "p2";
 type Role = DraftRole;
@@ -130,6 +132,8 @@ const marketFlowShadowValues = MARKET_FLOW_SHADOW_PARAMETERS.snapshot().values;
 const battleAssistApprovalPath=process.env.V3_BATTLE_ASSIST_APPROVAL||process.env.V4_BATTLE_ASSIST_APPROVAL||"";
 const battleAssistApproval=battleAssistApprovalPath?loadBattleAssistApproval(path.resolve(battleAssistApprovalPath)):null;
 const battleAssistScopes=battleAssistApproval?.payload.scopes.map(entry=>entry.scopeId)??[];
+const lineupAssistApprovalPath=process.env.V3_LINEUP_ASSIST_APPROVAL||process.env.V4_LINEUP_ASSIST_APPROVAL||"";
+const lineupAssistApproval=lineupAssistApprovalPath?loadLineupAssistApproval(path.resolve(lineupAssistApprovalPath)):null;
 const configuredProgramDecisionExperimentPolicy=process.env.V4_PROGRAM_DECISION_POLICY||"";
 const configuredProgramDecisionExperimentTarget=process.env.V4_PROGRAM_DECISION_TARGET||"";
 const configuredProgramDecisionExperimentCandidate=process.env.V4_PROGRAM_DECISION_CANDIDATE||"";
@@ -139,6 +143,7 @@ const programDecisionExperimentPolicy=programDecisionExperimentActive?configured
 const programDecisionExperimentTarget=programDecisionExperimentActive?configuredProgramDecisionExperimentTarget:"";
 const programDecisionExperimentCandidate=programDecisionExperimentActive?configuredProgramDecisionExperimentCandidate:"";
 let programDecisionInterventions=0;
+const lineupAssistApplicationsBySeason=new Map<number,number>();
 
 const customSources = DRAFT_GENERATIONS.map(generation => process.env.V3_REGISTRY_DIR ? path.join(registryDirectory, path.basename(draftGenerationSource(generation))) : draftGenerationSource(generation));
 
@@ -941,9 +946,12 @@ function chooseLineup(manager: Manager, opponent: Manager, dex: ReturnType<typeo
   const experimentTrace=experiment?evaluateWhiteBoxDecision({decisionId,candidates:whiteBoxCandidates.map(candidate=>({...candidate,style:candidate.style?.map(entry=>({...entry,value:entry.value*experimentStyleScale}))})),reasonableBand:experimentBand,styleContributionLimit:experimentStyleLimit}):null;
   const intervention=programDecisionIntervention(decisionId,incumbentId,combinations.map(option=>option.candidateId));
   if(intervention&&experiment)throw new Error(`Decision ${decisionId} cannot run two experiment policies`);
-  const experimental=intervention?combinations.find(option=>option.candidateId===intervention.candidateId):experimentTrace?.selected?combinations.find(option=>lineupCandidateId(option.lineup.map(entry=>entry.candidate))===experimentTrace.selected):undefined,selected=experimental??incumbent,experimentGate=experimentTrace?evaluateLineupAssistGate(experimentTrace.candidates.find(candidate=>candidate.id===incumbentId),experimentTrace.candidates.find(candidate=>candidate.id===experimentTrace.selected)):null;
+  const seasonAssistApplications=lineupAssistApplicationsBySeason.get(seasonNumber)??0;
+  const approvedAssist=lineupAssistApproval&&!intervention&&!experiment?evaluateApprovedLineupAssist(lineupAssistApproval,decisionId,seasonNumber,seasonAssistApplications,whiteBoxTrace.candidates.find(candidate=>candidate.id===incumbentId),whiteBoxTrace.candidates):null;
+  const experimental=intervention?combinations.find(option=>option.candidateId===intervention.candidateId):experimentTrace?.selected?combinations.find(option=>lineupCandidateId(option.lineup.map(entry=>entry.candidate))===experimentTrace.selected):approvedAssist?.applied&&approvedAssist.candidateId?combinations.find(option=>option.candidateId===approvedAssist.candidateId):undefined,selected=experimental??incumbent,experimentGate=experimentTrace?evaluateLineupAssistGate(experimentTrace.candidates.find(candidate=>candidate.id===incumbentId),experimentTrace.candidates.find(candidate=>candidate.id===experimentTrace.selected)):null;
+  if(approvedAssist?.applied)lineupAssistApplicationsBySeason.set(seasonNumber,seasonAssistApplications+1);
   if (programEvolution) programOpportunities.recordDecision(manager.id, "lineup", decisionId, [selected.candidateId], combinations.map(option => ({id: option.candidateId, score: option.value})));
-  ledger.add({stage: "lineup", actor: manager.id, decision: `对阵${opponent.name}的8选6`, selected: selected.lineup.map(entry => entry.candidate.name), context: {seriesId, roles: [...new Set(selected.lineup.flatMap(entry => [...entry.candidate.roles]))], opponentRoster: opponent.roster.map(entry => entry.candidate.name), benched: manager.roster.filter(entry => !selected.lineup.includes(entry)).map(entry => entry.candidate.name), policy:intervention?"forced-alternative-experiment":experiment?"whitebox-experiment":"incumbent",...(intervention?{programDecisionExperiment:intervention}:{}),whiteBoxShadow: summarizeWhiteBoxShadow(whiteBoxTrace, incumbentId, shouldRetainFullLineupTrace(decisionId)?whiteBoxTrace.candidates.length:3),...(experimentTrace?{whiteBoxLineupExperiment:{band:experimentBand,styleLimit:experimentStyleLimit,styleScale:experimentStyleScale,gate:experimentGate,trace:summarizeWhiteBoxShadow(experimentTrace,incumbentId,experimentTrace.candidates.length)}}:{})}, alternatives: combinations.filter(option=>option.candidateId!==selected.candidateId).slice(0,3).map(option => ({option: option.lineup.map(entry => entry.candidate.name).join("/"), score: option.value})), rationale: lineupReasons(selected.lineup, opponent, dex), expectedValue: selected.value, confidence: confidence(combinations[0].value, combinations[1]?.value)});
+  ledger.add({stage: "lineup", actor: manager.id, decision: `对阵${opponent.name}的8选6`, selected: selected.lineup.map(entry => entry.candidate.name), context: {seriesId, roles: [...new Set(selected.lineup.flatMap(entry => [...entry.candidate.roles]))], opponentRoster: opponent.roster.map(entry => entry.candidate.name), benched: manager.roster.filter(entry => !selected.lineup.includes(entry)).map(entry => entry.candidate.name), policy:intervention?"forced-alternative-experiment":experiment?"whitebox-experiment":approvedAssist?.applied?"approved-scoped-assist":"incumbent",...(intervention?{programDecisionExperiment:intervention}:{}),...(approvedAssist?{lineupAssistPolicy:{approvalSha256:lineupAssistApproval!.sha256,hypothesisId:lineupAssistApproval!.payload.hypothesis.id,...approvedAssist,applicationOrdinal:approvedAssist.applied?seasonAssistApplications+1:null}}:{}),whiteBoxShadow: summarizeWhiteBoxShadow(whiteBoxTrace, incumbentId, approvedAssist?.applied||shouldRetainFullLineupTrace(decisionId)?whiteBoxTrace.candidates.length:3),...(experimentTrace?{whiteBoxLineupExperiment:{band:experimentBand,styleLimit:experimentStyleLimit,styleScale:experimentStyleScale,gate:experimentGate,trace:summarizeWhiteBoxShadow(experimentTrace,incumbentId,experimentTrace.candidates.length)}}:{})}, alternatives: combinations.filter(option=>option.candidateId!==selected.candidateId).slice(0,3).map(option => ({option: option.lineup.map(entry => entry.candidate.name).join("/"), score: option.value})), rationale: lineupReasons(selected.lineup, opponent, dex), expectedValue: selected.value, confidence: confidence(combinations[0].value, combinations[1]?.value)});
   return selected.lineup;
 }
 
@@ -1197,7 +1205,7 @@ async function playSeries(format: string, left: Manager, right: Manager, dex: Re
     for (const orientation of ["left-p1", "right-p1"] as const) {
       const leftSide: Side = orientation === "left-p1" ? "p1" : "p2";
       const p1Manager = orientation === "left-p1" ? left : right, p2Manager = orientation === "left-p1" ? right : left;
-      const result = await runBattle({format, teamA: Teams.pack((orientation === "left-p1" ? leftLineup : rightLineup).map(entry => entry.candidate.set)), teamB: Teams.pack((orientation === "left-p1" ? rightLineup : leftLineup).map(entry => entry.candidate.set)), seed: `${seed}:${seriesId}:pair:${pair}`, gameIndex: pair, outDir: path.join(outDir, "battles", seriesId, orientation), maxTurns, ai: "search", aiProfiles: {p1: programTactics(p1Manager, p2Manager), p2: programTactics(p2Manager, p1Manager)}, aiOpponentModels: {p1: tacticalOpponentModel(p1Manager.tacticalMemory, p2Manager.id, {minimumConfidence: tacticalMemoryConfidenceFloor}), p2: tacticalOpponentModel(p2Manager.tacticalMemory, p1Manager.id, {minimumConfidence: tacticalMemoryConfidenceFloor})}, aiOpponentModelShadows: tacticalMemoryModelShadows(p1Manager, p2Manager), aiOpponentModelPolicy: tacticalMemoryBehaviorPolicy, openTeamSheets: true, traceAiDecisions: true, battleAssistScopes, battleAssistApprovalSha256: battleAssistApproval?.sha256});
+      const result = await runBattle({format, teamA: Teams.pack((orientation === "left-p1" ? leftLineup : rightLineup).map(entry => entry.candidate.set)), teamB: Teams.pack((orientation === "left-p1" ? rightLineup : leftLineup).map(entry => entry.candidate.set)), seed: `${seed}:${seriesId}:pair:${pair}`, gameIndex: pair, outDir: path.join(outDir, "battles", seriesId, orientation), maxTurns, ai: "search", aiProfiles: {p1: programTactics(p1Manager, p2Manager), p2: programTactics(p2Manager, p1Manager)}, aiOpponentModels: {p1: tacticalOpponentModel(p1Manager.tacticalMemory, p2Manager.id, {minimumConfidence: tacticalMemoryConfidenceFloor}), p2: tacticalOpponentModel(p2Manager.tacticalMemory, p1Manager.id, {minimumConfidence: tacticalMemoryConfidenceFloor})}, aiOpponentModelShadows: tacticalMemoryModelShadows(p1Manager, p2Manager), aiOpponentModelPolicy: tacticalMemoryBehaviorPolicy, openTeamSheets: true, traceAiDecisions: true, battleAssistScopes, battleAssistApprovalSha256: battleAssistApproval?.sha256, evidenceContext: {registryHash, configurationPolicyVersion: LEAGUE_CONFIGURATION_POLICY_VERSION}});
       const leftWon = result.winner === (leftSide === "p1" ? "Team A" : "Team B");
       const rightWon = result.winner === (leftSide === "p1" ? "Team B" : "Team A");
       if (leftWon) leftGameWins += 1;

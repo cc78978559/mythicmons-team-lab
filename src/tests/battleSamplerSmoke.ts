@@ -5,6 +5,7 @@ import path from "node:path";
 import {spawnSync} from "node:child_process";
 import {createBattleReplayCapsule} from "../showdown/battle";
 import {AI_VERSION, DEFAULT_TACTICAL_PROFILE, EMPTY_OPPONENT_MODEL} from "../showdown/choice";
+import {buildEvidenceEpoch, LEAGUE_CONFIGURATION_POLICY_VERSION} from "../showdown/evidenceEpoch";
 
 const root=fs.mkdtempSync(path.join(os.tmpdir(),"battle-sampler-"));
 try{
@@ -14,7 +15,7 @@ try{
     fs.writeFileSync(path.join(source,"dynasty-state.json"),JSON.stringify({seed:`sampler-${seed}`,completedSeason:1,decisionRecords:[]}));
     const traces=[1,2].map((ordinal)=>({decisionOrdinal:ordinal,turn:ordinal+2,playerId:"p1",personalityId:"manager-01",battleContext:{ownSpecies:"Alpha",opponentSpecies:"Beta"},whiteBoxShadow:{comparison:{incumbent:"move tackle",shadow:"switch 2",agrees:false},trace:{version:"white-box-decision-v1",decisionId:`battle:${ordinal}:p1`,selected:"switch 2",reasonableBand:12,styleContributionLimit:15,candidates:[candidate("move tackle",2,0),candidate("switch 2",3,.1)]}}}));
     fs.writeFileSync(path.join(game,"ai-decisions.json"),JSON.stringify(traces));
-    const capsule=createBattleReplayCapsule({schemaVersion:1,aiVersion:AI_VERSION,format:"gen9customgame",teamA:"team-a",teamB:"team-b",seed:[seed,2,3,4],maxTurns:100,idleTimeoutMs:5000,wallClockTimeoutMs:30000,ai:"search",openTeamSheets:true,traceAiDecisions:true,aiProfiles:{p1:{...DEFAULT_TACTICAL_PROFILE,id:"manager-01"},p2:{...DEFAULT_TACTICAL_PROFILE,id:"manager-02"}},aiOpponentModels:{p1:structuredClone(EMPTY_OPPONENT_MODEL),p2:structuredClone(EMPTY_OPPONENT_MODEL)}});
+    const format="gen9customgame",capsule=createBattleReplayCapsule({schemaVersion:2,aiVersion:AI_VERSION,format,teamA:"team-a",teamB:"team-b",seed:[seed,2,3,4],maxTurns:100,idleTimeoutMs:5000,wallClockTimeoutMs:30000,ai:"search",openTeamSheets:true,traceAiDecisions:true,aiProfiles:{p1:{...DEFAULT_TACTICAL_PROFILE,id:"manager-01"},p2:{...DEFAULT_TACTICAL_PROFILE,id:"manager-02"}},aiOpponentModels:{p1:structuredClone(EMPTY_OPPONENT_MODEL),p2:structuredClone(EMPTY_OPPONENT_MODEL)},evidenceEpoch:buildEvidenceEpoch(AI_VERSION,format,{registryHash:String(seed).repeat(64).slice(0,64),configurationPolicyVersion:LEAGUE_CONFIGURATION_POLICY_VERSION})});
     fs.writeFileSync(path.join(game,"replay-input.json"),JSON.stringify(capsule));
   }
   const out=path.join(root,"sampler-output"),command=[require.resolve("tsx/cli"),path.join(process.cwd(),"src","cli","sampleWhiteBoxBattle.ts"),"--inputs",inputs.join(","),"--out",out,"--target-samples","10","--minimum-seeds","3","--max-samples","10","--max-per-seed","2"];

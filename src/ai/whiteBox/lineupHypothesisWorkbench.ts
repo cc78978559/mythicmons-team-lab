@@ -1,12 +1,15 @@
 export type HypothesisDirection = "higher" | "lower";
-export type HypothesisStage = "proposed" | "observational-candidate" | "observational-rejected" | "causal-complete";
+export type HypothesisStage = "proposed" | "observational-candidate" | "observational-rejected" | "scoped-causal-candidate" | "causal-complete";
 export interface LineupHypothesisFactor {feature: string; direction: HypothesisDirection; weight: number}
 export interface LineupHypothesisGuardrail {feature: string; minimumDelta?: number; maximumDelta?: number}
+export interface LineupHypothesisApplicability {source: "incumbent" | "delta"; feature: string; minimum?: number; maximum?: number}
 export interface LineupAuditHypothesis {
   id: string; title: string; rationale: string; stage: HypothesisStage;
   minimumRepresentationVersion?: number;
   combine: "weighted-geometric-percentile"; factors: LineupHypothesisFactor[];
   scope: string[]; guardrails: LineupHypothesisGuardrail[];
+  applicability?: LineupHypothesisApplicability[];
+  discoveryEvidence?: {kind: "post-hoc-causal-heterogeneity" | "post-deployment-causal-heterogeneity"; auditSha256: string; parentHypothesisId: string; discoveryFinalSeason: number};
   causalEvidence?: {study: string; better: number; neutral: number; worse: number; conclusion: string};
 }
 export interface LineupHypothesisRegistry {schemaVersion: 1; activationStatus: "shadow-only"; hypotheses: LineupAuditHypothesis[]}
@@ -33,15 +36,15 @@ export interface LineupHypothesisCausalChoice {
 }
 export interface LineupHypothesisCausalPlan {
   schemaVersion: 1; hypothesisId: string; activationStatus: "shadow-only"; requested: number; minimumScoreDelta: number;
-  causalScope: "population-causal" | "personal-local-replication";
+  causalScope: "population-causal" | "personal-local-replication" | "manager-selected-accumulation";
   availableChoices: number; availableManagers: number; selected: LineupHypothesisCausalChoice[];
   coverage: {seasons: Record<string, number>; sourceOutcomes: Record<"win" | "loss", number>; managers: number};
   opportunityPolicy?: "balanced-manager-unique-v1" | "personal-evidence-fairness-v1";
-  opportunityCoverage?: {selectedFirstChoiceRequests: number; selectedWithoutMechanismEvidence: number; selectedPriorTotalAttempts: {minimum: number; maximum: number; mean: number}};
+  opportunityCoverage?: {selectedFirstChoiceRequests: number; selectedWithoutMechanismEvidence: number; deferredRequestedManagers?: number; selectedPriorTotalAttempts: {minimum: number; maximum: number; mean: number}};
   opportunityEvidence?: Record<string, ManagerExperimentEvidence>;
 }
 export interface ManagerExperimentEvidence {mechanismAttempts: number; totalAttempts: number; researchPreferenceRank?: number; priorChoiceIds?: string[]}
-export interface LineupHypothesisPlanOptions {allowReviewedReplication?: boolean; maximumResearchPreferenceRank?: number}
+export interface LineupHypothesisPlanOptions {allowReviewedReplication?: boolean; allowSparseAccumulation?: boolean; maximumResearchPreferenceRank?: number}
 
 export function validateLineupHypothesisRegistry(value: LineupHypothesisRegistry): LineupHypothesisRegistry {
   if (value.schemaVersion !== 1 || value.activationStatus !== "shadow-only" || !Array.isArray(value.hypotheses) || !value.hypotheses.length) throw new Error("Invalid lineup hypothesis registry header");
@@ -53,6 +56,8 @@ export function validateLineupHypothesisRegistry(value: LineupHypothesisRegistry
     if (hypothesis.minimumRepresentationVersion !== undefined && (!Number.isInteger(hypothesis.minimumRepresentationVersion) || hypothesis.minimumRepresentationVersion < 1)) throw new Error(`Invalid representation version: ${hypothesis.id}`);
     if (hypothesis.factors.some(factor => !/^lineup\.[A-Za-z0-9]+$/.test(factor.feature) || !["higher", "lower"].includes(factor.direction) || !Number.isFinite(factor.weight) || factor.weight <= 0)) throw new Error(`Invalid factors: ${hypothesis.id}`);
     if (!Array.isArray(hypothesis.guardrails) || hypothesis.guardrails.some(guardrail => !/^lineup\.[A-Za-z0-9]+$/.test(guardrail.feature) || (guardrail.minimumDelta === undefined && guardrail.maximumDelta === undefined) || (guardrail.minimumDelta !== undefined && !Number.isFinite(guardrail.minimumDelta)) || (guardrail.maximumDelta !== undefined && !Number.isFinite(guardrail.maximumDelta)))) throw new Error(`Invalid guardrails: ${hypothesis.id}`);
+    if (hypothesis.applicability?.some(rule => !["incumbent", "delta"].includes(rule.source) || !/^lineup\.[A-Za-z0-9]+$/.test(rule.feature) || rule.minimum === undefined && rule.maximum === undefined || rule.minimum !== undefined && !Number.isFinite(rule.minimum) || rule.maximum !== undefined && !Number.isFinite(rule.maximum))) throw new Error(`Invalid applicability: ${hypothesis.id}`);
+    if (hypothesis.stage === "scoped-causal-candidate" && (!hypothesis.applicability?.length || !["post-hoc-causal-heterogeneity", "post-deployment-causal-heterogeneity"].includes(String(hypothesis.discoveryEvidence?.kind)) || !/^[a-f0-9]{64}$/.test(hypothesis.discoveryEvidence?.auditSha256 ?? ""))) throw new Error(`Scoped causal candidate lacks frozen discovery evidence: ${hypothesis.id}`);
     if (hypothesis.stage === "causal-complete" && !hypothesis.causalEvidence) throw new Error(`Causal-complete hypothesis lacks evidence: ${hypothesis.id}`);
   }
   return value;
@@ -86,11 +91,14 @@ export function auditLineupHypotheses(observations: readonly LineupHypothesisObs
 }
 
 export function buildLineupHypothesisCausalPlan(rows: readonly LineupHypothesisCandidateRow[], hypothesis: LineupAuditHypothesis, requested = 24, minimumScoreDelta = .02, managerEvidence?: ReadonlyMap<string, ManagerExperimentEvidence>, options: LineupHypothesisPlanOptions = {}): LineupHypothesisCausalPlan {
+  if (options.allowReviewedReplication && options.allowSparseAccumulation) throw new Error("A causal plan cannot be both reviewed replication and sparse accumulation");
   if (hypothesis.stage === "causal-complete" && !options.allowReviewedReplication) throw new Error(`Hypothesis already has causal evidence: ${hypothesis.id}`);
   if (options.allowReviewedReplication && (hypothesis.stage !== "causal-complete" || !managerEvidence)) throw new Error("Reviewed replication requires causal-complete evidence and personal research agendas");
-  const maximumResearchPreferenceRank = options.allowReviewedReplication ? options.maximumResearchPreferenceRank ?? 0 : Number.POSITIVE_INFINITY;
-  if (options.allowReviewedReplication && (!Number.isInteger(maximumResearchPreferenceRank) || maximumResearchPreferenceRank < 0 || maximumResearchPreferenceRank > 63)) throw new Error("maximumResearchPreferenceRank must be an integer within 0..63");
-  if (!Number.isInteger(requested) || requested < (options.allowReviewedReplication ? 1 : 6) || requested > 30 || (!options.allowReviewedReplication && requested % 6 !== 0)) throw new Error(options.allowReviewedReplication ? "personal replication cases must be within 1..30" : "requested cases must be a multiple of six within 6..30");
+  if (options.allowSparseAccumulation && !managerEvidence) throw new Error("Sparse accumulation requires manager research agendas");
+  const maximumResearchPreferenceRank = options.maximumResearchPreferenceRank ?? (options.allowReviewedReplication ? 0 : Number.POSITIVE_INFINITY);
+  if (Number.isFinite(maximumResearchPreferenceRank) && (!Number.isInteger(maximumResearchPreferenceRank) || maximumResearchPreferenceRank < 0 || maximumResearchPreferenceRank > 63)) throw new Error("maximumResearchPreferenceRank must be an integer within 0..63");
+  const sparse = options.allowReviewedReplication || options.allowSparseAccumulation;
+  if (!Number.isInteger(requested) || requested < (sparse ? 1 : 6) || requested > 30 || (!sparse && requested % 6 !== 0)) throw new Error(sparse ? "sparse causal cases must be within 1..30" : "requested cases must be a multiple of six within 6..30");
   if (!Number.isFinite(minimumScoreDelta) || minimumScoreDelta <= 0 || minimumScoreDelta > .5) throw new Error("minimumScoreDelta must be within (0,.5]");
   const allCandidates = rows.flatMap(row => row.candidates), distributions = candidateFeatureDistributions(allCandidates, hypothesis);
   const choices: LineupHypothesisCausalChoice[] = [];
@@ -103,7 +111,7 @@ export function buildLineupHypothesisCausalPlan(rows: readonly LineupHypothesisC
       if (candidate.id === incumbent.id) continue;
       const scoreDelta = score(hypothesis, candidate.diagnostics, distributions) - incumbentScore;
       const guardrailDeltas = Object.fromEntries(hypothesis.guardrails.map(guardrail => [guardrail.feature, Number(candidate.diagnostics[guardrail.feature]) - Number(incumbent.diagnostics[guardrail.feature])]));
-      if (scoreDelta + 1e-12 < minimumScoreDelta || !guardrailsPass(hypothesis, guardrailDeltas)) continue;
+      if (scoreDelta + 1e-12 < minimumScoreDelta || !guardrailsPass(hypothesis, guardrailDeltas) || !applicabilityPass(hypothesis, incumbent.diagnostics, candidate.diagnostics)) continue;
       const id = `${row.season}:${row.managerId}:${row.seriesId}:${candidate.id}`;
       if (managerEvidence?.get(row.managerId)?.priorChoiceIds?.includes(id)) continue;
       choices.push({id, decisionId: `lineup:${row.seriesId}:${row.managerId}`, season: row.season, managerId: row.managerId, sourceOutcome: row.outcome, incumbentId: incumbent.id, candidateId: candidate.id, scoreDelta: round(scoreDelta), guardrailDeltas: Object.fromEntries(Object.entries(guardrailDeltas).map(([key, value]) => [key, round(value)]))});
@@ -112,14 +120,14 @@ export function buildLineupHypothesisCausalPlan(rows: readonly LineupHypothesisC
   const unique = new Map<string, LineupHypothesisCausalChoice>();
   for (const choice of choices) { const key = `${choice.managerId}:${choice.season}:${choice.sourceOutcome}`, current = unique.get(key); if (!current || compareHypothesisChoice(choice, current) < 0) unique.set(key, choice); }
   const seasons = [...new Set(rows.map(row => row.season))].sort((left, right) => left - right); if (seasons.length !== 3) throw new Error(`Causal plan requires exactly three seasons, found ${seasons.length}`);
-  const perStratum = options.allowReviewedReplication ? 0 : requested / 6;
+  const perStratum = sparse ? 0 : requested / 6;
   const byManager = new Map<string, LineupHypothesisCausalChoice[]>();
   for (const choice of unique.values()) { const values = byManager.get(choice.managerId) ?? []; values.push(choice); byManager.set(choice.managerId, values); }
-  const selected = selectBalancedOpportunities(byManager, seasons, perStratum, requested, hypothesis.id, managerEvidence, !options.allowReviewedReplication).sort((left, right) => left.season - right.season || left.sourceOutcome.localeCompare(right.sourceOutcome) || left.managerId.localeCompare(right.managerId));
-  if (selected.length < requested) throw new Error(`Only ${selected.length}/${requested} manager-unique balanced interventions are available`);
+  const selected = selectBalancedOpportunities(byManager, seasons, perStratum, requested, hypothesis.id, managerEvidence, !sparse).sort((left, right) => left.season - right.season || left.sourceOutcome.localeCompare(right.sourceOutcome) || left.managerId.localeCompare(right.managerId));
+  if (selected.length < requested && (!options.allowSparseAccumulation || selected.length === 0)) throw new Error(`Only ${selected.length}/${requested} manager-unique balanced interventions are available`);
   const final = selected.slice(0, requested);
   const priorAttempts = final.map(choice => managerEvidence?.get(choice.managerId)?.totalAttempts ?? 0);
-  return {schemaVersion: 1, hypothesisId: hypothesis.id, activationStatus: "shadow-only", requested, minimumScoreDelta, causalScope: options.allowReviewedReplication ? "personal-local-replication" : "population-causal", availableChoices: choices.length, availableManagers: new Set(choices.map(choice => choice.managerId)).size, selected: final, coverage: {seasons: Object.fromEntries(seasons.map(season => [String(season), final.filter(choice => choice.season === season).length])), sourceOutcomes: {win: final.filter(choice => choice.sourceOutcome === "win").length, loss: final.filter(choice => choice.sourceOutcome === "loss").length}, managers: new Set(final.map(choice => choice.managerId)).size}, opportunityPolicy: managerEvidence ? "personal-evidence-fairness-v1" : "balanced-manager-unique-v1", opportunityCoverage: {selectedFirstChoiceRequests: final.filter(choice => (managerEvidence?.get(choice.managerId)?.researchPreferenceRank ?? 0) === 0).length, selectedWithoutMechanismEvidence: final.filter(choice => (managerEvidence?.get(choice.managerId)?.mechanismAttempts ?? 0) === 0).length, selectedPriorTotalAttempts: {minimum: Math.min(...priorAttempts), maximum: Math.max(...priorAttempts), mean: round(mean(priorAttempts))}}, opportunityEvidence: managerEvidence ? Object.fromEntries([...managerEvidence].sort(([left], [right]) => left.localeCompare(right))) : undefined};
+  return {schemaVersion: 1, hypothesisId: hypothesis.id, activationStatus: "shadow-only", requested, minimumScoreDelta, causalScope: options.allowReviewedReplication ? "personal-local-replication" : options.allowSparseAccumulation ? "manager-selected-accumulation" : "population-causal", availableChoices: choices.length, availableManagers: new Set(choices.map(choice => choice.managerId)).size, selected: final, coverage: {seasons: Object.fromEntries(seasons.map(season => [String(season), final.filter(choice => choice.season === season).length])), sourceOutcomes: {win: final.filter(choice => choice.sourceOutcome === "win").length, loss: final.filter(choice => choice.sourceOutcome === "loss").length}, managers: new Set(final.map(choice => choice.managerId)).size}, opportunityPolicy: managerEvidence ? "personal-evidence-fairness-v1" : "balanced-manager-unique-v1", opportunityCoverage: {selectedFirstChoiceRequests: final.filter(choice => (managerEvidence?.get(choice.managerId)?.researchPreferenceRank ?? 0) === 0).length, selectedWithoutMechanismEvidence: final.filter(choice => (managerEvidence?.get(choice.managerId)?.mechanismAttempts ?? 0) === 0).length, ...(options.allowSparseAccumulation ? {deferredRequestedManagers: requested - final.length} : {}), selectedPriorTotalAttempts: {minimum: Math.min(...priorAttempts), maximum: Math.max(...priorAttempts), mean: round(mean(priorAttempts))}}, opportunityEvidence: managerEvidence ? Object.fromEntries([...managerEvidence].sort(([left], [right]) => left.localeCompare(right))) : undefined};
 }
 
 function selectBalancedOpportunities(byManager: ReadonlyMap<string, LineupHypothesisCausalChoice[]>, seasons: number[], perStratum: number, requested: number, hypothesisId: string, evidence?: ReadonlyMap<string, ManagerExperimentEvidence>, strictBalance = true): LineupHypothesisCausalChoice[] {
@@ -197,6 +205,7 @@ function score(hypothesis: LineupAuditHypothesis, diagnostics: Readonly<Record<s
 }
 function empiricalPercentile(sorted: readonly number[], value: number): number { let lower = 0, upper = sorted.length; while (lower < upper) { const middle = (lower + upper) >>> 1; if (sorted[middle] <= value) lower = middle + 1; else upper = middle; } return (lower - .5) / sorted.length; }
 function guardrailsPass(hypothesis: LineupAuditHypothesis, deltas: Readonly<Record<string, number>>): boolean { return hypothesis.guardrails.every(guardrail => Number.isFinite(deltas[guardrail.feature]) && (guardrail.minimumDelta === undefined || deltas[guardrail.feature] >= guardrail.minimumDelta - 1e-12) && (guardrail.maximumDelta === undefined || deltas[guardrail.feature] <= guardrail.maximumDelta + 1e-12)); }
+export function applicabilityPass(hypothesis: Pick<LineupAuditHypothesis, "applicability">, incumbent: Readonly<Record<string, number>>, candidate: Readonly<Record<string, number>>): boolean { return (hypothesis.applicability ?? []).every(rule => { const base = Number(incumbent[rule.feature]), alternative = Number(candidate[rule.feature]), value = rule.source === "incumbent" ? base : alternative - base; return Number.isFinite(value) && (rule.minimum === undefined || value >= rule.minimum - 1e-12) && (rule.maximum === undefined || value <= rule.maximum + 1e-12); }); }
 function compareHypothesisChoice(left: LineupHypothesisCausalChoice, right: LineupHypothesisCausalChoice): number { return right.scoreDelta - left.scoreDelta || left.id.localeCompare(right.id); }
 function adjustBenjaminiHochberg(findings: LineupHypothesisFinding[]): void { const ordered = [...findings].sort((left, right) => left.permutationP - right.permutationP || left.id.localeCompare(right.id)); let previous = 1; for (let index = ordered.length - 1; index >= 0; index--) { previous = Math.min(previous, ordered[index].permutationP * ordered.length / (index + 1)); ordered[index].adjustedQ = round(Math.min(1, previous)); } }
 function add(map: Map<string, number[]>, key: string, value: number): void { const values = map.get(key) ?? []; values.push(value); map.set(key, values); }

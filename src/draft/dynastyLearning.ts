@@ -170,7 +170,8 @@ export function reviewManagerSeason(
     const prior = current.development.strategies[trait];
     const retainedSamples = Math.max(2, prior.effectiveSamples * .94);
     const effectiveSamples = Math.min(12, retainedSamples + 1);
-    const mean = (prior.mean * retainedSamples + evidence[trait].value) / effectiveSamples;
+    const addedSamples = Math.max(0, effectiveSamples - retainedSamples);
+    const mean = (prior.mean * retainedSamples + evidence[trait].value * addedSamples) / effectiveSamples;
     const confidence = Math.min(1, Math.max(0, (effectiveSamples - 2) / 6));
     developmentAfter.strategies[trait] = {mean, confidence, effectiveSamples};
     after[trait] = clampTrait(.5 + (mean - .5) * confidence * 1.6);

@@ -108,7 +108,7 @@ async function main(): Promise<void> {
   const ownershipAfter = scarceOwnership(challengers.map(team => ({managerId: team.id, members: team.roster})));
   if (ownershipBefore !== ownershipAfter) throw new Error("Special/scarce asset ownership changed during boss preparation");
 
-  const bossTactics: AiTacticalProfile = {id: "boss-red", expectedWeight: .58, downsideWeight: .17, worstWeight: .25, aggression: .16, setupBias: .02, pivotBias: -.02, recoveryBias: .04, statusBias: .02, teraBias: 0, switchBias: .06};
+  const bossTactics: AiTacticalProfile = {id: "boss-red", expectedWeight: .58, downsideWeight: .17, worstWeight: .25, aggression: .16, setupBias: .02, pivotBias: -.02, recoveryBias: .04, statusBias: .02, switchBias: .06};
   const volunteerDecisions = challengers.map(team => ({manager: team.id, boss: RED_BOSS.id, preference: 1, estimatedFit: lineupFit(team.roster, bossTeam, dex, team.tacticalMemory), rationale: ["当前赛季只有一个可挑战 Boss，因此列为第一志愿", "胜算估计只决定备战方案，不影响同一志愿内的抽签概率"]}));
   const order = volunteerChallengeOrder(challengers.map(team => ({id: team.id, seed: team.seed, preference: 1})), `${seed}:season:${season}:${RED_BOSS.id}`).map(entry => challenger(entry.id, challengers));
   const attempts: Array<{challenger: string; challengerName: string; defeated: boolean; series: SeriesResult}> = [];

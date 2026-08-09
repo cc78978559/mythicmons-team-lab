@@ -15,10 +15,12 @@ async function main(): Promise<void> {
   if (capsule.input.aiVersion !== AI_VERSION) throw new Error(`Replay AI version ${capsule.input.aiVersion} differs from current ${AI_VERSION}`);
   const sourceTraces = readEvidence<AiDecisionTrace[]>(source, "ai-decisions.json");
   const requestedOrdinal = optionalInteger(args, "--decision-ordinal");
+  const researchAlternative = option(args, "--research-alternative", "") || null;
   const candidates = sourceTraces.map(trace => battleCase(trace)).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-  const target = requestedOrdinal === null ? candidates.find(entry => entry.gate.recommended) : candidates.find(entry => entry.trace.decisionOrdinal === requestedOrdinal);
-  if (!target) throw new Error(requestedOrdinal === null ? "No gate-approved battle disagreement was found" : `Decision ordinal ${requestedOrdinal} is not a white-box disagreement`);
-  if (!target.gate.recommended) throw new Error(`Decision ordinal ${target.trace.decisionOrdinal} failed battle assist gate: ${target.gate.hardRejections.join(",")}`);
+  const researchTarget=researchAlternative?researchBattleCase(sourceTraces,requestedOrdinal,researchAlternative):null;
+  const target = researchTarget??(requestedOrdinal === null ? candidates.find(entry => entry.gate.recommended) : candidates.find(entry => entry.trace.decisionOrdinal === requestedOrdinal));
+  if (!target) throw new Error(researchAlternative?`Decision ordinal ${requestedOrdinal ?? "missing"} has no eligible reasonable research alternative ${researchAlternative}`:requestedOrdinal === null ? "No gate-approved battle disagreement was found" : `Decision ordinal ${requestedOrdinal} is not a white-box disagreement`);
+  if (!researchTarget&&!target.gate.recommended) throw new Error(`Decision ordinal ${target.trace.decisionOrdinal} failed battle assist gate: ${target.gate.hardRejections.join(",")}`);
 
   const common = {...capsule.input, seed: "explicit-replay", explicitSeed: capsule.input.seed, gameIndex: 0};
   const incumbent = await runBattle({...common, outDir: path.join(out, "incumbent")});
@@ -51,12 +53,22 @@ async function main(): Promise<void> {
     prefixVerified,
     intervention,
     gate: target.gate,
+    evidenceStatus: researchTarget?"manager-selected-research-only":"assist-gated-counterfactual",
+    activationAllowed: false,
     incumbent: outcome(incumbent),
     whitebox: outcome(whitebox),
     outcomeChanged: incumbent.winner !== whitebox.winner || incumbent.turns !== whitebox.turns || incumbent.timeout !== whitebox.timeout,
   };
   write(path.join(out, "counterfactual-summary.json"), summary);
   console.log(JSON.stringify(summary, null, 2));
+}
+
+function researchBattleCase(traces:AiDecisionTrace[],ordinal:number|null,alternative:string){
+  if(ordinal===null)throw new Error("--research-alternative requires --decision-ordinal");
+  const trace=traces.find(value=>value.decisionOrdinal===ordinal),decision=trace?.whiteBoxShadow?.trace;if(!trace||!decision)return null;
+  const incumbent=decision.candidates.find(entry=>entry.id===trace.selected),selected=decision.candidates.find(entry=>entry.id===alternative);
+  if(!incumbent?.eligible||!selected?.eligible||!selected.reasonable||selected.finalScore===null||selected.id===incumbent.id)return null;
+  return{trace,comparison:{incumbent:incumbent.id,shadow:selected.id},gate:evaluateBattleAssistGate(incumbent,selected)};
 }
 
 function battleCase(trace: AiDecisionTrace) {

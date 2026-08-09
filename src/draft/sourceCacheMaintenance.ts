@@ -20,8 +20,8 @@ export function acquireSourceCacheLease(directory: string, key: string, reason: 
   return {release: () => { if (released) return; released = true; fs.rmSync(file, {force: true}); try { fs.rmdirSync(leases); } catch {} }};
 }
 
-export function auditSourceCaches(cacheRoot: string, referencesRoot: string, budgetBytes: number, protectedKeys: Iterable<string> = []): SourceCacheAudit {
-  const root = path.resolve(cacheRoot), protectedSet = new Set(protectedKeys), references = collectReferences(path.resolve(referencesRoot), root);
+export function auditSourceCaches(cacheRoot: string, referencesRoot: string, budgetBytes: number, protectedKeys: Iterable<string> = [], referenceFiles?: readonly string[]): SourceCacheAudit {
+  const root = path.resolve(cacheRoot), protectedSet = new Set(protectedKeys), references = collectReferences(path.resolve(referencesRoot), root, referenceFiles);
   const entries: SourceCacheEntry[] = [], invalidDirectories: string[] = [];
   if (fs.existsSync(root)) for (const entry of fs.readdirSync(root, {withFileTypes: true})) {
     if (!entry.isDirectory()) continue;
@@ -34,8 +34,8 @@ export function auditSourceCaches(cacheRoot: string, referencesRoot: string, bud
   return {schemaVersion: 1, root, generatedAt: new Date().toISOString(), totalBytes, budgetBytes, overBudgetBytes: Math.max(0, totalBytes - budgetBytes), entries: entries.sort((a, b) => Date.parse(a.lastUsedAt) - Date.parse(b.lastUsedAt) || a.key.localeCompare(b.key)), invalidDirectories};
 }
 
-export function gcSourceCaches(cacheRoot: string, referencesRoot: string, options: {budgetBytes: number; maxAgeDays: number; apply: boolean; protectedKeys?: Iterable<string>}): SourceCacheGcResult {
-  const audit = auditSourceCaches(cacheRoot, referencesRoot, options.budgetBytes, options.protectedKeys), cutoff = Date.now() - options.maxAgeDays * 86400000;
+export function gcSourceCaches(cacheRoot: string, referencesRoot: string, options: {budgetBytes: number; maxAgeDays: number; apply: boolean; protectedKeys?: Iterable<string>; referenceFiles?: readonly string[]}): SourceCacheGcResult {
+  const audit = auditSourceCaches(cacheRoot, referencesRoot, options.budgetBytes, options.protectedKeys, options.referenceFiles), cutoff = Date.now() - options.maxAgeDays * 86400000;
   let remaining = audit.totalBytes; const removed: SourceCacheGcResult["removed"] = [];
   for (const entry of audit.entries) {
     if (!entry.valid || entry.protected || entry.pinnedReferences.length || entry.activeLeases.length) continue;
@@ -48,20 +48,16 @@ export function gcSourceCaches(cacheRoot: string, referencesRoot: string, option
   return {audit, apply: options.apply, removed, reclaimedBytes: removed.reduce((sum, entry) => sum + entry.bytes, 0), remainingBytes: remaining};
 }
 
-function collectReferences(root: string, excludedRoot: string): {all: Map<string, string[]>; pinned: Map<string, string[]>} {
-  const all = new Map<string, string[]>(), pinned = new Map<string, string[]>(); if (!fs.existsSync(root)) return {all, pinned}; const stack = [root];
-  while (stack.length) {
-    const current = stack.pop()!;
-    for (const entry of fs.readdirSync(current, {withFileTypes: true})) {
-      const target = path.join(current, entry.name); if (target === excludedRoot || target.startsWith(`${excludedRoot}${path.sep}`)) continue;
-      if (entry.isDirectory()) { stack.push(target); continue; }
-      if (!entry.isFile() || (entry.name !== "causal-manifest.json" && entry.name !== "causal-summary.json")) continue;
-      const value = optional<any>(target); if (!value) continue; const key = String(value.sourceCache?.key ?? value.sharedStudySourceCache?.key ?? ""); if (!/^[a-f0-9]{64}$/.test(key)) continue;
-      add(all, key, target); if (entry.name === "causal-manifest.json" && (value.items ?? []).some((item: any) => item.status !== "complete")) add(pinned, key, target);
-    }
+function collectReferences(root: string, excludedRoot: string, suppliedFiles?: readonly string[]): {all: Map<string, string[]>; pinned: Map<string, string[]>} {
+  const all = new Map<string, string[]>(), pinned = new Map<string, string[]>(); if (!fs.existsSync(root)) return {all, pinned}; const files = suppliedFiles ? [...suppliedFiles] : findReferenceFiles(root, excludedRoot);
+  for (const target of files) {
+    const resolved = path.resolve(target); if (resolved === excludedRoot || resolved.startsWith(`${excludedRoot}${path.sep}`) || !resolved.startsWith(`${root}${path.sep}`) || !["causal-manifest.json", "causal-summary.json"].includes(path.basename(resolved))) continue;
+    const value = optional<any>(resolved); if (!value) continue; const key = String(value.sourceCache?.key ?? value.sharedStudySourceCache?.key ?? ""); if (!/^[a-f0-9]{64}$/.test(key)) continue;
+    add(all, key, resolved); if (path.basename(resolved) === "causal-manifest.json" && (value.items ?? []).some((item: any) => item.status !== "complete")) add(pinned, key, resolved);
   }
   return {all, pinned};
 }
+function findReferenceFiles(root: string, excludedRoot: string): string[] { const files: string[] = [], stack = [root]; while (stack.length) { const current = stack.pop()!; for (const entry of fs.readdirSync(current, {withFileTypes: true})) { const target = path.join(current, entry.name); if (target === excludedRoot || target.startsWith(`${excludedRoot}${path.sep}`)) continue; if (entry.isDirectory()) stack.push(target); else if (entry.isFile() && ["causal-manifest.json", "causal-summary.json"].includes(entry.name)) files.push(target); } } return files; }
 function safeCacheDirectory(rootDirectory: string, key: string): string { const root = path.resolve(rootDirectory); if (!/^[a-f0-9]{64}$/.test(key)) throw new Error(`Unsafe source cache key: ${key}`); const target = path.resolve(root, key); if (path.dirname(target) !== root) throw new Error(`Source cache escaped its root: ${target}`); return target; }
 function activeLeases(directory: string): string[] { const leases = path.join(directory, ".leases"), active: string[] = []; if (!fs.existsSync(leases)) return active; for (const name of fs.readdirSync(leases)) { const file = path.join(leases, name), lease = optional<any>(file), pid = Number(lease?.pid); if (lease?.schemaVersion === 1 && pidAlive(pid)) active.push(file); } return active; }
 function pidAlive(pid: number): boolean { if (!Number.isInteger(pid) || pid < 1) return false; try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; } }

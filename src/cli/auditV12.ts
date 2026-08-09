@@ -3,6 +3,7 @@ import path from "node:path";
 import {spawnSync} from "node:child_process";
 import {V12_AUDIT_SIGNATURE_CACHE, auditV12Output, auditV12SignatureIncremental, v12AuditMarkdown, type V12AuditSignatureCache, type V12AuditSummary} from "../draft/v12Audit";
 import {writeSeasonBrief} from "../draft/seasonBrief";
+import {loadDynastyCheckpointBranchManifest, verifyDynastyCheckpointBranch} from "../draft/dynastyCheckpointBranch";
 
 const args = process.argv.slice(2), root = process.cwd();
 if (args.includes("--help") || args.includes("-h")) {
@@ -16,12 +17,13 @@ if (args.includes("--help") || args.includes("-h")) {
     "  --force            Rerun invariant checks even when the input signature is unchanged",
     "  --refresh-reports  Rewrite all season briefs even on a cache hit",
     "  --progress         Print stage and timing information to stderr",
+    "  --start-season N   Audit only a verified checkpoint branch suffix beginning at N",
     "  --run --seasons N  Legacy convenience: run/resume the league before auditing",
   ].join("\n"));
   process.exit(0);
 }
 const out = path.resolve(option("--out", "output/draft-league-v12"));
-const mode = modeOption(), progress = args.includes("--progress") || Boolean(process.stderr.isTTY), started = Date.now();
+const mode = modeOption(), startSeason = Number(option("--start-season", "1")), progress = args.includes("--progress") || Boolean(process.stderr.isTTY), started = Date.now();
 const runStatePath = path.join(out, "audit-run-state.json"), failuresPath = path.join(out, "audit-failures.json");
 let peakHeapBytes = 0, peakRssBytes = 0, currentPhase = "starting", currentSeason: number | undefined;
 fs.mkdirSync(out, {recursive: true});
@@ -45,6 +47,13 @@ if (args.includes("--run")) {
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
 }
 const state = read<{completedSeason: number}>(path.join(out, "dynasty-state.json"));
+let checkpointId: string | undefined;
+if (!Number.isInteger(startSeason) || startSeason < 1 || startSeason > state.completedSeason) throw new Error(`Invalid --start-season ${startSeason}`);
+if (startSeason > 1) {
+  const branch = loadDynastyCheckpointBranchManifest(out);
+  if (branch.completedSeason !== startSeason - 1) throw new Error(`Checkpoint branch ends at S${branch.completedSeason}; suffix audit requested S${startSeason}`);
+  verifyDynastyCheckpointBranch(out, branch); checkpointId = branch.checkpointId;
+}
 const summaryPath = path.join(out, "audit-summary.json"), cachePath = path.join(out, V12_AUDIT_SIGNATURE_CACHE);
 checkpoint("signature-index"); stage(`indexing ${state.completedSeason} seasons`);
 let priorCache = mode === "forensic" ? undefined : optional<V12AuditSignatureCache>(cachePath);
@@ -56,18 +65,18 @@ checkpoint("signature-ready"); stage(`signature ready: ${signature.hashedFiles}/
 let summary: V12AuditSummary, cached = false;
 if (!args.includes("--force") && mode === "quick" && fs.existsSync(summaryPath)) {
   const prior = read<V12AuditSummary>(summaryPath);
-  cached = prior.schemaVersion === 5 && prior.inputSignature === signature.value;
-  summary = cached ? prior : auditV12Output(out, signature.value, {auditedInputBytes: signature.bytes, onStage: checkpoint});
-} else summary = auditV12Output(out, signature.value, {auditedInputBytes: signature.bytes, onStage: checkpoint});
+  cached = prior.schemaVersion === 6 && prior.inputSignature === signature.value && (prior.auditScope?.firstSeason ?? 1) === startSeason && prior.auditScope?.checkpointId === checkpointId;
+  summary = cached ? prior : auditV12Output(out, signature.value, {auditedInputBytes: signature.bytes, onStage: checkpoint, startSeason, checkpointId});
+} else summary = auditV12Output(out, signature.value, {auditedInputBytes: signature.bytes, onStage: checkpoint, startSeason, checkpointId});
 if (!cached || args.includes("--refresh-reports")) {
   checkpoint("write-reports");
   stage("writing audit and season reports");
   writeAtomic(summaryPath, summary);
   fs.writeFileSync(path.join(out, "audit-report.md"), v12AuditMarkdown(summary), "utf8");
-  for (let season = 1; season <= summary.completedSeasons; season += 1) writeSeasonBrief(path.join(out, `season-${String(season).padStart(2, "0")}`), out);
+  for (let season = startSeason; season <= summary.completedSeasons; season += 1) writeSeasonBrief(path.join(out, `season-${String(season).padStart(2, "0")}`), out);
 }
 checkpoint("complete"); persistRunState("complete");
-console.log(JSON.stringify({cached, mode, seasons: summary.completedSeasons, fatal: summary.fatalCount, warnings: summary.warningCount, signature: {files: signature.files, bytes: signature.bytes, hashedFiles: signature.hashedFiles, hashedBytes: signature.hashedBytes}, elapsedMs: Date.now() - started, peakMemory: {heapBytes: peakHeapBytes, rssBytes: peakRssBytes}, metrics: summary.metrics, summary: summaryPath}, null, 2));
+console.log(JSON.stringify({cached, mode, seasons: summary.completedSeasons, auditScope: summary.auditScope, fatal: summary.fatalCount, warnings: summary.warningCount, evidenceEpoch: summary.evidenceEpoch, signature: {files: signature.files, bytes: signature.bytes, hashedFiles: signature.hashedFiles, hashedBytes: signature.hashedBytes}, elapsedMs: Date.now() - started, peakMemory: {heapBytes: peakHeapBytes, rssBytes: peakRssBytes}, metrics: summary.metrics, summary: summaryPath}, null, 2));
 if (summary.fatalCount) process.exitCode = 2;
 }
 function option(name: string, fallback: string): string { const index = args.indexOf(name); return index >= 0 ? args[index + 1] ?? fallback : fallback; }

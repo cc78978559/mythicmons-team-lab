@@ -6,6 +6,8 @@ const hypotheses: ResearchHypothesisOption[] = [
   {id: "new-safe-speed-v1", title: "New safe speed", observationalCandidate: true, causalConclusion: null},
   {id: "reviewed-pressure-v1", title: "Reviewed pressure", observationalCandidate: false, causalConclusion: "no-clear-benefit"},
   {id: "blocked-depth-v1", title: "Blocked depth", observationalCandidate: false, causalConclusion: null},
+  {id: "deployment-boundary-v1", title: "Deployment boundary", observationalCandidate: false, researchEligible: true, evidenceStatus: "post-deployment-exploratory", causalConclusion: null},
+  {id: "personal-frontier-v1", title: "Personal frontier", observationalCandidate: false, researchEligible: true, evidenceStatus: "post-deployment-exploratory", causalConclusion: null, eligibleManagerIds: ["manager-02"]},
 ];
 let positive = createManagerMechanismLedger("manager-01");
 positive = recordManagerMechanismEvidence(positive, {evidenceId: "causal:positive-0001", managerId: "manager-01", mechanismId: "reviewed-pressure-v1", season: 1, level: "exact-counterfactual", expressed: true, effect: 1, context: {season: 1}});
@@ -15,6 +17,8 @@ assert.equal(exploitAgenda.selected?.mechanismId, "reviewed-pressure-v1"); asser
 const explorePolicy = createManagerResearchPolicy("manager-01"); explorePolicy.exploration = .95;
 const exploreAgenda = buildManagerResearchAgenda("manager-01", positive, hypotheses, 1, explorePolicy);
 assert.equal(exploreAgenda.selected?.mechanismId, "new-safe-speed-v1");
+assert.match(exploreAgenda.ranked.find(value => value.mechanismId === "deployment-boundary-v1")!.reasons[0], /no policy evidence/);
+assert.equal(exploreAgenda.deferred.find(value => value.mechanismId === "personal-frontier-v1")?.reason, "Manager has no personal candidate-frontier opportunity for this question");
 
 let negative = createManagerMechanismLedger("manager-02");
 negative = recordManagerMechanismEvidence(negative, {evidenceId: "causal:negative-0001", managerId: "manager-02", mechanismId: "reviewed-pressure-v1", season: 1, level: "exact-counterfactual", expressed: true, effect: -1, context: {season: 1}});

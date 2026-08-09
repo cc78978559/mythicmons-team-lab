@@ -1,0 +1,24 @@
+import assert from "node:assert/strict";
+import {buildAutonomousResearchAgenda, createAutonomousResearchState, reviewAutonomousResearchRound, summarizeAutonomousResearch, validateAutonomousResearchState, type AutonomousResearchResult} from "../ai/autonomousResearch";
+import {noviceManagerProgramV2, validateManagerProgramV2} from "../ai/managerProgramV2";
+
+const program = noviceManagerProgramV2("manager-01", {decisionDossierPolicy: "policy", positionModelSha256: "a".repeat(64), corpusSignature: "b".repeat(64)});
+program.rules.push({id: "rule-switch-pressure", domain: "battle", target: "switch", predicates: [{feature: "positionValue", operator: "lt", threshold: 0}], effect: -.08, support: 40, uncertainty: .25, authority: "local-value-observational", evidenceIds: ["sample-1"]});
+validateManagerProgramV2(program);
+let state = createAutonomousResearchState("manager-01");
+const first = buildAutonomousResearchAgenda({program, state, round: 1, feasibleCases: {"rule-switch-pressure": 12}, seed: "research-smoke"});
+assert.equal(first.selected?.intent, "test-program-mechanism");
+assert.equal(first.selected?.expectedInterventionDirection, "better");
+const abundant = buildAutonomousResearchAgenda({program, state, round: 1, feasibleCases: {"rule-switch-pressure": 10000}, seed: "research-smoke"}); assert.equal(abundant.selected?.components.applicability, 1);
+const supportive: AutonomousResearchResult = {questionId: first.selected!.id, managerId: "manager-01", ruleId: first.selected!.ruleId, round: 1, caseId: "case-1", direction: "better", expectedDirection: "better", outcomeChanged: true, sourceVerified: true, prefixVerified: true, interventionVerified: true, sourceFingerprint: "c".repeat(64)};
+state = reviewAutonomousResearchRound(state, first, supportive); validateAutonomousResearchState(state); assert.equal(state.observations[0].supportsHypothesis, true);
+const second = buildAutonomousResearchAgenda({program, state, round: 2, feasibleCases: {"rule-switch-pressure": 11}, seed: "research-smoke"}); assert.equal(second.selected?.intent, "replicate-support");
+const contradictory: AutonomousResearchResult = {...supportive, questionId: second.selected!.id, round: 2, caseId: "case-2", direction: "worse", sourceFingerprint: "d".repeat(64)};
+state = reviewAutonomousResearchRound(state, second, contradictory);
+const inconsistent = structuredClone(state); inconsistent.observations[0].supportsHypothesis = false;
+assert.throws(() => validateAutonomousResearchState(inconsistent), /Invalid autonomous research observations/);
+const third = buildAutonomousResearchAgenda({program, state, round: 3, feasibleCases: {"rule-switch-pressure": 10}, seed: "research-smoke"}); assert.equal(third.selected?.intent, "resolve-contradiction");
+assert.equal((summarizeAutonomousResearch([state]) as any).contradictions, 1);
+assert.throws(() => reviewAutonomousResearchRound(state, third, {...contradictory, questionId: third.selected!.id, round: 3, caseId: "case-2"}), /Invalid autonomous research result/);
+const blocked = buildAutonomousResearchAgenda({program, state, round: 3, feasibleCases: {}, seed: "research-smoke"}); assert.equal(blocked.selected, null); assert.equal(blocked.blockedRules.length, 1);
+console.log("Autonomous research smoke passed: question generation, feasibility, exact-result validation, replication, contradiction adaptation, and case deduplication");

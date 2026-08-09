@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import {spawnSync} from "node:child_process";
+import {AI_VERSION} from "../showdown/choice";
+import {buildEvidenceEpoch} from "../showdown/evidenceEpoch";
 
 type CycleStatus = "running" | "pause-requested" | "paused" | "interrupted" | "failed" | "complete";
 interface CycleManifest {
@@ -67,12 +69,15 @@ function inspect() {
   if (audit && Number(audit.warningCount) > 0) issues.push({severity: "warning", code: "audit-warning", message: `The current audit contains ${audit.warningCount} warning(s)`});
   if (!cachedAudit) issues.push({severity: "error", code: "audit-signature-cache-missing", message: "The audit signature cache is missing or invalid"});
   else if (audit && (audit.inputSignature !== cachedAudit.signature || !cachedAudit.stateCurrent)) issues.push({severity: "error", code: "audit-signature-stale", message: "The clean audit summary does not match the current cached evidence boundary"});
+  const evidenceSignatureMatches = Boolean(audit?.schemaVersion === 6 && audit?.evidenceEpoch?.policySha256 === buildEvidenceEpoch(AI_VERSION, "gen9ou").policySha256);
+  if (audit && !evidenceSignatureMatches) issues.push({severity: "error", code: "audit-evidence-signature-stale", message: "The audit predates the current evidence-era policy; rerun audit:v12 before resuming"});
+  else if (audit && audit.evidenceEpoch?.formalActivationReady !== true) issues.push({severity: "warning", code: "formal-ai-activation-blocked", message: "League continuation is allowed, but latest-season evidence cannot activate a formal AI policy"});
   if (auditRun?.status === "failed") issues.push({severity: "error", code: "audit-last-run-failed", message: `The latest audit failed during ${auditRun.phase ?? "unknown"}`});
   if (auditRun?.status === "running" && Number(auditRun.pid) !== process.pid && !pidAlive(Number(auditRun.pid))) issues.push({severity: "error", code: "audit-run-interrupted", message: `Audit PID ${auditRun.pid ?? "unknown"} left an unfinished run at ${auditRun.phase ?? "unknown"}`});
   return {
     schemaVersion: 1, leagueRoot, state, operationalStatus, cycle: manifest ? {id: manifest.cycleId, manifestStatus: manifest.status, activeStage: manifest.activeStage ?? null, completedStages, totalStages: expectedStages.length - (manifest.configuration?.historyLedger ? 0 : 1), nextStage, boundarySeason: manifest.boundary.internalSeason, targetSeason, updatedAt: manifest.updatedAt ?? null, file: selected!.file} : null,
     process: {workflow: workflowLock ? {pid: workflowLock.pid ?? null, alive: workflowAlive, startedAt: workflowLock.startedAt ?? null} : null, season: seasonLock ? {pid: seasonLock.pid ?? null, alive: seasonAlive, startedAt: seasonLock.startedAt ?? null} : null},
-    pauseRequested, audit: audit ? {completedSeasons: audit.completedSeasons, fatalCount: audit.fatalCount, warningCount: audit.warningCount, generatedAt: audit.generatedAt ?? null, signatureMatches: Boolean(cachedAudit && audit.inputSignature === cachedAudit.signature && cachedAudit.stateCurrent), runStatus: auditRun?.status ?? null, runPhase: auditRun?.phase ?? null} : null,
+    pauseRequested, audit: audit ? {completedSeasons: audit.completedSeasons, fatalCount: audit.fatalCount, warningCount: audit.warningCount, generatedAt: audit.generatedAt ?? null, signatureMatches: Boolean(cachedAudit && audit.inputSignature === cachedAudit.signature && cachedAudit.stateCurrent), evidenceSignatureMatches, formalActivationReady: audit.evidenceEpoch?.formalActivationReady === true, evidenceEpoch: audit.evidenceEpoch ?? null, runStatus: auditRun?.status ?? null, runPhase: auditRun?.phase ?? null} : null,
     storage: {stateBytes: state?.bytes ?? 0, freeGb: freeGb(leagueRoot)}, issues,
   };
 }

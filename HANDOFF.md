@@ -2,9 +2,9 @@
 
 ## Purpose
 
-This is a local Pokemon Showdown-backed CLI laboratory for comparing entertainment teams. It is not a strict Pokemon simulator or a general-purpose database.
+This is a local Pokemon Showdown-backed persistent league and auditable AI research laboratory. It delegates battle mechanics to Pokemon Showdown.
 
-The current search AI is V12: `stateful-choice-v12-audited-stateful-search`.
+The current search AI is `stateful-choice-v16-no-tera-dynamax-v1`. V12 remains the persistent league schema version; it is not the battle-policy version.
 
 ## New Computer Setup
 
@@ -27,7 +27,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\setup-portable.ps1
 ```
 
-The script installs locked dependencies, rebuilds and installs the G1/G2 MythicMons sandbox data, runs the complete test suite, and performs one sandbox search-AI smoke battle.
+The script installs locked dependencies, validates all six generation data files, rebuilds the installed G1/G2 sandbox fixture, runs the complete test suite, and performs one sandbox search-AI smoke battle.
 
 ## Important Files
 
@@ -39,6 +39,9 @@ The script installs locked dependencies, rebuilds and installs the G1/G2 MythicM
 - `output/g2/recompiled-current/team.export.txt`: default G2 matrix input
 - `benchmarks/gen9ou/index.json`: modern benchmark pool
 - `src/showdown/choice.ts`: AI implementation
+- `docs/CURRENT_STATUS_AND_ROADMAP.md`: current product status and delivery gates
+- `docs/AI_PIPELINE_CONTROL.md`: Stage 0-6 operator guide
+- `PACKAGE-MANIFEST.json`: generated portable file inventory and hashes
 
 ## Common Commands
 
@@ -60,6 +63,20 @@ List saved teams:
 npm run team -- list
 ```
 
+Inspect the league and autonomous-AI research chain without scanning battle logs:
+
+```powershell
+npm run league -- status
+npm run ai-pipeline -- status
+npm run tooling -- doctor
+```
+
+Refresh the portable inventory after a release change:
+
+```powershell
+npm run package-manifest
+```
+
 ## Result Trust Rules
 
 - Treat one-game runs as smoke tests only.
@@ -74,6 +91,6 @@ The Codex account does not replace the local files. On the new computer, ask Cod
 
 ## Package Scope
 
-Included: source, documentation, lock files, benchmarks, examples, team database, sandbox definitions, and current G1/G2 compiled exports.
+Included: source, documentation, lock files, benchmarks, examples, team database, six-generation draft definitions, and sandbox definitions.
 
 Excluded: `node_modules`, multi-gigabyte historical battle output, temporary caches, credentials, and machine-specific Codex state.

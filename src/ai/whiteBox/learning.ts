@@ -51,9 +51,10 @@ export function evaluateWhiteBoxLearning(input: WhiteBoxLearningInput): WhiteBox
     if (!observed) throw new Error(`Missing learning evidence for ${trait}`);
     if (!Number.isFinite(observed.value) || observed.value < 0 || observed.value > 1) throw new Error(`Learning evidence for ${trait} must be within 0..1`);
     const prior = input.development.strategies[trait];
-    const retainedSamples = Math.max(parameters["learning.minimumsamples"], prior.effectiveSamples * parameters["learning.priorretention"]);
+    const retainedSamples = Math.min(parameters["learning.maximumsamples"], Math.max(parameters["learning.minimumsamples"], prior.effectiveSamples * parameters["learning.priorretention"]));
     const effectiveSamples = Math.min(parameters["learning.maximumsamples"], retainedSamples + parameters["learning.samplesperseason"]);
-    const mean = (prior.mean * retainedSamples + observed.value * parameters["learning.samplesperseason"]) / effectiveSamples;
+    const addedSamples = Math.max(0, effectiveSamples - retainedSamples);
+    const mean = (prior.mean * retainedSamples + observed.value * addedSamples) / effectiveSamples;
     const confidence = clamp01((effectiveSamples - parameters["learning.minimumsamples"]) / parameters["learning.confidencespan"]);
     const posteriorAfter = {mean, confidence, effectiveSamples};
     const rawAfterTrait = clampTrait(.5 + (mean - .5) * confidence * parameters["learning.traitgain"]);

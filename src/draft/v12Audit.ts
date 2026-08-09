@@ -7,10 +7,14 @@ import {loadRegistrySnapshot} from "./registrySnapshot";
 import type {ProgramOpportunitySnapshot} from "./strategyProgramOpportunity";
 import {loadDynastyStateCore, verifyDynastyStateStorage, type DynastyStateStorage} from "./dynastyStateStore";
 import {verifyHistoricalDynastyCheckpoint} from "./historicalRuntimeCheckpoint";
+import {AI_VERSION} from "../showdown/choice";
+import {buildEvidenceEpoch, classifyEvidenceEpoch, LEAGUE_CONFIGURATION_POLICY_VERSION, type EvidenceEpoch} from "../showdown/evidenceEpoch";
 
 export interface V12AuditIssue {severity: "fatal" | "warning"; code: string; message: string; season?: number; managerId?: string}
 export interface V12AuditSummary {
-  schemaVersion: 5; inputSignature: string; completedSeasons: number; managers: number; fatalCount: number; warningCount: number; issues: V12AuditIssue[];
+  schemaVersion: 6; inputSignature: string; completedSeasons: number; managers: number; fatalCount: number; warningCount: number; issues: V12AuditIssue[];
+  auditScope?: {kind: "full" | "checkpoint-suffix"; firstSeason: number; checkpointId?: string};
+  evidenceEpoch: {policySha256: string; auditedBattles: number; currentPolicyBattles: number; historicalPolicyBattles: number; missingEpochBattles: number; invalidEpochBattles: number; formalContextBattles: number; latestSeason: {season: number; battles: number; currentPolicyBattles: number; formalContextBattles: number}; formalActivationReady: boolean};
   metrics: {lineups: number; invalidLineups: number; expectedBattleFiles: number; battleFiles: number; battleInventoryMismatches: number; missingBattleEvidence: number; unendedBattles: number; stalledBattles: number; timeoutBattles: number; adjudicatedTimeoutBattles: number; protocolErrors: number; recoveredChoiceRetries: number; backgroundRegistrations: number; backgroundContractViolations: number; duplicateScarceAssets: number; duplicateRetainedContracts: number; contractOwnershipMismatches: number; invalidOfficialAssets: number; configurationUpdates: number; programCount: number; uniquePrograms: number; uniqueProgramBehaviors: number; nonZeroProgramBehaviors: number; averageProgramNodes: number; averageProgramBehaviorRange: number; programOpportunityFiles: number; programOpportunityObservations: number; programOpportunitySamples: number; invalidProgramOpportunities: number; healthWarnings: number; financialViolations: number; moneyConserved: boolean; outputBytes: number};
 }
 
@@ -32,7 +36,7 @@ export interface V12AuditSignatureResult {
 export const V12_AUDIT_SIGNATURE_CACHE = ".audit-signature-cache.json";
 
 interface State {version: number; completedSeason: number; moneySupply: number; leaguePool: number; settings?: {programEvolution?: boolean}; registry?: {hash: string; snapshot: string}; stateStorage?: DynastyStateStorage; decisionRecords?: Array<{decision: string; context?: any}>; assets: Record<string, {ownerId: string | null}>; managers: Array<{id: string; cash: number; contracts: Array<{assetId?: string; assetClass?: string}>; currentProfile: {strategyProgram?: StrategyProgram; configurationMemory?: unknown}}>}
-export interface V12AuditOptions {auditedInputBytes?: number; onStage?: (stage: string, season?: number) => void}
+export interface V12AuditOptions {auditedInputBytes?: number; onStage?: (stage: string, season?: number) => void; startSeason?: number; checkpointId?: string}
 
 export function auditV12Output(rootDirectory: string, inputSignature?: string, options: V12AuditOptions = {}): V12AuditSummary {
   const root = path.resolve(rootDirectory), issues: V12AuditIssue[] = [];
@@ -46,6 +50,8 @@ export function auditV12Output(rootDirectory: string, inputSignature?: string, o
   const conserved = state.leaguePool + state.managers.reduce((sum, manager) => sum + manager.cash, 0) === state.moneySupply;
   if (!conserved) issues.push(issue("fatal", "money-conservation", "Team cash and league pool do not match money supply"));
   let lineups = 0, invalidLineups = 0, expectedBattleFiles = 0, battleFiles = 0, battleInventoryMismatches = 0, missingBattleEvidence = 0, unendedBattles = 0, stalledBattles = 0, timeoutBattles = 0, adjudicatedTimeoutBattles = 0, protocolErrors = 0, recoveredChoiceRetries = 0, backgroundRegistrations = 0, backgroundContractViolations = 0, duplicateScarceAssets = 0, duplicateRetainedContracts = 0, contractOwnershipMismatches = 0, invalidOfficialAssets = 0, configurationUpdates = 0, programOpportunityFiles = 0, programOpportunityObservations = 0, programOpportunitySamples = 0, invalidProgramOpportunities = 0, healthWarnings = 0, financialViolations = 0;
+  let currentPolicyBattles = 0, historicalPolicyBattles = 0, missingEpochBattles = 0, invalidEpochBattles = 0, formalContextBattles = 0;
+  let latestEvidence = {season: 0, battles: 0, currentPolicyBattles: 0, formalContextBattles: 0};
   configurationUpdates = state.decisionRecords?.filter(record => Array.isArray(record.context?.updates)).reduce((sum, record) => sum + Number(record.context?.updates?.length ?? 0), 0) ?? state.managers.filter(manager => manager.currentProfile.configurationMemory !== undefined).length;
   const programHashes = new Set<string>(), programBehaviorHashes = new Set<string>(); let programNodes = 0, nonZeroProgramBehaviors = 0, programBehaviorRange = 0;
   const retainedContracts = new Map<string, string>();
@@ -71,10 +77,14 @@ export function auditV12Output(rootDirectory: string, inputSignature?: string, o
     }
   }
   const completedSeasons = state.completedSeason, managerCount = state.managers.length, programEvolution = Boolean(state.settings?.programEvolution);
+  latestEvidence.season = completedSeasons;
+  const startSeason = options.startSeason ?? 1;
+  if (!Number.isInteger(startSeason) || startSeason < 1 || startSeason > completedSeasons) throw new Error(`Invalid V12 audit start season: ${startSeason}`);
+  const auditScope = {kind: startSeason === 1 ? "full" as const : "checkpoint-suffix" as const, firstSeason: startSeason, ...(options.checkpointId ? {checkpointId: options.checkpointId} : {})};
   state = undefined;
   options.onStage?.("historical-checkpoints");
-  if (fs.existsSync(path.join(root, ".season-checkpoints"))) for (let season = 0; season <= completedSeasons; season += 1) try { verifyHistoricalDynastyCheckpoint(root, season); } catch (error) { issues.push(issue("fatal", "invalid-historical-checkpoint", String(error), season || undefined)); }
-  for (let season = 1; season <= completedSeasons; season += 1) {
+  if (fs.existsSync(path.join(root, ".season-checkpoints"))) for (let season = startSeason === 1 ? 0 : startSeason; season <= completedSeasons; season += 1) try { verifyHistoricalDynastyCheckpoint(root, season); } catch (error) { issues.push(issue("fatal", "invalid-historical-checkpoint", String(error), season || undefined)); }
+  for (let season = startSeason; season <= completedSeasons; season += 1) {
     options.onStage?.("season", season);
     const dir = path.join(root, `season-${String(season).padStart(2, "0")}`);
     for (const name of ["season.json", "decision-ledger.json", "rosters", "economy.json", "evolution.json", "battle-archive.json", "health.json", "financial-health.json"]) if (!fs.existsSync(path.join(dir, name))) issues.push(issue("fatal", "missing-artifact", `${name} is missing`, season));
@@ -135,8 +145,20 @@ export function auditV12Output(rootDirectory: string, inputSignature?: string, o
     }
     for (const file of fs.existsSync(battleRoot) ? namedFiles(battleRoot, "end.json") : []) {
       seasonBattleFiles += 1;
-      const battle = read<{ended?: boolean; stalled?: boolean; timeout?: boolean; adjudication?: {rule?: string}; errors?: unknown[]; choiceRetries?: number}>(file);
+      const battle = read<{ended?: boolean; stalled?: boolean; timeout?: boolean; adjudication?: {rule?: string}; errors?: unknown[]; choiceRetries?: number; evidenceEpoch?: EvidenceEpoch}>(file);
       battleFiles += 1;
+      if (season === completedSeasons) latestEvidence.battles += 1;
+      if (!battle.evidenceEpoch) { missingEpochBattles += 1; historicalPolicyBattles += 1; }
+      else {
+        const expectedEpoch = buildEvidenceEpoch(AI_VERSION, battle.evidenceEpoch.content?.format ?? "", {registryHash: seasonResult.registry?.hash, configurationPolicyVersion: LEAGUE_CONFIGURATION_POLICY_VERSION});
+        const classification = classifyEvidenceEpoch(battle.evidenceEpoch, expectedEpoch);
+        if (classification.compatibility === "invalid") invalidEpochBattles += 1;
+        else if (battle.evidenceEpoch.policySha256 === expectedEpoch.policySha256) {
+          currentPolicyBattles += 1;
+          if (season === completedSeasons) latestEvidence.currentPolicyBattles += 1;
+          if (classification.formalActivationAllowed) { formalContextBattles += 1; if (season === completedSeasons) latestEvidence.formalContextBattles += 1; }
+        } else historicalPolicyBattles += 1;
+      }
       const gameDir = path.dirname(file);
       const hasPublicLog = fs.existsSync(path.join(gameDir, "public.log")) || fs.existsSync(path.join(gameDir, "public.log.gz"));
       const hasDecisionEvidence = fs.existsSync(path.join(gameDir, "ai-decisions.json")) || fs.existsSync(path.join(gameDir, "ai-decisions.json.gz")) || fs.existsSync(path.join(gameDir, "ai-timing.json.gz")) || fs.existsSync(path.join(gameDir, "ai-summary.json"));
@@ -200,7 +222,9 @@ export function auditV12Output(rootDirectory: string, inputSignature?: string, o
   const outputBytes = options.auditedInputBytes ?? auditInputBytes(root, completedSeasons);
   if (configurationUpdates === 0 && completedSeasons > 0) issues.push(issue("warning", "no-configuration-evidence", "No auditable configuration posterior updates were found"));
   if (programEvolution && completedSeasons >= 3 && programBehaviorHashes.size <= 1) issues.push(issue("warning", "program-behavior-collapse", "All active managers have the same strategy-program behavior fingerprint"));
-  const summary: V12AuditSummary = {schemaVersion: 5, inputSignature: inputSignature ?? auditV12Signature(root, completedSeasons), completedSeasons, managers: managerCount, fatalCount: issues.filter(entry => entry.severity === "fatal").length, warningCount: issues.filter(entry => entry.severity === "warning").length, issues, metrics: {lineups, invalidLineups, expectedBattleFiles, battleFiles, battleInventoryMismatches, missingBattleEvidence, unendedBattles, stalledBattles, timeoutBattles, adjudicatedTimeoutBattles, protocolErrors, recoveredChoiceRetries, backgroundRegistrations, backgroundContractViolations, duplicateScarceAssets, duplicateRetainedContracts, contractOwnershipMismatches, invalidOfficialAssets, configurationUpdates, programCount: managerCount, uniquePrograms: programHashes.size, uniqueProgramBehaviors: programBehaviorHashes.size, nonZeroProgramBehaviors, averageProgramNodes: managerCount ? programNodes / managerCount : 0, averageProgramBehaviorRange: managerCount ? programBehaviorRange / managerCount : 0, programOpportunityFiles, programOpportunityObservations, programOpportunitySamples, invalidProgramOpportunities, healthWarnings, financialViolations, moneyConserved: conserved, outputBytes}};
+  const currentPolicy = buildEvidenceEpoch(AI_VERSION, "gen9ou").policySha256;
+  const formalActivationReady = latestEvidence.battles > 0 && latestEvidence.currentPolicyBattles === latestEvidence.battles && latestEvidence.formalContextBattles === latestEvidence.battles;
+  const summary: V12AuditSummary = {schemaVersion: 6, inputSignature: inputSignature ?? auditV12Signature(root, completedSeasons), completedSeasons, managers: managerCount, fatalCount: issues.filter(entry => entry.severity === "fatal").length, warningCount: issues.filter(entry => entry.severity === "warning").length, auditScope, issues, evidenceEpoch: {policySha256: currentPolicy, auditedBattles: battleFiles, currentPolicyBattles, historicalPolicyBattles, missingEpochBattles, invalidEpochBattles, formalContextBattles, latestSeason: latestEvidence, formalActivationReady}, metrics: {lineups, invalidLineups, expectedBattleFiles, battleFiles, battleInventoryMismatches, missingBattleEvidence, unendedBattles, stalledBattles, timeoutBattles, adjudicatedTimeoutBattles, protocolErrors, recoveredChoiceRetries, backgroundRegistrations, backgroundContractViolations, duplicateScarceAssets, duplicateRetainedContracts, contractOwnershipMismatches, invalidOfficialAssets, configurationUpdates, programCount: managerCount, uniquePrograms: programHashes.size, uniqueProgramBehaviors: programBehaviorHashes.size, nonZeroProgramBehaviors, averageProgramNodes: managerCount ? programNodes / managerCount : 0, averageProgramBehaviorRange: managerCount ? programBehaviorRange / managerCount : 0, programOpportunityFiles, programOpportunityObservations, programOpportunitySamples, invalidProgramOpportunities, healthWarnings, financialViolations, moneyConserved: conserved, outputBytes}};
   return summary;
 }
 
@@ -233,7 +257,7 @@ export function auditV12SignatureIncremental(rootDirectory: string, seasons: num
   const cache = {schemaVersion: 1 as const, seasons, files: entries}, signature = v12AuditSignatureFromCache(cache).signature;
   return {signature, cache, files, bytes, hashedFiles, hashedBytes};
 }
-export function v12AuditMarkdown(summary: V12AuditSummary): string { const m = summary.metrics; return [`# V12 联盟审计`, ``, `- 赛季：${summary.completedSeasons}`, `- 经理：${summary.managers}`, `- 致命/警告：${summary.fatalCount}/${summary.warningCount}`, `- 阵容：${m.lineups}（非法${m.invalidLineups}）`, `- 比赛：${m.battleFiles}/${m.expectedBattleFiles}（清单异常${m.battleInventoryMismatches}）`, `- 公共注册：${m.backgroundRegistrations}`, `- 重复稀缺资产：${m.duplicateScarceAssets}`, `- 配置证据更新：${m.configurationUpdates}`, `- 策略程序：结构${m.uniquePrograms}/${m.programCount}种，行为${m.uniqueProgramBehaviors}种，非零${m.nonZeroProgramBehaviors}个，平均${m.averageProgramNodes.toFixed(1)}节点`, `- 健康警告/财务违规：${m.healthWarnings}/${m.financialViolations}`, `- 货币守恒：${m.moneyConserved ? "是" : "否"}`, `- 产物：${(m.outputBytes / 1048576).toFixed(1)}MB`, ``, `## 问题`, ``, ...(summary.issues.length ? summary.issues.map(entry => `- [${entry.severity.toUpperCase()}] ${entry.code}${entry.season ? ` S${entry.season}` : ""}${entry.managerId ? ` ${entry.managerId}` : ""}：${entry.message}`) : ["未发现问题。"]), ``].join("\n"); }
+export function v12AuditMarkdown(summary: V12AuditSummary): string { const m = summary.metrics, e = summary.evidenceEpoch; return [`# V12 联盟审计`, ``, `- 赛季：${summary.completedSeasons}`, `- 经理：${summary.managers}`, `- 致命/警告：${summary.fatalCount}/${summary.warningCount}`, `- 阵容：${m.lineups}（非法${m.invalidLineups}）`, `- 比赛：${m.battleFiles}/${m.expectedBattleFiles}（清单异常${m.battleInventoryMismatches}）`, `- 证据时代：当前${e.currentPolicyBattles} / 历史${e.historicalPolicyBattles} / 缺失${e.missingEpochBattles} / 无效${e.invalidEpochBattles}`, `- 最新赛季正式激活：${e.formalActivationReady ? "就绪" : "阻塞"}`, `- 公共注册：${m.backgroundRegistrations}`, `- 重复稀缺资产：${m.duplicateScarceAssets}`, `- 配置证据更新：${m.configurationUpdates}`, `- 策略程序：结构${m.uniquePrograms}/${m.programCount}种，行为${m.uniqueProgramBehaviors}种，非零${m.nonZeroProgramBehaviors}个，平均${m.averageProgramNodes.toFixed(1)}节点`, `- 健康警告/财务违规：${m.healthWarnings}/${m.financialViolations}`, `- 货币守恒：${m.moneyConserved ? "是" : "否"}`, `- 产物：${(m.outputBytes / 1048576).toFixed(1)}MB`, ``, `## 问题`, ``, ...(summary.issues.length ? summary.issues.map(entry => `- [${entry.severity.toUpperCase()}] ${entry.code}${entry.season ? ` S${entry.season}` : ""}${entry.managerId ? ` ${entry.managerId}` : ""}：${entry.message}`) : ["未发现问题。"]), ``].join("\n"); }
 function* auditFiles(root: string, seasons: number): Generator<string> {
   if (fs.existsSync(path.join(root, "dynasty-state.json"))) yield path.join(root, "dynasty-state.json");
   if (fs.existsSync(path.join(root, "config-snapshots"))) yield* collectAuditInputs(path.join(root, "config-snapshots"));

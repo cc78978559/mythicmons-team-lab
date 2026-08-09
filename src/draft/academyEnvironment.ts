@@ -4,7 +4,7 @@ import {strategyProgramHash} from "./strategyProgram";
 
 const TRAITS = ["risk", "stars", "synergy", "counter", "value", "flexibility"] as const;
 const ECONOMICS = ["starPremium", "cashUtility", "bidAggression", "marketAwareness"] as const;
-const TACTICS = ["aggression", "setupBias", "pivotBias", "recoveryBias", "statusBias", "teraBias", "switchBias"] as const;
+const TACTICS = ["aggression", "setupBias", "pivotBias", "recoveryBias", "statusBias", "switchBias"] as const;
 const TACTICAL_WEIGHTS = ["expectedWeight", "downsideWeight", "worstWeight"] as const;
 const ORGANIZATION = ["scarceConcentration", "backgroundReliance", "continuity", "experimentation", "rebuildPatience"] as const;
 const CONFIGURATION = ["speedInvestment", "bulkBias", "statusMoveBias", "coverageBias", "accuracyRisk", "choiceItemBias", "recoveryItemBias"] as const;
