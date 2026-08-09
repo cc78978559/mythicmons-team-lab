@@ -4,6 +4,22 @@ MythicMons Team Lab is a local-first Pokémon Showdown simulation, draft-league,
 
 Current production capabilities, unfinished AI domains, activation gates, and the next implementation sequence are tracked in [`docs/CURRENT_STATUS_AND_ROADMAP.md`](docs/CURRENT_STATUS_AND_ROADMAP.md).
 
+<!-- GENERATED_STATUS:START -->
+## Verified Build Surface
+
+- Package baseline: `mythicmons-team-lab@1.1.0`
+- Local command inventory: 234 scripts, including 100 smoke suites
+- Autonomous research: `autonomous-research-v1.3-semantic-outcomes`
+- Formal validation: `formal-validation-v1.6-clustered-independent-environments`
+- Canary adapter protocol: `manager-program-v2-battle-rule-v1`
+- Formal canary authority: one battle decision domain, signed handoff, reviewed local adapter, manual promotion only
+- Formal inference: matchup-cluster votes across modern benchmark and current formal-league environments
+- Storage: content-addressed dynasty histories, independently reusable state fields, reference-audited dry-run GC
+- Machine-readable baseline: [`docs/RELEASE_BASELINE.json`](docs/RELEASE_BASELINE.json) (`4df9328c44de`)
+
+Regenerate this block and its signed baseline with `npm run baseline:generate`.
+<!-- GENERATED_STATUS:END -->
+
 ## Current Development Status
 
 - The persistent league supports 30 managers, scarce custom/legendary assets, ordinary background Pokémon, multi-season careers, promotion and relegation, a development league, Boss challenges, tactical memory, and auditable strategy-program evolution.
@@ -90,7 +106,7 @@ npm run tooling -- cache-gc
 npm run tooling -- cache-gc --apply
 ```
 
-The doctor writes a streaming top-level storage index and a cache-reference audit under `output/tooling/tooling-doctor`. Shared source caches record their last use, default to a 4096 MB budget, and are reclaimed oldest-first only when they have a valid content-addressed marker and no active-study reference. GC is a dry run unless `--apply` is present; use `--cache-budget-mb` and `--cache-max-age-days` to override the policy.
+The doctor writes a streaming top-level storage index and reference audits under `output/tooling/tooling-doctor`. Shared source caches record their last use, default to a 4096 MB budget, and are reclaimed oldest-first only when they have a valid content-addressed marker and no active-study reference. Dynasty histories are split into content-addressed gzip objects; unchanged history fields are reused by later checkpoints. The same doctor scans the live state and every historical checkpoint before proposing object deletion. GC is a dry run unless `--apply` is present; use `--cache-budget-mb`, `--cache-max-age-days`, `--dynasty-storage-budget-mb`, and `--dynasty-storage-grace-days` to override policy.
 
 Shadow diagnostics are also local-first:
 

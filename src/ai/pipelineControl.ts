@@ -1,7 +1,7 @@
-export const AI_PIPELINE_VERSION = "ai-pipeline-v1.0-stage0-stage5";
+export const AI_PIPELINE_VERSION = "ai-pipeline-v1.1-stage0-stage5";
 export type PipelineStageId = "stage0" | "stage1" | "stage2" | "stage3" | "stage4" | "stage5";
 export type PipelineStageState = "complete" | "missing" | "running" | "failed" | "blocked";
-export type PipelineMilestone = "repair-pipeline" | "current-era-evidence" | "research-iteration" | "limited-canary" | "activation-ready";
+export type PipelineMilestone = "repair-pipeline" | "current-era-evidence" | "research-iteration" | "canary-adapter" | "limited-canary" | "activation-ready";
 
 export interface PipelineStageSnapshot {
   id: PipelineStageId;
@@ -42,6 +42,13 @@ export interface PipelinePreflightSnapshot {
   specialists: Array<{stage: PipelineStageId; healthy: boolean}>;
 }
 
+export function formalCanaryHealthIssue(eligibleDomains: readonly unknown[], healthy: boolean): {severity: "error" | "warning"; code: "formal-canary-handoff"; message: string} | null {
+  if (healthy) return null;
+  return eligibleDomains.length
+    ? {severity: "error", code: "formal-canary-handoff", message: "A formally eligible domain has no current execution-ready canary handoff"}
+    : {severity: "warning", code: "formal-canary-handoff", message: "Formal validation has no current signed no-candidate handoff"};
+}
+
 export function evaluatePipeline(input: readonly PipelineStageSnapshot[]): PipelineEvaluation {
   const expected: PipelineStageId[] = ["stage0", "stage1", "stage2", "stage3", "stage4", "stage5"];
   if (input.length !== expected.length || input.some((stage, index) => stage.id !== expected[index])) throw new Error("Pipeline stages must be ordered stage0..stage5 exactly once");
@@ -61,9 +68,9 @@ export function evaluatePipeline(input: readonly PipelineStageSnapshot[]): Pipel
     ...stage.issues.filter(issue => issue.severity === "error").map(issue => ({stage: stage.id, code: issue.code, message: issue.message})),
   ]);
   const warnings = stages.flatMap(stage => stage.issues.filter(issue => issue.severity === "warning").map(issue => ({stage: stage.id, code: issue.code, message: issue.message})));
-  const stage5 = stages[5], eligible = Array.isArray(stage5.metrics.limitedCanaryEligibleDomains) ? stage5.metrics.limitedCanaryEligibleDomains.map(String) : [];
+  const stage5 = stages[5], eligible = Array.isArray(stage5.metrics.limitedCanaryEligibleDomains) ? stage5.metrics.limitedCanaryEligibleDomains.map(String) : [], canaryStatus = String(stage5.metrics.canaryHandoff ?? "missing-or-stale");
   const operationalHealthy = stages.every(stage => stage.state === "complete");
-  const formalActivationReady = operationalHealthy && stages[0].authorityReady && stages[1].authorityReady && eligible.length > 0;
+  const formalActivationReady = operationalHealthy && stages[0].authorityReady && stages[1].authorityReady && eligible.length > 0 && canaryStatus === "execution-ready";
   const pipelineCycleComplete = operationalHealthy && stage5.semanticHealthy;
   const researchMaturity = !pipelineCycleComplete ? "blocked" : eligible.length ? "candidate-ready" : "iteration-required";
   const nextMilestones: PipelineMilestone[] = !operationalHealthy
@@ -73,7 +80,8 @@ export function evaluatePipeline(input: readonly PipelineStageSnapshot[]): Pipel
       : [
           ...(!stages[0].authorityReady || !stages[1].authorityReady ? ["current-era-evidence" as const] : []),
           ...(!eligible.length ? ["research-iteration" as const] : []),
-          ...(eligible.length ? ["limited-canary" as const] : []),
+          ...(eligible.length && canaryStatus !== "execution-ready" ? ["canary-adapter" as const] : []),
+          ...(eligible.length && canaryStatus === "execution-ready" ? ["limited-canary" as const] : []),
         ];
   return {
     version: AI_PIPELINE_VERSION,

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 import {evaluateBattleAssistGate} from "../ai/whiteBox/battle";
+import {SEMANTIC_DECISION_TRACE_POLICY, semanticTraceEqual} from "../ai/semanticDecisionTrace";
 import {loadBattleReplayCapsule, runBattle, type BattleDecisionIntervention, type BattleResult} from "../showdown/battle";
 import {AI_VERSION, type AiDecisionTrace} from "../showdown/choice";
 
@@ -25,8 +26,12 @@ async function main(): Promise<void> {
   const common = {...capsule.input, seed: "explicit-replay", explicitSeed: capsule.input.seed, gameIndex: 0};
   const incumbent = await runBattle({...common, outDir: path.join(out, "incumbent")});
   const incumbentTraces = read<AiDecisionTrace[]>(incumbent.decisionLogPath);
-  const sourceVerified = JSON.stringify(incumbentTraces) === JSON.stringify(sourceTraces);
+  const sourceVerified = semanticTraceEqual(incumbentTraces, sourceTraces);
   if (!sourceVerified) throw new Error("Exact incumbent replay diverged from retained decision trace");
+  if (args.includes("--verify-source-only")) {
+    console.log(JSON.stringify({sourceVerified: true}));
+    return;
+  }
 
   const intervention: BattleDecisionIntervention = {
     decisionOrdinal: target.trace.decisionOrdinal!,
@@ -38,12 +43,13 @@ async function main(): Promise<void> {
   const whitebox = await runBattle({...common, outDir: path.join(out, "whitebox"), decisionIntervention: intervention});
   const whiteboxTraces = read<AiDecisionTrace[]>(whitebox.decisionLogPath);
   const prefixLength = intervention.decisionOrdinal - 1;
-  const prefixVerified = JSON.stringify(whiteboxTraces.slice(0, prefixLength)) === JSON.stringify(sourceTraces.slice(0, prefixLength));
+  const prefixVerified = semanticTraceEqual(whiteboxTraces.slice(0, prefixLength), sourceTraces.slice(0, prefixLength));
   if (!prefixVerified) throw new Error("White-box branch diverged before the target battle decision");
   const applied = whiteboxTraces[prefixLength];
   if (applied?.incumbentSelected !== intervention.expectedIncumbent || applied.selected !== intervention.selected || !applied.intervention?.applied) {
     throw new Error("White-box branch did not apply the requested decision intervention");
   }
+  const winnerChanged = incumbent.winner !== whitebox.winner, turnCountChanged = incumbent.turns !== whitebox.turns, timeoutChanged = incumbent.timeout !== whitebox.timeout, trajectoryChanged = winnerChanged || turnCountChanged || timeoutChanged;
   const summary = {
     schemaVersion: 1,
     sourceGame: source,
@@ -51,13 +57,19 @@ async function main(): Promise<void> {
     aiVersion: AI_VERSION,
     sourceVerified,
     prefixVerified,
+    comparisonPolicy: SEMANTIC_DECISION_TRACE_POLICY,
     intervention,
     gate: target.gate,
     evidenceStatus: researchTarget?"manager-selected-research-only":"assist-gated-counterfactual",
     activationAllowed: false,
     incumbent: outcome(incumbent),
     whitebox: outcome(whitebox),
-    outcomeChanged: incumbent.winner !== whitebox.winner || incumbent.turns !== whitebox.turns || incumbent.timeout !== whitebox.timeout,
+    actionApplied: true,
+    winnerChanged,
+    turnCountChanged,
+    timeoutChanged,
+    trajectoryChanged,
+    outcomeChanged: trajectoryChanged,
   };
   write(path.join(out, "counterfactual-summary.json"), summary);
   console.log(JSON.stringify(summary, null, 2));

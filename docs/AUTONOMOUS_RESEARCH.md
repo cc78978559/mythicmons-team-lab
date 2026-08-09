@@ -1,47 +1,27 @@
-# Autonomous Research
+# Autonomous Research Stage 4
 
-Stage 4 lets each Manager Program V2 instance generate and pursue its own research questions. It replaces the old pattern in which managers could only rank hypotheses from a central registry.
+Stage 4 lets each manager rank hypotheses from its own learned program, compete for executable counterfactual cases, and change later research intent after support, contradiction, or neutral evidence. It remains shadow-only.
 
-## Question generation
+## Research Contract
 
-Every question originates from one of the manager's own conditional program rules. The manager combines:
+- Exact interventions are globally unique across managers and rounds.
+- Every executed branch must verify its source, replay prefix, intervention point, and changed decision.
+- Failed cases may use only preregistered fallbacks and are blacklisted from later allocation.
+- Exact rejected semantic variants are retired. Related families may return only as an explicit threshold/effect revision; inconclusive variants require new source fingerprints before a bounded replication.
+- A manager may derive replacement hypotheses from its own rejected proposal history. Those candidates are re-estimated from the current local-value corpus and enter exact counterfactual testing as `replace-rejected-mechanism` questions.
+- Route diversity, manager adaptation, per-round independent growth, manager coverage, decision applications, semantic trajectory changes, and winner changes are machine-audited separately.
+- Replay equality is semantic: timing and diagnostic noise are ignored, while action ordering, state values, selected choices, and outcomes remain exact.
 
-- uncertainty and support recorded on the rule;
-- whether the rule has already been tested;
-- prior support, contradiction, or neutral outcomes;
-- the number of executable counterfactual cases;
-- the rule's current program effect;
-- bounded deterministic exploration.
+## Current Generation
 
-These are universal research objectives, not authored battle preferences. No action family or feature receives a preferred weight.
+- Managers: 30/30 with executed research.
+- Rounds and experiments: 7 and 204.
+- Duplicate experiments: 0; independent cases: 204/204.
+- Historical decision changes: 204/204. The former aggregate of 155 “outcome changes” mixed winner changes with turn-count drift and is retained only as legacy context; new generations publish trajectory and winner counts separately.
+- Distinct manager route signatures: 30.
+- Managers changing intent, rule, or target: 29, 24, and 23.
+- Managers adapting after the first round: 30.
+- Rules studied: 83.
+- Source audit: 180/180 battles verified.
 
-Research intent changes from evidence:
-
-- `test-program-mechanism` for an untested rule;
-- `replicate-support` after a supportive result;
-- `resolve-contradiction` after an opposing result;
-- `map-neutral-boundary` after a neutral result.
-- `resolve-formal-inconclusive` when a prior prospective generation did not obtain enough decisive, environment-consistent evidence.
-
-Stage 4 snapshots the signed Stage-5 validation portfolio before planning a new generation. A mechanism already rejected by formal validation is retired from question generation. A mechanism already eligible for canary is also complete at the research layer and cannot consume another discovery case. The snapshot is an immutable Stage-4 input, so replacing the active Stage-5 generation later does not invalidate the research generation that consumed it.
-
-## Exact experiments
-
-The planner searches the Stage-3 paired-decision corpus for a context that satisfies the rule and has a legal, reasonable alternative from another action family. It freezes the source hashes, decision ordinal, side, turn, incumbent action, and intervention action.
-
-Each experiment performs an exact incumbent replay and an intervention replay. It rejects the case unless the incumbent trace is reproduced, the pre-intervention prefix is identical, and the requested action is applied at the declared decision. Technical failures are never converted into neutral competitive outcomes.
-
-Each question preregisters multiple fallback cases, including cases from the manager's next-ranked questions. Failed source cases enter a cross-round blacklist. Every successful intervention may be used only once across the population.
-
-## Commands
-
-```powershell
-npm.cmd run autonomous-research -- cycle --rounds 6 --workers 4
-npm.cmd run autonomous-research -- status
-npm.cmd run autonomous-research -- inspect --manager manager-07
-npm.cmd run autonomous-research -- doctor --verify-sources
-```
-
-The cycle is resumable and content-bound to the Stage-3 program and corpus archives plus its frozen formal-feedback snapshot. Completed cases are cached as compact signed summaries. Temporary replay branches are deleted after verification. A manager may legitimately have no experiment in a round when all executable rules are formally complete, rejected, or unavailable; the signed unassigned list makes that outcome auditable. Run state records the current phase, case, peak RSS, and failure details. Doctor reconstructs every manager observation from the signed round plan and result, verifies round order and exact case use, and recomputes the final summary instead of trusting stored counters.
-
-All results have `exact-counterfactual-single-environment` authority and remain `shadow-only`. One exact replay can guide the manager's next research question, but cannot activate or rewrite battle policy.
+The generation satisfies the Stage-4 engineering gate. Its results are exact single-environment research evidence, not formal activation authority; Stage 5 must independently validate any promoted mechanism.

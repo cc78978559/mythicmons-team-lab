@@ -1,4 +1,4 @@
-export const FORMAL_VALIDATION_VERSION = "formal-validation-v1.4-conditional-mechanism-clusters";
+export const FORMAL_VALIDATION_VERSION = "formal-validation-v1.6-clustered-independent-environments";
 
 export type ValidationDirection = "better" | "neutral" | "worse";
 
@@ -8,10 +8,12 @@ export interface FormalValidationCaseResult {
   managerId: string;
   ruleId: string;
   environment: string;
+  clusterId: string;
   phase: "early" | "mid" | "late";
   direction: ValidationDirection;
   expectedDirection: Exclude<ValidationDirection, "neutral">;
-  outcomeChanged: boolean;
+  trajectoryChanged: boolean;
+  winnerChanged: boolean;
   sourceVerified: boolean;
   prefixVerified: boolean;
   interventionVerified: boolean;
@@ -20,6 +22,9 @@ export interface FormalValidationCaseResult {
 export interface FormalValidationGate {
   targetCases: number;
   minimumCasesPerEnvironment: number;
+  targetClusters: number;
+  minimumClustersPerEnvironment: number;
+  maximumCasesPerCluster: number;
   minimumDecisiveCases: number;
   familywiseAlpha: number;
 }
@@ -27,11 +32,13 @@ export interface FormalValidationGate {
 export interface FormalValidationDomainResult {
   domainId: string;
   cases: number;
-  environments: Record<string, {cases: number; supports: number; contradictions: number; neutral: number}>;
+  clusters: number;
+  environments: Record<string, {cases: number; clusters: number; supports: number; contradictions: number; neutral: number}>;
   phases: Record<string, number>;
   supports: number;
   contradictions: number;
   neutral: number;
+  raw: {supports: number; contradictions: number; neutral: number};
   decisive: number;
   supportRate: number | null;
   oneSidedP: number;
@@ -41,6 +48,10 @@ export interface FormalValidationDomainResult {
   technicalIntegrity: boolean;
   disposition: "limited-canary-eligible" | "rejected" | "inconclusive" | "blocked";
   reasons: string[];
+}
+
+export function selectFormalCanaryNomination(rows: readonly FormalValidationDomainResult[]): FormalValidationDomainResult | null {
+  return [...rows].sort((left, right) => left.holmAdjustedP - right.holmAdjustedP || (right.supportRate ?? 0) - (left.supportRate ?? 0) || right.decisive - left.decisive || left.domainId.localeCompare(right.domainId))[0] ?? null;
 }
 
 export function formalMechanismKey(input: {
@@ -54,6 +65,26 @@ export function formalMechanismKey(input: {
     .sort()
     .join("+");
   return `${input.target}__${direction}__${condition}`;
+}
+
+export function formalMechanismSemanticKey(input: {
+  target: string;
+  effect: number;
+  predicates: readonly {feature: string; operator: "gte" | "lt"; threshold: number}[];
+}): string {
+  const family = formalMechanismKey(input), effect = normalizedNumber(input.effect);
+  const boundary = [...input.predicates]
+    .map(predicate => `${predicate.feature}-${predicate.operator}-${normalizedNumber(predicate.threshold)}`)
+    .sort()
+    .join("+");
+  return `${family}__semantic-v1__${boundary}__effect-${effect}`;
+}
+
+export function formalDomainSemanticKey(rules: readonly {managerId: string; rule: {target: string; effect: number; predicates: readonly {feature: string; operator: "gte" | "lt"; threshold: number}[]}}[]): string {
+  return [...rules]
+    .map(value => `${value.managerId}:${formalMechanismSemanticKey(value.rule)}`)
+    .sort()
+    .join("|");
 }
 
 export function hasExactFormalValidationIntegrity(result: Pick<FormalValidationCaseResult, "sourceVerified" | "prefixVerified" | "interventionVerified">): boolean {
@@ -90,31 +121,39 @@ export function evaluateFormalValidation(
 }
 
 function evaluateDomain(domainId: string, results: FormalValidationCaseResult[], environments: readonly string[], gate: FormalValidationGate): FormalValidationDomainResult {
-  const technicalIntegrity = results.every(hasExactFormalValidationIntegrity);
-  const supports = results.filter(result => result.direction === result.expectedDirection).length;
-  const contradictions = results.filter(result => result.direction !== "neutral" && result.direction !== result.expectedDirection).length;
-  const neutral = results.length - supports - contradictions, decisive = supports + contradictions;
+  const clusterMap = new Map<string, FormalValidationCaseResult[]>();
+  for (const result of results) clusterMap.set(result.clusterId, [...(clusterMap.get(result.clusterId) ?? []), result]);
+  const clusterRows = [...clusterMap.entries()].map(([clusterId, rows]) => {
+    const decisiveRows = rows.filter(result => result.winnerChanged), localSupports = decisiveRows.filter(result => result.direction === result.expectedDirection).length, localContradictions = decisiveRows.filter(result => result.direction !== "neutral" && result.direction !== result.expectedDirection).length;
+    return {clusterId, environment: rows[0]?.environment ?? "", rows, direction: localSupports > localContradictions ? "support" as const : localContradictions > localSupports ? "contradiction" as const : "neutral" as const};
+  });
+  const clusterIntegrity = results.every(result => Boolean(result.clusterId)) && clusterRows.every(cluster => cluster.rows.length <= gate.maximumCasesPerCluster && new Set(cluster.rows.map(result => result.environment)).size === 1);
+  const technicalIntegrity = results.every(hasExactFormalValidationIntegrity) && clusterIntegrity;
+  const rawSupports = results.filter(result => result.winnerChanged && result.direction === result.expectedDirection).length, rawContradictions = results.filter(result => result.winnerChanged && result.direction !== "neutral" && result.direction !== result.expectedDirection).length;
+  const supports = clusterRows.filter(result => result.direction === "support").length, contradictions = clusterRows.filter(result => result.direction === "contradiction").length;
+  const neutral = clusterRows.length - supports - contradictions, decisive = supports + contradictions;
   const environmentRows = Object.fromEntries(environments.map(environment => {
-    const subset = results.filter(result => result.environment === environment);
-    const localSupports = subset.filter(result => result.direction === result.expectedDirection).length;
-    const localContradictions = subset.filter(result => result.direction !== "neutral" && result.direction !== result.expectedDirection).length;
-    return [environment, {cases: subset.length, supports: localSupports, contradictions: localContradictions, neutral: subset.length - localSupports - localContradictions}];
+    const subset = results.filter(result => result.environment === environment), localClusters = clusterRows.filter(result => result.environment === environment);
+    const localSupports = localClusters.filter(result => result.direction === "support").length, localContradictions = localClusters.filter(result => result.direction === "contradiction").length;
+    return [environment, {cases: subset.length, clusters: localClusters.length, supports: localSupports, contradictions: localContradictions, neutral: localClusters.length - localSupports - localContradictions}];
   }));
   const phases: Record<string, number> = {early: 0, mid: 0, late: 0};
   for (const result of results) phases[result.phase] = (phases[result.phase] ?? 0) + 1;
   return {
     domainId,
     cases: results.length,
+    clusters: clusterRows.length,
     environments: environmentRows,
     phases,
     supports,
     contradictions,
     neutral,
+    raw: {supports: rawSupports, contradictions: rawContradictions, neutral: results.length - rawSupports - rawContradictions},
     decisive,
     supportRate: decisive ? round(supports / decisive) : null,
     oneSidedP: exactOneSidedBinomial(supports, decisive),
     holmAdjustedP: 1,
-    coverageComplete: results.length >= gate.targetCases && environments.every(environment => environmentRows[environment].cases >= gate.minimumCasesPerEnvironment),
+    coverageComplete: results.length >= gate.targetCases && clusterRows.length >= gate.targetClusters && environments.every(environment => environmentRows[environment].cases >= gate.minimumCasesPerEnvironment && environmentRows[environment].clusters >= gate.minimumClustersPerEnvironment),
     environmentConsistent: environments.every(environment => environmentRows[environment].supports > environmentRows[environment].contradictions),
     technicalIntegrity,
     disposition: "inconclusive",
@@ -148,7 +187,8 @@ function combination(total: number, selected: number): number {
 }
 
 function validateGate(gate: FormalValidationGate): void {
-  if (!Number.isInteger(gate.targetCases) || gate.targetCases < 1 || !Number.isInteger(gate.minimumCasesPerEnvironment) || gate.minimumCasesPerEnvironment < 1 || !Number.isInteger(gate.minimumDecisiveCases) || gate.minimumDecisiveCases < 1 || !Number.isFinite(gate.familywiseAlpha) || gate.familywiseAlpha <= 0 || gate.familywiseAlpha >= 1) throw new Error("Invalid formal-validation gate");
+  if (!Number.isInteger(gate.targetCases) || gate.targetCases < 1 || !Number.isInteger(gate.minimumCasesPerEnvironment) || gate.minimumCasesPerEnvironment < 1 || !Number.isInteger(gate.targetClusters) || gate.targetClusters < 1 || !Number.isInteger(gate.minimumClustersPerEnvironment) || gate.minimumClustersPerEnvironment < 1 || !Number.isInteger(gate.maximumCasesPerCluster) || gate.maximumCasesPerCluster < 1 || !Number.isInteger(gate.minimumDecisiveCases) || gate.minimumDecisiveCases < 1 || !Number.isFinite(gate.familywiseAlpha) || gate.familywiseAlpha <= 0 || gate.familywiseAlpha >= 1) throw new Error("Invalid formal-validation gate");
 }
 
 function round(value: number): number { return Math.round((value + Number.EPSILON) * 1e6) / 1e6; }
+function normalizedNumber(value: number): string { if (!Number.isFinite(value)) throw new Error("Formal mechanism values must be finite"); return String(round(value)); }

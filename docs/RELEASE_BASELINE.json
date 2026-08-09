@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "project": "mythicmons-team-lab",
+  "version": "1.1.0",
+  "runtime": {
+    "node": null
+  },
+  "inventory": {
+    "scripts": 234,
+    "smokeTests": 100
+  },
+  "versions": {
+    "AUTONOMOUS_RESEARCH_VERSION": "autonomous-research-v1.3-semantic-outcomes",
+    "FORMAL_VALIDATION_VERSION": "formal-validation-v1.6-clustered-independent-environments",
+    "AI_PIPELINE_VERSION": "ai-pipeline-v1.1-stage0-stage5"
+  },
+  "inputs": {
+    "package-lock.json": "5148892bb525025e4fdeac719d1476b23d9339caae3f56be274798bad2c7dcac",
+    "package.json": "99263780d5c9c06e02b4ad694331cf358b0d0e5c11c89da98a8f9da01dec3daf",
+    "src/ai/autonomousResearch.ts": "e3946e980d48e87981878e540ac6384b3828cd0f5e2ac1fe054bccd8e47d185a",
+    "src/ai/formalBattleCanaryAdapter.ts": "c9d5b062e4995a207fa8c125577ba3a656ddd05ff114c4cb447bc0c355875fd7",
+    "src/ai/formalCanaryControl.ts": "b3583b0340212b8f35e87c9c50fe003c8e2908f930173fba46b9d96378ba5859",
+    "src/ai/formalValidation.ts": "fe6b2d61f08c1a0ae923556cf53a29e672747805b471c2eed6a021048f58c23c",
+    "src/ai/formalValidationPortfolio.ts": "0368e516b906afdd42832403825e4b5a6dd7ae9c917a01705b6fc1536fbb0365",
+    "src/ai/pipelineControl.ts": "3a992fedce27e76439c60373767d9e222d1e94d58cd9f3dc1f42ef51f2ba7922",
+    "src/ai/semanticDecisionTrace.ts": "cf4eed27ccc2f0493f9f019abd272dc3586856872ec83c891bf0660f513c1e43",
+    "src/cli/aiPipeline.ts": "d06ca0a0977bf3fb98db8b0811dcd7c2083497c2cc3e973b04a3a0578673a0fd",
+    "src/cli/autonomousResearch.ts": "219928cb47c6647d9d4d3c19473adadfed03bf00722831db8037d0b01e26ec90",
+    "src/cli/formalCanaryControl.ts": "7b9f1e25eeee028ae05920d020ed6a9a8328b4f28123115d392273d512dd297d",
+    "src/cli/formalValidation.ts": "3ac7d4f16fb82d128bc5e8d905a31eb8bdb8c6e52e54a018ca5ca5985c32e81c",
+    "src/cli/toolingDoctor.ts": "65957044ed886f7775f22e62df868e3f7b817b18cef5b04c71e6ab2a9e7a4692",
+    "src/draft/dynastyStateStore.ts": "2df5fedcd8d234b147e59ac3f082ba83feac03aa43219406220bcbf9904bbe9e",
+    "src/draft/dynastyStorageMaintenance.ts": "39d603440e47a682496d57aa164af2e364e12266c75a719ef00dd73abb691a2b",
+    "src/draft/formalLeagueRuntime.ts": "b1f545876fff921a0bc801de7a676bcbbf94f7632aee3cef3590e6f88653caf1",
+    "tsconfig.json": "0f82dd1eea00bd6f4eb5b3f8878942f33530c2b8ce8315851a3d5509cb935646"
+  },
+  "sha256": "4df9328c44deaf2a2b29dc26dfe2003556eff4122f6d405b5c6c150166ca2884"
+}
