@@ -1,4 +1,4 @@
-export const FORMAL_VALIDATION_VERSION = "formal-validation-v1.0-prospective-multi-environment";
+export const FORMAL_VALIDATION_VERSION = "formal-validation-v1.4-conditional-mechanism-clusters";
 
 export type ValidationDirection = "better" | "neutral" | "worse";
 
@@ -41,6 +41,19 @@ export interface FormalValidationDomainResult {
   technicalIntegrity: boolean;
   disposition: "limited-canary-eligible" | "rejected" | "inconclusive" | "blocked";
   reasons: string[];
+}
+
+export function formalMechanismKey(input: {
+  target: string;
+  effect: number;
+  predicates: readonly {feature: string; operator: "gte" | "lt"}[];
+}): string {
+  const direction = input.effect > 0 ? "worse" : "better";
+  const condition = [...input.predicates]
+    .map(predicate => `${predicate.feature}-${predicate.operator}`)
+    .sort()
+    .join("+");
+  return `${input.target}__${direction}__${condition}`;
 }
 
 export function hasExactFormalValidationIntegrity(result: Pick<FormalValidationCaseResult, "sourceVerified" | "prefixVerified" | "interventionVerified">): boolean {

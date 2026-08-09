@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 import {spawn} from "node:child_process";
-import {FORMAL_VALIDATION_VERSION, evaluateFormalValidation, hasExactFormalValidationIntegrity, type FormalValidationCaseResult, type ValidationDirection} from "../ai/formalValidation";
+import {FORMAL_VALIDATION_VERSION, evaluateFormalValidation, formalMechanismKey, hasExactFormalValidationIntegrity, type FormalValidationCaseResult, type ValidationDirection} from "../ai/formalValidation";
 import {battleActionFamily} from "../ai/battleActionFamily";
 import {validateManagerProgramV2, type ManagerProgramRuleV2, type ManagerProgramV2} from "../ai/managerProgramV2";
 import type {AutonomousResearchManagerState} from "../ai/autonomousResearch";
@@ -29,12 +29,12 @@ const targetCases = integerOption("--cases-per-domain", 24, 8, 80), minimumPerEn
 interface BenchmarkIndex {id: string; format: string; benchmarks: Array<{id: string; team: string; archetype?: string}>}
 interface ProgramArchive {schemaVersion: 2; activationStatus: "shadow-only"; programs: ManagerProgramV2[]}
 interface FrozenHypothesis {managerId: string; rule: ManagerProgramRuleV2; discovery: {supports: number; contradictions: number; cases: number}}
-interface FrozenDomain {id: string; target: string; expectedDirection: "better" | "worse"; hypotheses: FrozenHypothesis[]}
+interface FrozenDomain {id: string; mechanismKey: string; target: string; expectedDirection: "better" | "worse"; hypotheses: FrozenHypothesis[]}
 interface Freeze {
   schemaVersion: 1; version: typeof FORMAL_VALIDATION_VERSION; authority: "validation-only-no-automatic-activation"; frozenAt: string;
   inputs: Record<string, Fingerprint>; inputSignature: string; evidenceEpoch: {policySha256: string; registryHash: string; configurationPolicyVersion: string};
   environments: readonly string[]; domains: FrozenDomain[]; exclusions: {stage4SourceFingerprints: string[]}; benchmarkTeamSetSha256?: string;
-  gate: {targetCases: number; minimumCasesPerEnvironment: number; minimumDecisiveCases: number; familywiseAlpha: number; maximumCasesPerBattle: 1; zeroUnresolvedTechnicalFailures: true}; sha256: string;
+  gate: {targetCases: number; minimumCasesPerEnvironment: number; minimumDecisiveCases: number; familywiseAlpha: number; sourceSeedLayers: number; sourceMaxTurns: number; maximumCasesPerBattle: 1; zeroUnresolvedTechnicalFailures: true}; sha256: string;
 }
 interface Fingerprint {file: string; sha256: string; bytes: number}
 interface SourceRun {id: string; environment: string; pair: string; orientation: number; game: string; status: "complete" | "failed"; startedAt: string; completedAt: string; replaySha256?: string; decisionsSha256?: string; sourceFingerprint?: string; error?: string}
@@ -64,7 +64,7 @@ async function cycle(): Promise<Record<string, unknown>> {
     runState("running");
     const freeze = loadOrCreateFreeze();
     phase = "prospective-sources"; const manifests: SourceManifest[] = [];
-    for (const environment of environments) manifests.push(await generateEnvironment(freeze, environment, value => { current = value; peakRssBytes = Math.max(peakRssBytes, process.memoryUsage().rss); runState("running"); }));
+    for (const environment of environments) manifests.push(freeze.domains.length ? await generateEnvironment(freeze, environment, value => { current = value; peakRssBytes = Math.max(peakRssBytes, process.memoryUsage().rss); runState("running"); }) : writeEmptyEnvironment(freeze, environment));
     validateFreezeBindings(freeze);
     phase = "frontier"; current = null; const frontier = buildFrontier(freeze, manifests); peakRssBytes = Math.max(peakRssBytes, process.memoryUsage().rss);
     phase = "plan"; const plan = loadOrBuildPlan(freeze, frontier);
@@ -90,16 +90,17 @@ function loadOrCreateFreeze(): Freeze {
   for (const state of states) for (const ruleId of new Set(state.observations.map(value => value.ruleId))) {
     const observations = state.observations.filter(value => value.ruleId === ruleId), supports = observations.filter(value => value.supportsHypothesis).length, contradictions = observations.filter(value => value.direction !== "neutral" && !value.supportsHypothesis).length;
     if (!supports || contradictions) continue; const rule = programByManager.get(state.managerId)?.rules.find(value => value.id === ruleId); if (!rule) throw new Error(`Stage-4 rule is missing from Stage 3: ${state.managerId}/${ruleId}`);
-    grouped.set(rule.target, [...(grouped.get(rule.target) ?? []), {managerId: state.managerId, rule: structuredClone(rule), discovery: {supports, contradictions, cases: observations.length}}]);
+    const mechanismKey = formalMechanismKey(rule);
+    grouped.set(mechanismKey, [...(grouped.get(mechanismKey) ?? []), {managerId: state.managerId, rule: structuredClone(rule), discovery: {supports, contradictions, cases: observations.length}}]);
   }
-  const domains: FrozenDomain[] = [...grouped].filter(([, hypotheses]) => hypotheses.length >= 2).map(([target, hypotheses]) => {
+  const domains: FrozenDomain[] = [...grouped].filter(([, hypotheses]) => new Set(hypotheses.map(value => value.managerId)).size >= 2).map(([mechanismKey, hypotheses]) => {
+    const target = hypotheses[0].rule.target;
     const directions = new Set(hypotheses.map(value => value.rule.effect > 0 ? "worse" : "better")); if (directions.size !== 1) throw new Error(`Mixed expected directions in formal domain: ${target}`);
-    return {id: `battle-${target}`, target, expectedDirection: [...directions][0] as "better" | "worse", hypotheses: hypotheses.sort((a, b) => a.managerId.localeCompare(b.managerId))};
+    return {id: `battle-${mechanismKey}`, mechanismKey, target, expectedDirection: [...directions][0] as "better" | "worse", hypotheses: hypotheses.sort((a, b) => a.managerId.localeCompare(b.managerId))};
   }).sort((a, b) => a.id.localeCompare(b.id));
-  if (!domains.length) throw new Error("Stage 4 produced no clean multi-manager domain eligible for prospective validation");
   const registry = validateRegistryDirectory(registryRoot), epoch = buildEvidenceEpoch(AI_VERSION, read<BenchmarkIndex>(indexFile).format, {registryHash: registry.hash, configurationPolicyVersion: LEAGUE_CONFIGURATION_POLICY_VERSION});
   const discoverySources = new Set(states.flatMap(state => state.observations.map(value => value.sourceFingerprint)));
-  const core = {schemaVersion: 1 as const, version: FORMAL_VALIDATION_VERSION as typeof FORMAL_VALIDATION_VERSION, authority: "validation-only-no-automatic-activation" as const, frozenAt: new Date().toISOString(), inputs, inputSignature: canonicalSha(inputs), evidenceEpoch: {policySha256: epoch.policySha256, registryHash: registry.hash, configurationPolicyVersion: LEAGUE_CONFIGURATION_POLICY_VERSION}, environments, domains, exclusions: {stage4SourceFingerprints: [...discoverySources].sort()}, benchmarkTeamSetSha256: benchmarkTeamSetSha256(inputs), gate: {targetCases, minimumCasesPerEnvironment: minimumPerEnvironment, minimumDecisiveCases: 6, familywiseAlpha: .1, maximumCasesPerBattle: 1 as const, zeroUnresolvedTechnicalFailures: true as const}};
+  const core = {schemaVersion: 1 as const, version: FORMAL_VALIDATION_VERSION as typeof FORMAL_VALIDATION_VERSION, authority: "validation-only-no-automatic-activation" as const, frozenAt: new Date().toISOString(), inputs, inputSignature: canonicalSha(inputs), evidenceEpoch: {policySha256: epoch.policySha256, registryHash: registry.hash, configurationPolicyVersion: LEAGUE_CONFIGURATION_POLICY_VERSION}, environments, domains, exclusions: {stage4SourceFingerprints: [...discoverySources].sort()}, benchmarkTeamSetSha256: benchmarkTeamSetSha256(inputs), gate: {targetCases, minimumCasesPerEnvironment: minimumPerEnvironment, minimumDecisiveCases: 6, familywiseAlpha: .1, sourceSeedLayers: 5, sourceMaxTurns: 120, maximumCasesPerBattle: 1 as const, zeroUnresolvedTechnicalFailures: true as const}};
   const freeze: Freeze = {...core, sha256: canonicalSha(core)}; validateFreezeBindings(freeze); atomicJson(file, freeze); return freeze;
 }
 
@@ -109,13 +110,13 @@ async function generateEnvironment(freeze: Freeze, environment: typeof environme
   const prior = optional<SourceManifest>(manifestFile); if (prior?.complete) { validateSourceManifest(prior, freeze, environment, true); return prior; }
   const index = read<BenchmarkIndex>(indexFile), base = path.dirname(indexFile), teams = index.benchmarks.map(value => ({...value, packed: loadTeam(path.join(base, value.team)).packed}));
   const runs = prior?.runs ?? [], known = new Map(runs.map(value => [value.id, value])), jobs: Array<{id: string; left: number; right: number; orientation: number; seedLayer: number}> = [];
-  for (let left = 0; left < teams.length; left += 1) for (let right = left + 1; right < teams.length; right += 1) for (let orientation = 0; orientation < 2; orientation += 1) for (let seedLayer = 1; seedLayer <= 2; seedLayer += 1) jobs.push({id: `${teams[left].id}--${teams[right].id}--o${orientation + 1}--s${seedLayer}`, left, right, orientation, seedLayer});
+  for (let left = 0; left < teams.length; left += 1) for (let right = left + 1; right < teams.length; right += 1) for (let orientation = 0; orientation < 2; orientation += 1) for (let seedLayer = 1; seedLayer <= freeze.gate.sourceSeedLayers; seedLayer += 1) jobs.push({id: `${teams[left].id}--${teams[right].id}--o${orientation + 1}--s${seedLayer}`, left, right, orientation, seedLayer});
   let cursor = 0; const worker = async () => { while (cursor < jobs.length) {
     const job = jobs[cursor++]; if (known.get(job.id)?.status === "complete") continue; progress(`${environment}:${job.id}`); const startedAt = new Date().toISOString(), parent = path.join(directory, "battles", job.id), game = path.join(parent, "game-0001");
     try {
       if (known.get(job.id)?.status === "failed" && path.resolve(game).startsWith(`${path.resolve(directory)}${path.sep}`)) fs.rmSync(game, {recursive: true, force: true});
       const first = teams[job.orientation ? job.right : job.left], second = teams[job.orientation ? job.left : job.right], profileOffset = environment === "balanced" ? 0 : 2;
-      const result = await runBattle({format: index.format, teamA: first.packed, teamB: second.packed, seed: `${freeze.sha256}:${environment}:${job.id}`, gameIndex: 0, outDir: parent, maxTurns: 80, idleTimeoutMs: 10000, wallClockTimeoutMs: 60000, ai: "search", openTeamSheets: true, traceAiDecisions: true, aiProfiles: {p1: {...profiles[(job.left + job.right + profileOffset + job.seedLayer) % profiles.length], id: `${profiles[(job.left + job.right + profileOffset + job.seedLayer) % profiles.length].id}-p1` as string} as any, p2: {...profiles[(job.left * 3 + job.right + profileOffset + job.seedLayer + 1) % profiles.length], id: `${profiles[(job.left * 3 + job.right + profileOffset + job.seedLayer + 1) % profiles.length].id}-p2` as string} as any}, evidenceContext: {registryHash: freeze.evidenceEpoch.registryHash, configurationPolicyVersion: freeze.evidenceEpoch.configurationPolicyVersion}});
+      const result = await runBattle({format: index.format, teamA: first.packed, teamB: second.packed, seed: `${freeze.sha256}:${environment}:${job.id}`, gameIndex: 0, outDir: parent, maxTurns: freeze.gate.sourceMaxTurns, idleTimeoutMs: 10000, wallClockTimeoutMs: 60000, ai: "search", openTeamSheets: true, traceAiDecisions: true, aiProfiles: {p1: {...profiles[(job.left + job.right + profileOffset + job.seedLayer) % profiles.length], id: `${profiles[(job.left + job.right + profileOffset + job.seedLayer) % profiles.length].id}-p1` as string} as any, p2: {...profiles[(job.left * 3 + job.right + profileOffset + job.seedLayer + 1) % profiles.length], id: `${profiles[(job.left * 3 + job.right + profileOffset + job.seedLayer + 1) % profiles.length].id}-p2` as string} as any}, evidenceContext: {registryHash: freeze.evidenceEpoch.registryHash, configurationPolicyVersion: freeze.evidenceEpoch.configurationPolicyVersion}});
       const validAdjudication = result.timeout && result.adjudication?.rule === "remaining-pokemon-then-hp" && Boolean(result.winner);
       if (!result.ended || result.stalled && !validAdjudication || result.timeout && !validAdjudication || result.errors.length) throw new Error(`unclean battle ended=${result.ended} stalled=${result.stalled} timeout=${result.timeout} adjudicated=${validAdjudication} errors=${result.errors.length}`);
       const replay = path.join(game, "replay-input.json"), decisions = path.join(game, "ai-decisions.json"), replaySha256 = shaFile(replay), decisionsSha256 = shaFile(decisions), sourceFingerprint = digest([replaySha256, decisionsSha256]);
@@ -127,6 +128,12 @@ async function generateEnvironment(freeze: Freeze, environment: typeof environme
   const failed = [...known.values()].filter(value => value.status === "failed"); if (failed.length) throw new Error(`${environment} prospective source generation failed for ${failed.length} battle(s)`);
   return writeSourceManifest(true);
   function writeSourceManifest(complete: boolean): SourceManifest { const core = {schemaVersion: 1 as const, version: FORMAL_VALIDATION_VERSION as typeof FORMAL_VALIDATION_VERSION, freezeSha256: freeze.sha256, environment, runs: [...known.values()].sort((a, b) => a.id.localeCompare(b.id)), complete}; const manifest: SourceManifest = {...core, sha256: canonicalSha(core)}; atomicJson(manifestFile, manifest); return manifest; }
+}
+
+function writeEmptyEnvironment(freeze: Freeze, environment: typeof environments[number]): SourceManifest {
+  const directory = path.join(out, "sources", environment), file = path.join(directory, "manifest.json"); fs.mkdirSync(directory, {recursive: true});
+  const core = {schemaVersion: 1 as const, version: FORMAL_VALIDATION_VERSION as typeof FORMAL_VALIDATION_VERSION, freezeSha256: freeze.sha256, environment, runs: [] as SourceRun[], complete: true};
+  const manifest: SourceManifest = {...core, sha256: canonicalSha(core)}; atomicJson(file, manifest); return manifest;
 }
 
 function buildFrontier(freeze: Freeze, manifests: SourceManifest[]): FrontierRow[] {
@@ -230,8 +237,8 @@ function inspect(domainId: string): Record<string, unknown> { const freeze = rea
 
 function validateFreeze(value: Freeze): void {
   const {sha256, ...core} = value;
-  if (value.schemaVersion !== 1 || value.version !== FORMAL_VALIDATION_VERSION || value.authority !== "validation-only-no-automatic-activation" || canonicalSha(core) !== sha256 || canonicalSha(value.inputs) !== value.inputSignature || !Number.isFinite(Date.parse(value.frozenAt)) || JSON.stringify(value.environments) !== JSON.stringify(environments) || !value.domains.length || new Set(value.domains.map(domain => domain.id)).size !== value.domains.length || !Number.isInteger(value.gate.targetCases) || value.gate.targetCases < 1 || !Number.isInteger(value.gate.minimumCasesPerEnvironment) || value.gate.minimumCasesPerEnvironment < 1 || value.gate.minimumCasesPerEnvironment * value.environments.length < value.gate.targetCases || value.gate.maximumCasesPerBattle !== 1 || value.gate.zeroUnresolvedTechnicalFailures !== true || new Set(value.exclusions.stage4SourceFingerprints).size !== value.exclusions.stage4SourceFingerprints.length) throw new Error("Invalid formal-validation freeze");
-  for (const domain of value.domains) { if (domain.id !== `battle-${domain.target}` || !domain.hypotheses.length || new Set(domain.hypotheses.map(hypothesis => `${hypothesis.managerId}:${hypothesis.rule.id}`)).size !== domain.hypotheses.length || domain.hypotheses.some(hypothesis => hypothesis.rule.target !== domain.target || (hypothesis.rule.effect > 0 ? "worse" : "better") !== domain.expectedDirection)) throw new Error(`Invalid frozen domain: ${domain.id}`); }
+  if (value.schemaVersion !== 1 || value.version !== FORMAL_VALIDATION_VERSION || value.authority !== "validation-only-no-automatic-activation" || canonicalSha(core) !== sha256 || canonicalSha(value.inputs) !== value.inputSignature || !Number.isFinite(Date.parse(value.frozenAt)) || JSON.stringify(value.environments) !== JSON.stringify(environments) || new Set(value.domains.map(domain => domain.id)).size !== value.domains.length || !Number.isInteger(value.gate.targetCases) || value.gate.targetCases < 1 || !Number.isInteger(value.gate.minimumCasesPerEnvironment) || value.gate.minimumCasesPerEnvironment < 1 || value.gate.minimumCasesPerEnvironment * value.environments.length < value.gate.targetCases || !Number.isInteger(value.gate.sourceSeedLayers) || value.gate.sourceSeedLayers < 1 || value.gate.sourceSeedLayers > 8 || !Number.isInteger(value.gate.sourceMaxTurns) || value.gate.sourceMaxTurns < 20 || value.gate.sourceMaxTurns > 500 || value.gate.maximumCasesPerBattle !== 1 || value.gate.zeroUnresolvedTechnicalFailures !== true || new Set(value.exclusions.stage4SourceFingerprints).size !== value.exclusions.stage4SourceFingerprints.length) throw new Error("Invalid formal-validation freeze");
+  for (const domain of value.domains) { if (domain.mechanismKey !== formalMechanismKey(domain.hypotheses[0].rule) || domain.id !== `battle-${domain.mechanismKey}` || !domain.hypotheses.length || new Set(domain.hypotheses.map(hypothesis => `${hypothesis.managerId}:${hypothesis.rule.id}`)).size !== domain.hypotheses.length || new Set(domain.hypotheses.map(hypothesis => hypothesis.managerId)).size < 2 || domain.hypotheses.some(hypothesis => hypothesis.rule.target !== domain.target || formalMechanismKey(hypothesis.rule) !== domain.mechanismKey || (hypothesis.rule.effect > 0 ? "worse" : "better") !== domain.expectedDirection)) throw new Error(`Invalid frozen domain: ${domain.id}`); }
 }
 function validateFreezeBindings(value: Freeze, archivedGeneration = false): void {
   if (archivedGeneration) { for (const [key, entry] of Object.entries(value.inputs)) if (!key || !path.isAbsolute(entry.file) || !/^[a-f0-9]{64}$/i.test(entry.sha256) || !Number.isInteger(entry.bytes) || entry.bytes < 0) throw new Error(`Invalid archived formal-validation input: ${key}`); const teamKeys = Object.keys(value.inputs).filter(key => key.startsWith("benchmarkTeam:")); if (teamKeys.length && value.benchmarkTeamSetSha256 !== benchmarkTeamSetSha256(value.inputs)) throw new Error("Archived formal-validation benchmark team set drifted"); return; }

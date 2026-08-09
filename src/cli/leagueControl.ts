@@ -137,6 +137,7 @@ function resume(startNext: boolean): void {
     commandArgs = manifestArgs(manifest);
   }
   if (args.includes("--allow-code-upgrade")) commandArgs.push("--allow-code-upgrade");
+  if (args.includes("--allow-dependency-upgrade")) commandArgs.push("--allow-dependency-upgrade");
   if (!args.includes("--dry-run")) clearStaleLocks();
   if (fs.existsSync(pauseFile) && !args.includes("--dry-run")) fs.rmSync(pauseFile, {force: true});
   if (args.includes("--dry-run")) { console.log(JSON.stringify({command: "official-season-cycle", args: commandArgs}, null, 2)); return; }
@@ -186,4 +187,4 @@ function safeJson<T>(file: string): T | null { try { return read<T>(file); } cat
 function read<T>(file: string): T { return JSON.parse(fs.readFileSync(file, "utf8")) as T; }
 function atomicJson(file: string, value: unknown): void { fs.mkdirSync(path.dirname(file), {recursive: true}); const temporary = `${file}.${process.pid}.tmp`; fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, "utf8"); fs.renameSync(temporary, file); }
 function option(name: string, fallback: string): string { const index = args.indexOf(name); return index >= 0 ? args[index + 1] ?? fallback : fallback; }
-function usage(): never { console.error("Usage: npm run league -- <status|doctor|pause|resume|next|report> [--out DIR] [--json] [--dry-run]"); process.exit(2); }
+function usage(): never { console.error("Usage: npm run league -- <status|doctor|pause|resume|next|report> [--out DIR] [--json] [--dry-run] [--allow-code-upgrade] [--allow-dependency-upgrade]"); process.exit(2); }

@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "package": "mythicmons-team-lab-portable",
   "packageVersion": "1.1.0",
-  "createdAt": "2026-08-09T03:00:04.223Z",
+  "createdAt": "2026-08-09T03:56:29.704Z",
   "aiVersion": "stateful-choice-v16-no-tera-dynamax-v1",
   "savedTeamCount": 42,
   "requiresFirstRunNpmCi": true,
@@ -31,8 +31,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 20818,
-      "sha256": "8d577b986ea2ce04a296f8285ed38a40140e1365c06c5d41ccfa6ab30b808c39"
+      "bytes": 20900,
+      "sha256": "6b3c8f40dce5b2e522b06794906380b9781a637005350e723b97008f1ce17360"
     },
     {
       "path": "benchmarks/gen9expanded/balanced-core.txt",
@@ -206,8 +206,8 @@
     },
     {
       "path": "docs/CURRENT_STATUS_AND_ROADMAP.md",
-      "bytes": 22335,
-      "sha256": "8ece3a7212bd2b45b0eda3d56378db91a7e8fc6fe00ecb164a39f3dd1ab2d807"
+      "bytes": 23064,
+      "sha256": "868a687893f5ee0c299201c12110a4f2f6923de0fe6b88bf8a6049a8f5c23ce5"
     },
     {
       "path": "docs/DECISION_DOSSIERS.md",
@@ -371,8 +371,8 @@
     },
     {
       "path": "src/ai/formalValidation.ts",
-      "bytes": 6966,
-      "sha256": "b711619981865f752f2f7b4ea13495c37d0ca59d0ca394aaa3e59bc990631889"
+      "bytes": 7384,
+      "sha256": "ecc409b446e756caf323120529e600efd9aaf1c679c742b0633eb8086c8c0225"
     },
     {
       "path": "src/ai/managerMechanismLedger.ts",
@@ -386,8 +386,8 @@
     },
     {
       "path": "src/ai/managerProgramV2.ts",
-      "bytes": 17175,
-      "sha256": "b017bace3ee527335f93d2100a6c9cb63e96a6c8047672ad9a0794d528718c4d"
+      "bytes": 18000,
+      "sha256": "ce78c741c203bbb5273618c1009da1dc8e5410b919a45da6ff11013308ea3646"
     },
     {
       "path": "src/ai/managerResearchAgenda.ts",
@@ -711,8 +711,8 @@
     },
     {
       "path": "src/cli/aiPipeline.ts",
-      "bytes": 38960,
-      "sha256": "af1e4a6eaafeada36da3834393c2518bf714e09630498b655aff3d24091103e5"
+      "bytes": 38970,
+      "sha256": "430787483c96f71b5ef663d249b614f45571e43ab477686209d45e8541e98798"
     },
     {
       "path": "src/cli/applyDevelopmentPromotion.ts",
@@ -936,8 +936,8 @@
     },
     {
       "path": "src/cli/draftLeagueV4.ts",
-      "bytes": 112236,
-      "sha256": "1b8dd187eddcfbed0f12744ecfc65c8a32d0021291de57590234a06ca7334081"
+      "bytes": 113036,
+      "sha256": "284f3ee2c13e1b171074833ec742bc013eba2746678c13d2f7632c4910ae0367"
     },
     {
       "path": "src/cli/draftLeagueV9.ts",
@@ -981,8 +981,8 @@
     },
     {
       "path": "src/cli/formalValidation.ts",
-      "bytes": 59455,
-      "sha256": "83bef965cff43d0541a06961f2d1c5f14db1569e7987226e24f71dfdae5177d0"
+      "bytes": 60756,
+      "sha256": "b15a5f1399bafa4b8fc8e127a645d1c6edef2332f745a2c8610e916aa5326c70"
     },
     {
       "path": "src/cli/freezeBattleFrontierHoldout.ts",
@@ -1021,8 +1021,8 @@
     },
     {
       "path": "src/cli/leagueControl.ts",
-      "bytes": 21777,
-      "sha256": "d0b35a39a27521a53f03d9dc6afda8c4064e259f43861f7236c1ebd88c24d1c5"
+      "bytes": 21926,
+      "sha256": "fa022ed6987ba6bc68842fdaa1ccaee12005945b904e417ebec7123c748d6089"
     },
     {
       "path": "src/cli/learnProgramDecisionLabels.ts",
@@ -1056,8 +1056,8 @@
     },
     {
       "path": "src/cli/managerProgramV2.ts",
-      "bytes": 22632,
-      "sha256": "0bd7f057e11211b6b7eaae894ced02730126e1ed5623ffb91f232498cc8b3d00"
+      "bytes": 22655,
+      "sha256": "4898b8f53561e4b8d57d931cea91afbc14e43bb2939f0944733eeb714738ecad"
     },
     {
       "path": "src/cli/managerResearchAgendas.ts",
@@ -1186,8 +1186,8 @@
     },
     {
       "path": "src/cli/runOfficialSeasonCycle.ts",
-      "bytes": 24667,
-      "sha256": "2ca1393094adfd762d3d17a7be3609ce9b4e883522c2529117837222babac310"
+      "bytes": 24895,
+      "sha256": "0e273c765b6acabb6250d3965e65ee6ff5bc6b3342688d07b611efe4613341ea"
     },
     {
       "path": "src/cli/sampleAcademyContractCounterfactuals.ts",
@@ -1286,8 +1286,8 @@
     },
     {
       "path": "src/cli/toolingDoctor.ts",
-      "bytes": 18402,
-      "sha256": "f2a4a64f0c0f39d70faa2e7201cb051d9345b3212918a8d39411123b53702815"
+      "bytes": 19398,
+      "sha256": "50b90cb766d316507e1f5888716584542af9c72af815a34424da4f22e210cac3"
     },
     {
       "path": "src/cli/unifiedWhiteBoxEvidence.ts",
@@ -1371,8 +1371,8 @@
     },
     {
       "path": "src/draft/decisionDossierStore.ts",
-      "bytes": 41213,
-      "sha256": "d8437b0d3974cfa0b8f876084b496da652bf68346ff2771bbf5a2e4101436a80"
+      "bytes": 41671,
+      "sha256": "6fda2102073388010527be17b2bd05f77ec5f498dd7f7b8c3aa09946026d16f2"
     },
     {
       "path": "src/draft/decisionLedger.ts",
@@ -1611,8 +1611,8 @@
     },
     {
       "path": "src/tests/aiPipelineCliSmoke.ts",
-      "bytes": 10467,
-      "sha256": "26b35bc9dcfb2fbc52a9382fa6430617df53f796fc5e423c5849f8812b66b93b"
+      "bytes": 10668,
+      "sha256": "c69c02b11077a76c8e22b6c3445776470fc41644b1f7cded8b21f1d8718e0fa0"
     },
     {
       "path": "src/tests/autonomousResearchSmoke.ts",
@@ -1726,8 +1726,8 @@
     },
     {
       "path": "src/tests/formalValidationSmoke.ts",
-      "bytes": 1929,
-      "sha256": "fe7c6fd0a8aa9dd605b5628130dab347fc028e64fd88d01eb4bae145f2c88144"
+      "bytes": 2519,
+      "sha256": "ee4212ff5451c592e560f3ea22bd571703fccf0a2dd392bb08ea651a63a27dae"
     },
     {
       "path": "src/tests/freezeLineupDeploymentResearchSmoke.ts",
@@ -1856,8 +1856,8 @@
     },
     {
       "path": "src/tests/managerProgramV2Smoke.ts",
-      "bytes": 2651,
-      "sha256": "3d2a95a8da33f349bfd41932741c65c2481e2a1efecf1b3cf89a5d297042df3d"
+      "bytes": 3232,
+      "sha256": "2946b19618f2de60ed08a6eef82e40f2a326467da59a7e4e6c8f3f8033d6fc4f"
     },
     {
       "path": "src/tests/managerResearchAgendaSmoke.ts",

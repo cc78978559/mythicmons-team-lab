@@ -8,7 +8,7 @@ assert.equal(evaluateManagerProgramV2(novice, "battle", "switch", {pressure: .9}
 const samples = (prefix: string, count: number): ManagerProgramSampleV2[] => Array.from({length: count}, (_, index) => {
   const pressure = (index % 20) / 19, action = index % 2 ? "switch" : "physical-attack";
   const localValueDelta = action === "switch" && pressure >= .5 ? .24 : action === "switch" ? -.12 : pressure >= .5 ? -.08 : .05;
-  return {id: `${prefix}-${index}`, battleId: `${prefix}-battle-${Math.floor(index / 2)}`, clusterId: `${prefix}-cluster-${Math.floor(index / 8)}`, action, features: {pressure, turnProgress: (index % 10) / 10}, localValueDelta, authority: "local-value-observational"};
+  return {id: `${prefix}-${index}`, battleId: `${prefix}-battle-${Math.floor(index / 2)}`, clusterId: `${prefix}-cluster-${Math.floor(index / 8)}`, domain: "battle" as const, action, features: {pressure, turnProgress: (index % 10) / 10}, localValueDelta, authority: "local-value-observational" as const};
 });
 const discovery = samples("discovery", 240), validation = samples("validation", 120);
 const first = evolveManagerProgramV2({program: novice, discovery, validation, seed: "manager-v2-smoke", revisions: 6});
@@ -26,4 +26,7 @@ assert(favorable.matchedRules.length > 0);
 assert.equal(favorable.programHash, managerProgramV2Hash(first.program));
 assert(managerProgramV2Behavior(first.program).targets.includes("switch"));
 assert.throws(() => evaluateManagerProgramV2(first.program, "battle", "switch", {pressure: Number.NaN}), /Invalid manager-program/);
+const multidomain = structuredClone(novice); multidomain.rules.push({id: "lineup-rule", domain: "lineup", target: "candidate", predicates: [{feature: "answerDepth", operator: "gte", threshold: 2}], effect: .2, support: 24, uncertainty: .1, authority: "local-value-observational", evidenceIds: []}); validateManagerProgramV2(multidomain);
+assert.equal(evaluateManagerProgramV2(multidomain, "lineup", "candidate", {answerDepth: 3}).value, .2);
+assert.equal(evaluateManagerProgramV2(multidomain, "battle", "candidate", {answerDepth: 3}).value, 0);
 console.log("Manager Program V2 smoke passed: novice origin, autonomous conditional discovery, validation gate, replay, and bounded traces");

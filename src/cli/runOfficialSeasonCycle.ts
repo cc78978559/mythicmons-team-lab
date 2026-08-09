@@ -131,6 +131,7 @@ function nextSeason(): void {
     const settings = current.settings, env = {...process.env,
       V12_OUT: majorRoot, V12_SEED: current.seed, V12_SEASONS: String(target), V12_RESUME: "true",
       V12_ALLOW_CODE_UPGRADE: args.includes("--allow-code-upgrade") ? "true" : "false",
+      V12_ALLOW_DEPENDENCY_UPGRADE: args.includes("--allow-dependency-upgrade") ? "true" : "false",
       V12_MANAGER_LIMIT: String(settings.managerLimit), V12_PAIRS: String(settings.pairs), V12_POOL_SIZE: String(settings.poolSize), V12_AUCTION_LOTS: String(settings.auctionLots), V12_REGULAR_ROUNDS: String(settings.regularRounds), V12_MAX_TURNS: String(settings.maxTurns), V12_MIN_ROSTER: String(settings.minRoster ?? 6), V12_MAX_ROSTER: String(settings.maxRoster ?? 10), V12_BASE_CASH: String(settings.baseBudget ?? 40),
       V12_EVOLUTION_MODE: String(settings.evolutionMode ?? "punctuated"), V12_EVOLUTION_POLICY: String(settings.evolutionPolicy ?? "shadow"), V12_EVOLUTION_MAX_BURSTS: String(settings.evolutionMaxBursts ?? 2), V12_EVOLUTION_MIN_CANDIDATES: String(settings.evolutionMinCandidates ?? 4), V12_EVOLUTION_MAX_CANDIDATES: String(settings.evolutionMaxCandidates ?? 8), V12_EVIDENCE_RETENTION: "compact", V12_EVIDENCE_SAMPLE_RATE: "0",
     };
@@ -166,9 +167,9 @@ function preflight(): never {
   const historyPath = historyLedger, history = historyPath && fs.existsSync(historyPath) ? read<any>(historyPath) : null;
   const expectedGlobalSeason = state.completedSeason + offset, historyLatest = history ? Math.max(0, ...(history.seasons ?? []).map((entry: any) => Number(entry.globalSeason))) : null;
   const historyStatus = !historyPath ? "not-configured" : !history ? "missing" : historyLatest === expectedGlobalSeason ? "current" : `expected-${expectedGlobalSeason}-found-${historyLatest}`;
-  const storage = storageGate("preflight", developmentStatus === "complete" ? developmentOut : undefined), codeUpgradeRequested = args.includes("--allow-code-upgrade");
-  const ready = auditClean && (auditMatchesCurrentRuntime || codeUpgradeRequested) && developmentStatus !== "incomplete" && previousStatus !== "invalid" && historyStatus === (historyPath ? "current" : "not-configured");
-  const result = {ready, cycleId, boundary: {internalSeason: state.completedSeason, globalSeason: expectedGlobalSeason, nextInternalSeason: state.completedSeason + 1, nextGlobalSeason: expectedGlobalSeason + 1}, audit: {clean: auditClean, matchesCurrentRuntime: auditMatchesCurrentRuntime, codeUpgradeRequested}, development: {target: developmentOut, status: developmentStatus, previous: previousDevelopment ?? null, previousStatus}, history: {path: historyPath ?? null, status: historyStatus}, storage};
+  const storage = storageGate("preflight", developmentStatus === "complete" ? developmentOut : undefined), codeUpgradeRequested = args.includes("--allow-code-upgrade"), dependencyUpgradeRequested = args.includes("--allow-dependency-upgrade");
+  const ready = auditClean && (auditMatchesCurrentRuntime || codeUpgradeRequested || dependencyUpgradeRequested) && developmentStatus !== "incomplete" && previousStatus !== "invalid" && historyStatus === (historyPath ? "current" : "not-configured");
+  const result = {ready, cycleId, boundary: {internalSeason: state.completedSeason, globalSeason: expectedGlobalSeason, nextInternalSeason: state.completedSeason + 1, nextGlobalSeason: expectedGlobalSeason + 1}, audit: {clean: auditClean, matchesCurrentRuntime: auditMatchesCurrentRuntime, codeUpgradeRequested, dependencyUpgradeRequested}, development: {target: developmentOut, status: developmentStatus, previous: previousDevelopment ?? null, previousStatus}, history: {path: historyPath ?? null, status: historyStatus}, storage};
   fs.writeSync(process.stdout.fd, `${JSON.stringify(result, null, 2)}\n`, undefined, "utf8"); process.exit(ready ? 0 : 2);
 }
 

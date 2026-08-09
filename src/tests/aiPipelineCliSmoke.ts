@@ -32,6 +32,7 @@ try {
   const resume = invoke("resume", "--dry-run"); assert.deepEqual(resume.planned.map((value: any) => value.stage), ["stage4", "stage5"]);
   const numeric = invoke("run", "--stage", "5", "--force", "--dry-run"); assert.deepEqual(numeric.planned.map((value: any) => value.stage), ["stage5"]);
   write(path.join(tooling, "autonomous-research-stage4-delivery-v2", "run-state.json"), {status: "complete"}); const forced = invoke("run", "--force", "--dry-run"); assert.deepEqual(forced.planned.map((value: any) => value.stage), ["stage1", "stage2", "stage3", "stage4", "stage5"]);
+  const namedRange = invoke("run", "--from", "stage1", "--to", "stage3", "--force", "--dry-run"); assert.deepEqual(namedRange.planned.map((value: any) => value.stage), ["stage1", "stage2", "stage3"]);
   console.log("AI pipeline CLI smoke passed: compact index, invalidation, downstream blocking, and checkpoint-free resume planning");
 } finally { fs.rmSync(fixture, {recursive: true, force: true}); }
 

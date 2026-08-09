@@ -11,7 +11,7 @@ import {AI_VERSION} from "../showdown/choice";
 import {buildEvidenceEpoch, canonicalJson, sha256} from "../showdown/evidenceEpoch";
 
 const STORE_SCHEMA_VERSION = 1;
-const DOSSIER_POLICY_VERSION = "decision-dossier-v1.4-position-context";
+const DOSSIER_POLICY_VERSION = "decision-dossier-v1.5-current-era-coverage";
 
 export interface DecisionDossierBuildOptions {
   leagueDirectory: string;
@@ -35,7 +35,7 @@ export interface DecisionDossierSummary {
   battleDecisions: number;
   leagueDecisions: number;
   managers: number;
-  battleCoverage: {artifacts: number; fullTraceBattles: number; keySummaryBattles: number; overlappingBattles: number; representedBattles: number; unrepresentedBattles: number};
+  battleCoverage: {artifacts: number; fullTraceBattles: number; currentEraFullTraceBattles: number; keySummaryBattles: number; overlappingBattles: number; representedBattles: number; unrepresentedBattles: number};
   evidence: Record<string, number>;
   formalActivationAllowed: number;
   outcomeAuthority: "terminal-observational";
@@ -147,7 +147,8 @@ export function buildDecisionDossiers(options: DecisionDossierBuildOptions): Dec
       COUNT(DISTINCT CASE WHEN actor GLOB 'manager-[0-9][0-9]' AND LENGTH(actor)=10 THEN actor END) managers,
       SUM(formal_activation_allowed) formal_allowed,
       SUM(CASE WHEN outcome_status='terminal-observational' THEN 1 ELSE 0 END) full_trace_decisions,
-      SUM(CASE WHEN outcome_status='terminal-observational' THEN formal_activation_allowed ELSE 0 END) formal_full_trace FROM decisions`).get() as any;
+      SUM(CASE WHEN outcome_status='terminal-observational' AND evidence_compatibility='exact-compatible' THEN 1 ELSE 0 END) current_full_trace,
+      SUM(CASE WHEN outcome_status='terminal-observational' AND evidence_compatibility='exact-compatible' THEN formal_activation_allowed ELSE 0 END) formal_current_full_trace FROM decisions`).get() as any;
     const evidenceRows = db.prepare("SELECT evidence_compatibility compatibility, COUNT(*) count FROM decisions GROUP BY evidence_compatibility").all() as Array<{compatibility: string; count: number}>;
     const sourceRows = db.prepare("SELECT source_path, fingerprint FROM sources ORDER BY source_path").all() as Array<{source_path: string; fingerprint: string}>;
     const seasons = [...new Set(descriptors.map(source => source.season))].sort((a, b) => a - b);
@@ -157,15 +158,16 @@ export function buildDecisionDossiers(options: DecisionDossierBuildOptions): Dec
     const evidence = Object.fromEntries(evidenceRows.map(row => [row.compatibility, Number(row.count)]));
     const decisions = Number(counts.decisions ?? 0), formalActivationAllowed = Number(counts.formal_allowed ?? 0);
     const fullTraceKeys = new Set(descriptors.filter(source => source.domain === "battle").map(source => traceBattleKey(source.sourcePath)));
+    const currentEraFullTraceBattles = Number((db.prepare("SELECT COUNT(*) count FROM sources WHERE domain='battle' AND evidence_compatibility='exact-compatible' AND formal_activation_allowed=1 AND records>0").get() as any)?.count ?? 0);
     const summaryBattleRows = db.prepare("SELECT source_path, season, context_json, locator_json FROM decisions WHERE outcome_status='terminal-observational-key-summary' GROUP BY source_path, json_extract(locator_json, '$.recordId')").all() as Array<{source_path: string; season: number; context_json: string; locator_json: string}>;
     const keySummaryKeys = new Set(summaryBattleRows.map(row => summaryBattleKey(row.season, JSON.parse(row.context_json), row.source_path, JSON.parse(row.locator_json).recordId)));
     const overlappingBattles = [...keySummaryKeys].filter(key => fullTraceKeys.has(key)).length, representedBattles = new Set([...fullTraceKeys, ...keySummaryKeys]).size;
     const summary: DecisionDossierSummary = {
       schemaVersion: 1, policyVersion: DOSSIER_POLICY_VERSION, generatedAt: new Date().toISOString(), leagueDirectory: league, database: databaseFile,
       seasons, sources: sourceRows.length, reusedSources, rebuiltSources, removedSources, decisions, battleDecisions: Number(counts.battle_decisions ?? 0), leagueDecisions: Number(counts.league_decisions ?? 0), managers: Number(counts.managers ?? 0), evidence, formalActivationAllowed,
-      battleCoverage: {artifacts: discovery.battleArtifacts, fullTraceBattles: fullTraceKeys.size, keySummaryBattles: keySummaryKeys.size, overlappingBattles, representedBattles, unrepresentedBattles: Math.max(0, discovery.battleArtifacts - representedBattles)},
+      battleCoverage: {artifacts: discovery.battleArtifacts, fullTraceBattles: fullTraceKeys.size, currentEraFullTraceBattles, keySummaryBattles: keySummaryKeys.size, overlappingBattles, representedBattles, unrepresentedBattles: Math.max(0, discovery.battleArtifacts - representedBattles)},
       outcomeAuthority: "terminal-observational", anomalies, healthy: anomalies.length === 0,
-      formalDecisionCoverageReady: discovery.battleArtifacts > 0 && fullTraceKeys.size === discovery.battleArtifacts && Number(counts.full_trace_decisions ?? 0) > 0 && Number(counts.formal_full_trace ?? 0) === Number(counts.full_trace_decisions ?? 0),
+      formalDecisionCoverageReady: currentEraFullTraceBattles > 0 && Number(counts.current_full_trace ?? 0) > 0 && Number(counts.formal_current_full_trace ?? 0) === Number(counts.current_full_trace ?? 0),
       inputSignature, currentPolicySha256, sourceAuditSignature, elapsedMs: Date.now() - started, peakRssBytes,
     };
     db.exec("PRAGMA optimize"); db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); if (rebuiltSources || removedSources) db.exec("VACUUM");
