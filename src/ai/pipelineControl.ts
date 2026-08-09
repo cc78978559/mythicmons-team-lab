@@ -26,6 +26,8 @@ export interface PipelineEvaluation {
   version: typeof AI_PIPELINE_VERSION;
   operationalHealthy: boolean;
   researchComplete: boolean;
+  pipelineCycleComplete: boolean;
+  researchMaturity: "candidate-ready" | "iteration-required" | "blocked";
   formalActivationReady: boolean;
   limitedCanaryEligibleDomains: string[];
   nextStage: PipelineStageId | null;
@@ -62,6 +64,8 @@ export function evaluatePipeline(input: readonly PipelineStageSnapshot[]): Pipel
   const stage5 = stages[5], eligible = Array.isArray(stage5.metrics.limitedCanaryEligibleDomains) ? stage5.metrics.limitedCanaryEligibleDomains.map(String) : [];
   const operationalHealthy = stages.every(stage => stage.state === "complete");
   const formalActivationReady = operationalHealthy && stages[0].authorityReady && stages[1].authorityReady && eligible.length > 0;
+  const pipelineCycleComplete = operationalHealthy && stage5.semanticHealthy;
+  const researchMaturity = !pipelineCycleComplete ? "blocked" : eligible.length ? "candidate-ready" : "iteration-required";
   const nextMilestones: PipelineMilestone[] = !operationalHealthy
     ? ["repair-pipeline"]
     : formalActivationReady
@@ -74,7 +78,9 @@ export function evaluatePipeline(input: readonly PipelineStageSnapshot[]): Pipel
   return {
     version: AI_PIPELINE_VERSION,
     operationalHealthy,
-    researchComplete: operationalHealthy && stage5.semanticHealthy,
+    researchComplete: pipelineCycleComplete,
+    pipelineCycleComplete,
+    researchMaturity,
     formalActivationReady,
     limitedCanaryEligibleDomains: eligible,
     nextStage: stages.find(stage => stage.state !== "complete")?.id ?? null,

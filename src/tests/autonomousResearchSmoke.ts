@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {buildAutonomousResearchAgenda, createAutonomousResearchState, reviewAutonomousResearchRound, summarizeAutonomousResearch, validateAutonomousResearchState, type AutonomousResearchResult} from "../ai/autonomousResearch";
 import {noviceManagerProgramV2, validateManagerProgramV2} from "../ai/managerProgramV2";
+import {formalMechanismKey} from "../ai/formalValidation";
 
 const program = noviceManagerProgramV2("manager-01", {decisionDossierPolicy: "policy", positionModelSha256: "a".repeat(64), corpusSignature: "b".repeat(64)});
 program.rules.push({id: "rule-switch-pressure", domain: "battle", target: "switch", predicates: [{feature: "positionValue", operator: "lt", threshold: 0}], effect: -.08, support: 40, uncertainty: .25, authority: "local-value-observational", evidenceIds: ["sample-1"]});
@@ -21,4 +22,9 @@ const third = buildAutonomousResearchAgenda({program, state, round: 3, feasibleC
 assert.equal((summarizeAutonomousResearch([state]) as any).contradictions, 1);
 assert.throws(() => reviewAutonomousResearchRound(state, third, {...contradictory, questionId: third.selected!.id, round: 3, caseId: "case-2"}), /Invalid autonomous research result/);
 const blocked = buildAutonomousResearchAgenda({program, state, round: 3, feasibleCases: {}, seed: "research-smoke"}); assert.equal(blocked.selected, null); assert.equal(blocked.blockedRules.length, 1);
+const mechanismKey = formalMechanismKey(program.rules[0]);
+const rejected = buildAutonomousResearchAgenda({program, state, round: 3, feasibleCases: {"rule-switch-pressure": 10}, seed: "research-smoke", formalFeedback: {[mechanismKey]: {mechanismKey, disposition: "rejected", generations: 1, cases: 24, supports: 4, contradictions: 12, neutral: 8, reasons: ["contradicted"]}}});
+assert.equal(rejected.selected, null); assert.equal(rejected.blockedRules[0]?.reason, "formal-validation-rejected");
+const inconclusive = buildAutonomousResearchAgenda({program, state, round: 3, feasibleCases: {"rule-switch-pressure": 10}, seed: "research-smoke", formalFeedback: {[mechanismKey]: {mechanismKey, disposition: "inconclusive", generations: 1, cases: 24, supports: 5, contradictions: 3, neutral: 16, reasons: ["too few winner-changing interventions"]}}});
+assert.equal(inconclusive.selected?.intent, "resolve-formal-inconclusive"); assert.equal(inconclusive.selected?.components.evidenceNeed, .85);
 console.log("Autonomous research smoke passed: question generation, feasibility, exact-result validation, replication, contradiction adaptation, and case deduplication");

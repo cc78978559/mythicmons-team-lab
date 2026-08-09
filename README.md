@@ -8,9 +8,10 @@ Current production capabilities, unfinished AI domains, activation gates, and th
 
 - The persistent league supports 30 managers, scarce custom/legendary assets, ordinary background Pokémon, multi-season careers, promotion and relegation, a development league, Boss challenges, tactical memory, and auditable strategy-program evolution.
 - Expensive seasons, replays, counterfactuals, and learning evaluations run locally. Compact JSON/Markdown summaries are designed to be inspected without loading battle logs into an LLM context.
-- The Stage 0-6 AI research chain is operationally healthy and complete: 193,301 decision dossiers through S24, a 10,516-sample position-value corpus, 30 distinct Manager Program V2 behaviors, and 180 autonomous counterfactual experiments. The latest research round produced no clean multi-manager candidate, so formal validation completed as a signed zero-candidate run and no decision mechanism has deployment authority.
-- Formal autonomous control remains inactive. All four tested battle domains were inconclusive, the current league history predates the active evidence policy, and no domain is eligible for a limited canary.
-- `npm run ai-pipeline -- status` is the canonical compact status. It separates engineering health, research completion, formal readiness, and the next product milestones.
+- The Stage 0-6 AI research chain is operationally healthy: 193,301 decision dossiers through S24, 150 current-era full battle traces across 21 managers, a 10,516-sample position-value corpus, 30 distinct Manager Program V2 behaviors, and 180 current-generation autonomous counterfactual experiments.
+- Formal validation history is now a signed research input. Rejected mechanisms are retired from rediscovery, inconclusive mechanisms return as explicit replication questions, and the compact portfolio retains three formal generations totaling 1,800 prospective battles and 168 experiments.
+- Formal autonomous control remains inactive. The current 900-battle generation rejected two mechanisms and left one inconclusive; no domain is eligible for a limited canary. A signed canary handoff records `no-candidate` instead of implying deployment readiness.
+- `npm run ai-pipeline -- status` is the canonical compact status. It separates engineering health, pipeline-cycle completion, research maturity, formal readiness, and the next product milestones.
 
 Detailed AI evidence and architecture notes are in [`docs/WHITE_BOX_AI.md`](docs/WHITE_BOX_AI.md) and [`docs/STRATEGY_PROGRAM_EVOLUTION.md`](docs/STRATEGY_PROGRAM_EVOLUTION.md).
 

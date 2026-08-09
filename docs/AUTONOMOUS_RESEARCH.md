@@ -21,6 +21,9 @@ Research intent changes from evidence:
 - `replicate-support` after a supportive result;
 - `resolve-contradiction` after an opposing result;
 - `map-neutral-boundary` after a neutral result.
+- `resolve-formal-inconclusive` when a prior prospective generation did not obtain enough decisive, environment-consistent evidence.
+
+Stage 4 snapshots the signed Stage-5 validation portfolio before planning a new generation. A mechanism already rejected by formal validation is retired from question generation. A mechanism already eligible for canary is also complete at the research layer and cannot consume another discovery case. The snapshot is an immutable Stage-4 input, so replacing the active Stage-5 generation later does not invalidate the research generation that consumed it.
 
 ## Exact experiments
 
@@ -39,6 +42,6 @@ npm.cmd run autonomous-research -- inspect --manager manager-07
 npm.cmd run autonomous-research -- doctor --verify-sources
 ```
 
-The cycle is resumable and content-bound to the Stage-3 program and corpus archives. Completed cases are cached as compact signed summaries. Temporary replay branches are deleted after verification. Run state records the current phase, case, peak RSS, and failure details. Doctor also reconstructs every manager observation from the signed round plan and result, verifies contiguous rounds and exact case use, and recomputes the final summary instead of trusting stored counters.
+The cycle is resumable and content-bound to the Stage-3 program and corpus archives plus its frozen formal-feedback snapshot. Completed cases are cached as compact signed summaries. Temporary replay branches are deleted after verification. A manager may legitimately have no experiment in a round when all executable rules are formally complete, rejected, or unavailable; the signed unassigned list makes that outcome auditable. Run state records the current phase, case, peak RSS, and failure details. Doctor reconstructs every manager observation from the signed round plan and result, verifies round order and exact case use, and recomputes the final summary instead of trusting stored counters.
 
 All results have `exact-counterfactual-single-environment` authority and remain `shadow-only`. One exact replay can guide the manager's next research question, but cannot activate or rewrite battle policy.

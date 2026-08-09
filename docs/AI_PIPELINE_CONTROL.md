@@ -23,6 +23,8 @@ npm run ai-pipeline -- report
 
 `run` evaluates dependencies and executes only missing, failed, or explicitly forced stages. Healthy stages are skipped. A bare `--force` reruns Stages 1 through 5; a bounded stage range limits that force. Non-dry execution performs a deep preflight before any stage starts. The preflight requires every upstream dependency to be healthy while allowing the repair target and its downstream stages to be missing, failed, or stale. `resume` starts from the failed or interrupted stage recorded in the pipeline run state. Both commands hold a pipeline lock and checkpoint stage completion atomically. Stage 0 is audited rather than rebuilt automatically.
 
+After Stage 5 completes, the controller always writes a signed formal-canary handoff. This is a control artifact, not activation: zero candidates produce `no-candidate`, and a formally eligible mechanism without a signed live adapter produces `adapter-required`.
+
 When forced work reaches Stage 4 or Stage 5 with changed inputs, the active directory remains the stable entry point and the prior generation is moved intact under its `archive/` directory. The stage lock is retained during the handoff. Each move is journaled before and during the handoff; a later run completes an interrupted archive before inspecting the active generation. Missing manifest or freeze anchors with retained artifacts are therefore treated as stale generations rather than fresh directories. Direct stage CLI calls still reject drift unless `--replace-stale` is explicit, so evidence is never silently overwritten.
 
 Archive manifests retain the original active root. Stage-5 source verification remaps signed historical paths into the generation directory, allowing an archived generation to replay and hash its own retained battles after a new active generation is created. Failure control files created during an interrupted handoff are preserved separately under `recovery-controls/`.
@@ -36,7 +38,8 @@ Stage 4 and Stage 5 input contracts require their complete named input sets, can
 ## Status Semantics
 
 - `operationalHealthy`: all stage artifacts are structurally healthy and dependency-compatible.
-- `researchComplete`: the Stage-0-to-Stage-5 research chain has completed.
+- `pipelineCycleComplete`: the Stage-0-to-Stage-5 research cycle has completed. The legacy `researchComplete` field remains API-compatible but has the same cycle-completion meaning.
+- `researchMaturity`: `candidate-ready`, `iteration-required`, or `blocked`; this prevents a healthy zero-candidate generation from being described as mature autonomous control.
 - `formalActivationReady`: current formal league evidence, current decision dossiers, and at least one Stage-5 limited-canary domain all qualify.
 
 `nextStage` is reserved for the first broken engineering stage. `nextMilestones` remains populated after all stages complete: it reports current-era evidence collection, another research iteration, limited canary work, or activation readiness. A negative Stage-5 result therefore cannot appear as a product dead end.

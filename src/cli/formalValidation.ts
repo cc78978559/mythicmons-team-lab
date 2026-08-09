@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 import {spawn} from "node:child_process";
-import {FORMAL_VALIDATION_VERSION, evaluateFormalValidation, formalMechanismKey, hasExactFormalValidationIntegrity, type FormalValidationCaseResult, type ValidationDirection} from "../ai/formalValidation";
+import {FORMAL_VALIDATION_VERSION, evaluateFormalValidation, formalMechanismKey, hasExactFormalValidationIntegrity, isValidFormalMaxTurnAdjudication, type FormalValidationCaseResult, type ValidationDirection} from "../ai/formalValidation";
 import {battleActionFamily} from "../ai/battleActionFamily";
 import {validateManagerProgramV2, type ManagerProgramRuleV2, type ManagerProgramV2} from "../ai/managerProgramV2";
 import type {AutonomousResearchManagerState} from "../ai/autonomousResearch";
@@ -117,7 +117,7 @@ async function generateEnvironment(freeze: Freeze, environment: typeof environme
       if (known.get(job.id)?.status === "failed" && path.resolve(game).startsWith(`${path.resolve(directory)}${path.sep}`)) fs.rmSync(game, {recursive: true, force: true});
       const first = teams[job.orientation ? job.right : job.left], second = teams[job.orientation ? job.left : job.right], profileOffset = environment === "balanced" ? 0 : 2;
       const result = await runBattle({format: index.format, teamA: first.packed, teamB: second.packed, seed: `${freeze.sha256}:${environment}:${job.id}`, gameIndex: 0, outDir: parent, maxTurns: freeze.gate.sourceMaxTurns, idleTimeoutMs: 10000, wallClockTimeoutMs: 60000, ai: "search", openTeamSheets: true, traceAiDecisions: true, aiProfiles: {p1: {...profiles[(job.left + job.right + profileOffset + job.seedLayer) % profiles.length], id: `${profiles[(job.left + job.right + profileOffset + job.seedLayer) % profiles.length].id}-p1` as string} as any, p2: {...profiles[(job.left * 3 + job.right + profileOffset + job.seedLayer + 1) % profiles.length], id: `${profiles[(job.left * 3 + job.right + profileOffset + job.seedLayer + 1) % profiles.length].id}-p2` as string} as any}, evidenceContext: {registryHash: freeze.evidenceEpoch.registryHash, configurationPolicyVersion: freeze.evidenceEpoch.configurationPolicyVersion}});
-      const validAdjudication = result.timeout && result.adjudication?.rule === "remaining-pokemon-then-hp" && Boolean(result.winner);
+      const validAdjudication = isValidFormalMaxTurnAdjudication(result);
       if (!result.ended || result.stalled && !validAdjudication || result.timeout && !validAdjudication || result.errors.length) throw new Error(`unclean battle ended=${result.ended} stalled=${result.stalled} timeout=${result.timeout} adjudicated=${validAdjudication} errors=${result.errors.length}`);
       const replay = path.join(game, "replay-input.json"), decisions = path.join(game, "ai-decisions.json"), replaySha256 = shaFile(replay), decisionsSha256 = shaFile(decisions), sourceFingerprint = digest([replaySha256, decisionsSha256]);
       known.set(job.id, {id: job.id, environment, pair: `${teams[job.left].id}--${teams[job.right].id}`, orientation: job.orientation, game, status: "complete", startedAt, completedAt: new Date().toISOString(), replaySha256, decisionsSha256, sourceFingerprint});

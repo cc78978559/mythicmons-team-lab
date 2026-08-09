@@ -1,9 +1,11 @@
 import crypto from "node:crypto";
 import {validateManagerProgramV2, type ManagerProgramRuleV2, type ManagerProgramV2} from "./managerProgramV2";
+import {formalMechanismKey, type FormalValidationDomainResult} from "./formalValidation";
 
-export const AUTONOMOUS_RESEARCH_VERSION = "autonomous-research-v1.0-exact-battle-counterfactual";
-export type AutonomousResearchIntent = "test-program-mechanism" | "replicate-support" | "resolve-contradiction" | "map-neutral-boundary";
+export const AUTONOMOUS_RESEARCH_VERSION = "autonomous-research-v1.1-formal-feedback";
+export type AutonomousResearchIntent = "test-program-mechanism" | "replicate-support" | "resolve-contradiction" | "map-neutral-boundary" | "resolve-formal-inconclusive";
 export type AutonomousResearchDirection = "better" | "neutral" | "worse";
+export interface AutonomousResearchFormalFeedback {mechanismKey: string; disposition: FormalValidationDomainResult["disposition"]; generations: number; cases: number; supports: number; contradictions: number; neutral: number; reasons: string[]}
 
 export interface AutonomousResearchObservation {
   id: string;
@@ -54,7 +56,7 @@ export interface AutonomousResearchAgenda {
   round: number;
   selected: AutonomousResearchQuestion | null;
   ranked: AutonomousResearchQuestion[];
-  blockedRules: Array<{ruleId: string; reason: "no-executable-counterfactual"}>;
+  blockedRules: Array<{ruleId: string; reason: "no-executable-counterfactual" | "formal-validation-rejected" | "formal-validation-complete"}>;
 }
 
 export interface AutonomousResearchResult {
@@ -77,18 +79,21 @@ export function createAutonomousResearchState(managerId: string): AutonomousRese
   return {schemaVersion: 1, version: AUTONOMOUS_RESEARCH_VERSION, activationStatus: "shadow-only", managerId, revision: 0, completedRounds: 0, observations: [], usedCaseIds: []};
 }
 
-export function buildAutonomousResearchAgenda(input: {program: ManagerProgramV2; state: AutonomousResearchManagerState; round: number; feasibleCases: Readonly<Record<string, number>>; seed: string}): AutonomousResearchAgenda {
+export function buildAutonomousResearchAgenda(input: {program: ManagerProgramV2; state: AutonomousResearchManagerState; round: number; feasibleCases: Readonly<Record<string, number>>; seed: string; formalFeedback?: Readonly<Record<string, AutonomousResearchFormalFeedback>>}): AutonomousResearchAgenda {
   validateManagerProgramV2(input.program); validateAutonomousResearchState(input.state);
   if (input.program.managerId !== input.state.managerId || input.round !== input.state.completedRounds + 1) throw new Error(`Autonomous research state mismatch: ${input.state.managerId}`);
   const blockedRules: AutonomousResearchAgenda["blockedRules"] = [], questions: AutonomousResearchQuestion[] = [];
   for (const rule of input.program.rules) {
+    const feedback = input.formalFeedback?.[formalMechanismKey(rule)];
+    if (feedback?.disposition === "rejected") { blockedRules.push({ruleId: rule.id, reason: "formal-validation-rejected"}); continue; }
+    if (feedback?.disposition === "limited-canary-eligible") { blockedRules.push({ruleId: rule.id, reason: "formal-validation-complete"}); continue; }
     const feasibleCases = Math.max(0, Math.floor(input.feasibleCases[rule.id] ?? 0));
     if (!feasibleCases) { blockedRules.push({ruleId: rule.id, reason: "no-executable-counterfactual"}); continue; }
     const history = input.state.observations.filter(value => value.ruleId === rule.id), supports = history.filter(value => value.supportsHypothesis).length, contradicts = history.filter(value => value.direction !== "neutral" && !value.supportsHypothesis).length, neutrals = history.filter(value => value.direction === "neutral").length;
-    const intent: AutonomousResearchIntent = contradicts ? "resolve-contradiction" : supports ? "replicate-support" : neutrals ? "map-neutral-boundary" : "test-program-mechanism";
+    const intent: AutonomousResearchIntent = feedback?.disposition === "inconclusive" || feedback?.disposition === "blocked" ? "resolve-formal-inconclusive" : contradicts ? "resolve-contradiction" : supports ? "replicate-support" : neutrals ? "map-neutral-boundary" : "test-program-mechanism";
     const components = {
       uncertainty: round(clamp(rule.uncertainty + 1 / Math.sqrt(1 + rule.support), 0, 1)),
-      evidenceNeed: round(1 / Math.sqrt(1 + history.length)),
+      evidenceNeed: round(Math.max(1 / Math.sqrt(1 + history.length), feedback?.disposition === "inconclusive" || feedback?.disposition === "blocked" ? .85 : 0)),
       contradiction: round(history.length ? contradicts / history.length : 0),
       applicability: round(clamp(Math.log1p(feasibleCases) / Math.log(65), 0, 1)),
       programImpact: round(Math.min(1, Math.abs(rule.effect) / .2)),
@@ -117,7 +122,7 @@ export function reviewAutonomousResearchRound(stateInput: AutonomousResearchMana
 export function validateAutonomousResearchState(value: AutonomousResearchManagerState): void {
   if (value.schemaVersion !== 1 || value.version !== AUTONOMOUS_RESEARCH_VERSION || value.activationStatus !== "shadow-only" || !value.managerId || !Number.isInteger(value.revision) || value.revision < 0 || !Number.isInteger(value.completedRounds) || value.completedRounds < 0 || value.revision !== value.completedRounds || !Array.isArray(value.observations) || !Array.isArray(value.usedCaseIds) || new Set(value.usedCaseIds).size !== value.usedCaseIds.length) throw new Error(`Invalid autonomous research state: ${value.managerId}`);
   const observationIds = value.observations.map(observation => observation.id), observationCases = value.observations.map(observation => observation.caseId), observationRounds = value.observations.map(observation => observation.round);
-  if (value.observations.length !== value.usedCaseIds.length || value.observations.length !== value.completedRounds || new Set(observationIds).size !== observationIds.length || new Set(observationCases).size !== observationCases.length || JSON.stringify(observationCases) !== JSON.stringify(value.usedCaseIds) || observationRounds.some((round, index) => round !== index + 1) || value.observations.some(observation => !observation.id || !observation.questionId || !observation.ruleId || !observation.caseId || observation.round < 1 || !["better", "neutral", "worse"].includes(observation.direction) || !["better", "worse"].includes(observation.expectedDirection) || observation.supportsHypothesis !== (observation.direction === observation.expectedDirection) || typeof observation.outcomeChanged !== "boolean" || observation.authority !== "exact-counterfactual-single-environment" || !/^[a-f0-9]{64}$/i.test(observation.sourceFingerprint))) throw new Error(`Invalid autonomous research observations: ${value.managerId}`);
+  if (value.observations.length !== value.usedCaseIds.length || value.observations.length > value.completedRounds || new Set(observationIds).size !== observationIds.length || new Set(observationCases).size !== observationCases.length || JSON.stringify(observationCases) !== JSON.stringify(value.usedCaseIds) || observationRounds.some((round, index) => round < 1 || round > value.completedRounds || index > 0 && round <= observationRounds[index - 1]) || value.observations.some(observation => !observation.id || !observation.questionId || !observation.ruleId || !observation.caseId || observation.round < 1 || !["better", "neutral", "worse"].includes(observation.direction) || !["better", "worse"].includes(observation.expectedDirection) || observation.supportsHypothesis !== (observation.direction === observation.expectedDirection) || typeof observation.outcomeChanged !== "boolean" || observation.authority !== "exact-counterfactual-single-environment" || !/^[a-f0-9]{64}$/i.test(observation.sourceFingerprint))) throw new Error(`Invalid autonomous research observations: ${value.managerId}`);
 }
 
 export function validateAutonomousResearchAgenda(value: AutonomousResearchAgenda): void {

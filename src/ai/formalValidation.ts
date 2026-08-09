@@ -60,6 +60,10 @@ export function hasExactFormalValidationIntegrity(result: Pick<FormalValidationC
   return result.sourceVerified === true && result.prefixVerified === true && result.interventionVerified === true;
 }
 
+export function isValidFormalMaxTurnAdjudication(result: {timeout: boolean; winner?: unknown; adjudication?: {rule?: unknown; reason?: unknown} | null}): boolean {
+  return result.timeout === true && result.adjudication?.rule === "remaining-pokemon-then-hp" && (Boolean(result.winner) || result.adjudication.reason === "exact-tie");
+}
+
 export function evaluateFormalValidation(
   domainIds: readonly string[],
   results: readonly FormalValidationCaseResult[],
