@@ -4,6 +4,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import {spawnSync} from "node:child_process";
 import {AI_PIPELINE_VERSION, evaluatePipeline, formalCanaryHealthIssue, repairPreflightBlockers, type PipelineEvaluation, type PipelineStageId, type PipelineStageSnapshot} from "../ai/pipelineControl";
+import {buildPipelineDoctorPlan} from "../ai/pipelineDoctorPlan";
 import {evaluateFormalValidation, selectFormalCanaryNomination} from "../ai/formalValidation";
 import {loadFormalValidationPortfolio} from "../ai/formalValidationPortfolio";
 import {buildFormalCanaryHandoff, verifyFormalCanaryAdapterRegistry, verifyFormalCanaryHandoff, type FormalCanaryAdapterRegistry} from "../ai/formalCanaryControl";
@@ -75,7 +76,7 @@ function buildSnapshots(): PipelineStageSnapshot[] {
 
 function doctor(deep: boolean, verifySources: boolean): Record<string, unknown> {
   const started = Date.now(), index = refresh(), details: DoctorDetail[] = [];
-  if (deep) for (const spec of specialistCommands(verifySources)) details.push(runDoctor(spec.stage, spec.file, spec.args));
+  if (deep) for (const spec of buildPipelineDoctorPlan({league, stage1: roots.stage1, stage2: roots.stage2, stage3: roots.stage3, stage4: roots.stage4, stage5: roots.stage5, corpus: roots.corpus}, verifySources)) details.push(runDoctor(spec.stage, spec.file, spec.args));
   const sharedSources = verifySources ? verifySharedCorpusSources() : {healthy: true, verifiedSources: 0, issues: [] as string[]}, specialistFailures = details.filter(value => !value.healthy), healthy = index.evaluation.operationalHealthy && !specialistFailures.length && sharedSources.healthy;
   if (deep) atomicGzip(path.join(out, "doctor-details.json.gz"), {schemaVersion: 1, version: AI_PIPELINE_VERSION, verifySources, details});
   const result = {schemaVersion: 1, version: AI_PIPELINE_VERSION, indexSignature: index.signature, healthy, mode: verifySources ? "full-source" : deep ? "deep" : "quick", elapsedMs: Date.now() - started, operationalHealthy: index.evaluation.operationalHealthy, pipelineCycleComplete: index.evaluation.pipelineCycleComplete, researchMaturity: index.evaluation.researchMaturity, formalActivationReady: index.evaluation.formalActivationReady, limitedCanaryEligibleDomains: index.evaluation.limitedCanaryEligibleDomains, stages: index.evaluation.stages.map(stage => ({id: stage.id, state: stage.state, authority: stage.authority, authorityReady: stage.authorityReady})), blockers: index.evaluation.blockers, warnings: index.evaluation.warnings, sharedSources, specialists: details.map(value => ({stage: value.stage, healthy: value.healthy, exitCode: value.exitCode, elapsedMs: value.elapsedMs, verifiedSources: value.verifiedSources}))};
@@ -112,15 +113,6 @@ function executionCommand(stage: PipelineStageId): {file: string; args: string[]
   if (stage === "stage5") return {file: "src/cli/formalValidation.ts", args: ["cycle", "--replace-stale", "--out", roots.stage5, "--autonomous-research", roots.stage4, "--manager-programs", roots.stage3, "--position-value", roots.stage2]};
   throw new Error("Stage 0 is audited, not rebuilt by the research pipeline");
 }
-
-function specialistCommands(verify: boolean): Array<{stage: PipelineStageId; file: string; args: string[]}> { const flag = verify ? ["--verify-sources"] : []; return [
-  {stage: "stage0", file: "src/cli/leagueControl.ts", args: ["doctor", "--out", league]},
-  {stage: "stage1", file: "src/cli/decisionDossiers.ts", args: ["doctor", "--out", roots.stage1, ...flag]},
-  {stage: "stage2", file: "src/cli/positionValue.ts", args: ["doctor", "--out", roots.stage2]},
-  {stage: "stage3", file: "src/cli/managerProgramV2.ts", args: ["doctor", "--out", roots.stage3, "--dossiers", roots.stage1, "--position-value", roots.stage2, "--corpus", roots.corpus]},
-  {stage: "stage4", file: "src/cli/autonomousResearch.ts", args: ["doctor", "--out", roots.stage4, "--manager-programs", roots.stage3, "--source-corpus", roots.corpus]},
-  {stage: "stage5", file: "src/cli/formalValidation.ts", args: ["doctor", "--out", roots.stage5, "--autonomous-research", roots.stage4, "--manager-programs", roots.stage3, "--position-value", roots.stage2, ...flag]},
-]; }
 
 function runDoctor(stage: PipelineStageId, file: string, childArgs: string[]): DoctorDetail { const started = Date.now(), result = spawnSync(process.execPath, [require.resolve("tsx/cli"), path.join(root, file), ...childArgs], {cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024}), parsed = parseJson(result.stdout); return {stage, command: `${file} ${childArgs.join(" ")}`, exitCode: result.status ?? 1, elapsedMs: Date.now() - started, healthy: !result.error && result.status === 0 && (parsed as any)?.healthy !== false, verifiedSources: Number((parsed as any)?.verifiedSources ?? 0), result: parsed, ...(result.stderr ? {stderr: result.stderr.slice(-4096)} : {})}; }
 function verifySharedCorpusSources(): {healthy: boolean; verifiedSources: number; issues: string[]} {

@@ -7,7 +7,8 @@ import {spawnSync} from "node:child_process";
 const root = process.cwd(), cache = fs.mkdtempSync(path.join(os.tmpdir(), "mythic-affected-check-"));
 try {
   const selection = run(["--dry-run", "--files", "src/cli/runOfficialSeasonCycle.ts", "--cache", cache]);
-  assert.equal(selection.changedFiles, 1); assert.equal(selection.selectedTests, 4); assert.equal(selection.planned, 5);
+  assert.equal(selection.changedFiles, 1); assert.equal(selection.selectedTests, 5); assert.equal(selection.planned, 6);
+  assert.deepEqual(selection.checks.map((check: {name: string}) => check.name), ["typecheck", "smoke:ai-pipeline", "smoke:check-affected", "smoke:league-control", "smoke:official-season-cycle", "smoke:pipeline-doctor-plan"]);
   const dataSelection = run(["--dry-run", "--files", "data/shadow-evidence-registry.json", "--cache", cache]);
   assert.equal(dataSelection.selectedTests, 1); assert.equal(dataSelection.planned, 2);
   const registrySelection = run(["--dry-run", "--files", "data/draft/g1-six-team.json", "--cache", cache]); assert.equal(registrySelection.selectedTests, 3); assert.equal(registrySelection.planned, 4);

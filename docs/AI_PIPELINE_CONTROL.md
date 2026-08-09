@@ -45,7 +45,10 @@ Stage 4 and Stage 5 input contracts require their complete named input sets, can
 - `operationalHealthy`: all stage artifacts are structurally healthy and dependency-compatible.
 - `pipelineCycleComplete`: the Stage-0-to-Stage-5 research cycle has completed. The legacy `researchComplete` field remains API-compatible but has the same cycle-completion meaning.
 - `researchMaturity`: `candidate-ready`, `iteration-required`, or `blocked`; this prevents a healthy zero-candidate generation from being described as mature autonomous control.
-- `formalActivationReady`: current formal league evidence and decision dossiers qualify, at least one Stage-5 domain passed formal validation, and the current bound handoff is `execution-ready` through a locally verified adapter registration.
+- `evidenceEpochReady`: the latest formal-league season is fully covered by the current evidence epoch. This is a Stage-0 evidence property, not permission to change decisions.
+- `canaryActivationReady`: current formal league evidence and decision dossiers qualify, one Stage-5 domain passed formal validation, and the current bound handoff is `execution-ready` through a locally verified adapter registration.
+
+The integrated pipeline retains `formalActivationReady` inside its version-1 compatibility schema, where it means `canaryActivationReady`. Unified tooling output always uses the two explicit names above and never reports the evidence-epoch flag under the canary name.
 
 `nextStage` is reserved for the first broken engineering stage. `nextMilestones` remains populated after all stages complete: it reports current-era evidence collection, another research iteration, adapter implementation, limited canary work, or activation readiness. A negative Stage-5 result therefore cannot appear as a product dead end.
 

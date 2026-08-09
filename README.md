@@ -8,14 +8,14 @@ Current production capabilities, unfinished AI domains, activation gates, and th
 ## Verified Build Surface
 
 - Package baseline: `mythicmons-team-lab@1.1.0`
-- Local command inventory: 234 scripts, including 100 smoke suites
+- Local command inventory: 235 scripts, including 101 smoke suites
 - Autonomous research: `autonomous-research-v1.3-semantic-outcomes`
 - Formal validation: `formal-validation-v1.6-clustered-independent-environments`
 - Canary adapter protocol: `manager-program-v2-battle-rule-v1`
 - Formal canary authority: one battle decision domain, signed handoff, reviewed local adapter, manual promotion only
 - Formal inference: matchup-cluster votes across modern benchmark and current formal-league environments
 - Storage: content-addressed dynasty histories, independently reusable state fields, reference-audited dry-run GC
-- Machine-readable baseline: [`docs/RELEASE_BASELINE.json`](docs/RELEASE_BASELINE.json) (`4df9328c44de`)
+- Machine-readable baseline: [`docs/RELEASE_BASELINE.json`](docs/RELEASE_BASELINE.json) (`5034c5ca37d9`)
 
 Regenerate this block and its signed baseline with `npm run baseline:generate`.
 <!-- GENERATED_STATUS:END -->
