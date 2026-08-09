@@ -11,9 +11,12 @@ const args = process.argv.slice(2), root = process.cwd(), all = args.includes("-
 const shard = shardOption(option("--shard", ""));
 const base = option("--base", "HEAD"), cacheRoot = path.resolve(option("--cache", "output/tooling/checks"));
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as {scripts: Record<string, string>};
-const testScripts = Object.entries(packageJson.scripts).filter(([name, command]) => (name.startsWith("smoke:") || name.startsWith("test:")) && /tsx\s+[^\s]+\.ts/.test(command));
+const candidateTestScripts = Object.entries(packageJson.scripts).filter(([name]) => name.startsWith("smoke:") || name.startsWith("test:"));
+const resolvedScriptFiles = new Map(candidateTestScripts.map(([name]) => [name, resolveScriptFiles(name)]));
+const testScripts = candidateTestScripts.filter(([name]) => Boolean(resolvedScriptFiles.get(name)?.length));
 const sourceFiles = files("src", ".ts"), dependencyGraph = buildDependencyGraph(sourceFiles);
-const scriptFiles = new Map(testScripts.map(([name, command]) => [name, normalize(command.match(/tsx\s+([^\s]+\.ts)/)![1])]));
+const scriptFiles = new Map(testScripts.map(([name]) => [name, resolvedScriptFiles.get(name)!]));
+const mappedExternalFiles = ["data/shadow-evidence-registry.json", "data/lineup-audit-hypotheses.json", ...files("data/draft", ".json"), ...files("benchmarks/gen9expanded", ""), ...files("benchmarks/gen9ou", ""), ...files("examples", "")];
 const explicitFiles = option("--files", "").split(",").map(normalize).filter(Boolean);
 const changed = all ? [] : explicitFiles.length ? explicitFiles : changedFiles(base), packageImpact = analyzePackageImpact(changed.includes("package.json"));
 const globalChange = changed.some(file => ["package-lock.json", "tsconfig.json"].includes(file)) || packageImpact.global;
@@ -53,17 +56,17 @@ function selectAffected(changed: string[]): string[] {
   const selected = new Set<string>(), unmappedSource: string[] = [];
   for (const changedFile of changed.filter(file => file.startsWith("src/") && file.endsWith(".ts"))) {
     let matched = false;
-    for (const [name, testFile] of scriptFiles) if (testFile === changedFile || dependencies(testFile).has(changedFile) || relatedStem(testFile, changedFile) || mappedImpact(testFile, changedFile)) { selected.add(name); matched = true; }
+    for (const [name, testFiles] of scriptFiles) if (testFiles.some(testFile => testFile === changedFile || dependencies(testFile).has(changedFile) || relatedStem(testFile, changedFile) || mappedImpact(testFile, changedFile))) { selected.add(name); matched = true; }
     if (!matched && !changedFile.startsWith("src/tests/")) unmappedSource.push(changedFile);
   }
-  for (const changedFile of changed) for (const [name, testFile] of scriptFiles) if (mappedImpact(testFile, changedFile)) selected.add(name);
+  for (const changedFile of changed) for (const [name, testFiles] of scriptFiles) if (testFiles.some(testFile => mappedImpact(testFile, changedFile))) selected.add(name);
   if (unmappedSource.length && packageJson.scripts["test:regressions"]) selected.add("test:regressions");
   return [...selected].sort();
 }
 function dependencies(file: string, seen = new Set<string>()): Set<string> { if (seen.has(file)) return seen; seen.add(file); for (const dependency of dependencyGraph.get(file) ?? []) dependencies(dependency, seen); return seen; }
 function buildDependencyGraph(source: string[]): Map<string, string[]> { const known = new Set(source), graph = new Map<string, string[]>(); for (const file of source) { const text = fs.readFileSync(path.join(root, file), "utf8"), imports = [...text.matchAll(/(?:from\s+|import\s*)["'](\.[^"']+)["']/g)].map(match => resolveImport(file, match[1])).filter((value): value is string => Boolean(value && known.has(value))), spawned = [...text.matchAll(/["'](src\/[a-zA-Z0-9_./-]+\.ts)["']/g)].map(match => normalize(match[1])).filter(value => known.has(value)); graph.set(file, [...new Set([...imports, ...spawned])]); } return graph; }
 function resolveImport(from: string, request: string): string | undefined { const candidate = normalize(path.join(path.dirname(from), request)); for (const value of [candidate, `${candidate}.ts`, `${candidate}/index.ts`]) if (fs.existsSync(path.join(root, value))) return value; return undefined; }
-function checkHash(name: string): string { const digest = crypto.createHash("sha256"), testFile = scriptFiles.get(name) ?? "", relevant = name === "typecheck" ? sourceFiles : [...dependencies(testFile), ...sourceFiles.filter(file => relatedStem(testFile, file) || mappedImpact(testFile, file))]; for (const file of [...new Set([...relevant, "package-lock.json", "tsconfig.json"])].sort()) if (file && fs.existsSync(path.join(root, file))) digest.update(file).update(fs.readFileSync(path.join(root, file))); digest.update(packageCheckFingerprint(name)); return digest.digest("hex"); }
+function checkHash(name: string): string { const digest = crypto.createHash("sha256"), testFiles = scriptFiles.get(name) ?? [], relevant = name === "typecheck" ? sourceFiles : [...testFiles.flatMap(testFile => [...dependencies(testFile)]), ...sourceFiles.filter(file => testFiles.some(testFile => relatedStem(testFile, file) || mappedImpact(testFile, file))), ...mappedExternalFiles.filter(file => testFiles.some(testFile => mappedImpact(testFile, file)))]; for (const file of [...new Set([...relevant, "package-lock.json", "tsconfig.json"])].sort()) if (file && fs.existsSync(path.join(root, file))) digest.update(file).update(fs.readFileSync(path.join(root, file))); digest.update(packageCheckFingerprint(name)); return digest.digest("hex"); }
 function changedFiles(reference: string): string[] { const tracked = git(["diff", "--name-only", reference, "--"]), untracked = git(["ls-files", "--others", "--exclude-standard"]); return [...new Set([...tracked, ...untracked].map(normalize).filter(Boolean))].sort(); }
 function git(command: string[]): string[] { const result = spawnSync("git", command, {cwd: root, encoding: "utf8"}); if (result.status !== 0) throw new Error(result.stderr || `git ${command.join(" ")} failed`); return result.stdout.split(/\r?\n/).filter(Boolean); }
 function gitText(command: string[]): string | null { const result = spawnSync("git", command, {cwd: root, encoding: "utf8"}); return result.status === 0 ? result.stdout : null; }
@@ -74,6 +77,11 @@ function normalize(value: string): string { return value.replaceAll("\\", "/").r
 function relatedStem(testFile: string, changedFile: string): boolean { const clean = (file: string) => path.basename(file, ".ts").toLowerCase().replace(/smoke$|^run/g, ""); const test = clean(testFile), changed = clean(changedFile); return changed.length >= 8 && (test.includes(changed) || changed.includes(test)); }
 function explicitImpact(testFile: string, changedFile: string): boolean { const impacts: Record<string, string[]> = {"src/draft/runLock.ts": ["parallelRegistrySmoke.ts", "officialSeasonCycleSmoke.ts", "unifiedWhiteBoxEvidenceSmoke.ts", "programDecisionCounterfactualSmoke.ts"], "src/cli/leagueControl.ts": ["leagueControlSmoke.ts", "officialSeasonCycleSmoke.ts"], "src/cli/runOfficialSeasonCycle.ts": ["leagueControlSmoke.ts", "officialSeasonCycleSmoke.ts"], "src/cli/shadowDiagnostics.ts": ["shadowDiagnosticsSmoke.ts"], "src/cli/refreshShadowLineupTraces.ts": ["shadowExperimentPlannerSmoke.ts", "lineupTraceRetentionSmoke.ts", "historicalRuntimeCheckpointSmoke.ts"], "src/cli/counterfactualWhiteBoxLineup.ts": ["lineupsSmoke.ts", "historicalRuntimeCheckpointSmoke.ts"], "src/cli/compactLineupCounterfactual.ts": ["counterfactualCapsuleSmoke.ts"], "src/cli/reviewShadowLineupPilot.ts": ["lineupPilotReviewSmoke.ts"], "src/cli/discoverShadowLineupMechanisms.ts": ["lineupMechanismDiscoverySmoke.ts"], "src/cli/auditShadowLineupRepresentation.ts": ["lineupRepresentationAuditSmoke.ts"], "src/cli/benchmarkLineupRepresentationAccumulation.ts": ["lineupRepresentationAuditSmoke.ts", "historicalRuntimeCheckpointSmoke.ts"], "src/cli/reviewLineupRepresentationOutcomes.ts": ["lineupRepresentationOutcomeReviewSmoke.ts"], "src/cli/planLineupSpeedCausalStudy.ts": ["lineupSpeedCausalPlanSmoke.ts"], "src/cli/auditLineupHypotheses.ts": ["lineupHypothesisWorkbenchSmoke.ts"], "src/cli/planLineupHypothesisStudy.ts": ["lineupHypothesisWorkbenchSmoke.ts"], "src/cli/runLineupSpeedCausalStudy.ts": ["lineupSpeedCausalResultSmoke.ts", "lineupHypothesisWorkbenchSmoke.ts", "historicalRuntimeCheckpointSmoke.ts", "counterfactualCapsuleSmoke.ts"], "src/cli/draftLeagueV3.ts": ["lineupRepresentationSmoke.ts"], "data/shadow-evidence-registry.json": ["shadowDiagnosticsSmoke.ts"], "data/lineup-audit-hypotheses.json": ["lineupHypothesisWorkbenchSmoke.ts"]}; return (impacts[changedFile] ?? []).includes(path.basename(testFile)); }
 function mappedImpact(testFile: string, changedFile: string): boolean {
+  if (changedFile.startsWith("data/draft/")) return ["draftConfigCompileSmoke.ts", "parallelRegistrySmoke.ts", "v12Smoke.ts"].includes(path.basename(testFile));
+  if (changedFile.startsWith("benchmarks/gen9expanded/")) return ["historicalRuntimeCheckpointSmoke.ts", "v12Smoke.ts", "formalValidationSmoke.ts", "aiPipelineCliSmoke.ts"].includes(path.basename(testFile));
+  if (changedFile.startsWith("benchmarks/gen9ou/")) return ["evaluate.ts", "variants.ts"].includes(path.basename(testFile));
+  if (changedFile === "examples/teamA.txt") return ["simulate.ts", "evaluate.ts", "variants.ts"].includes(path.basename(testFile));
+  if (changedFile === "examples/teamB.txt") return path.basename(testFile) === "simulate.ts";
   const impacts: Record<string, string[]> = {
     "src/draft/v12Audit.ts": ["v12Smoke.ts", "officialSeasonCycleSmoke.ts", "leagueControlSmoke.ts"],
     "src/cli/auditV12.ts": ["v12Smoke.ts", "officialSeasonCycleSmoke.ts", "leagueControlSmoke.ts"],
@@ -81,6 +89,37 @@ function mappedImpact(testFile: string, changedFile: string): boolean {
     "src/draft/sourceCacheMaintenance.ts": ["toolingDoctorSmoke.ts", "lineupSpeedCausalResultSmoke.ts"],
     "src/cli/toolingDoctor.ts": ["toolingDoctorSmoke.ts"],
     "src/cli/runLineupSpeedCausalStudy.ts": ["toolingDoctorSmoke.ts"],
+    "src/cli/auditLineupCausalHeterogeneity.ts": ["lineupCausalHeterogeneitySmoke.ts"],
+    "src/cli/freezeLineupCausalScope.ts": ["lineupCausalHeterogeneitySmoke.ts", "lineupHypothesisWorkbenchSmoke.ts"],
+    "src/cli/repairLineupSourceCacheCheckpoint.ts": ["historicalRuntimeCheckpointSmoke.ts", "toolingDoctorSmoke.ts"],
+    "src/cli/rebindLineupStudySourceCache.ts": ["historicalRuntimeCheckpointSmoke.ts", "toolingDoctorSmoke.ts"],
+    "src/cli/lineupResearch.ts": ["lineupResearchControlSmoke.ts"],
+    "src/cli/exportLineupAssistApproval.ts": ["lineupApprovalSmoke.ts"],
+    "src/ai/whiteBox/lineupAssistCanary.ts": ["lineupAssistCanarySmoke.ts"],
+    "src/cli/runLineupAssistCanary.ts": ["lineupAssistCanarySmoke.ts", "dynastyCheckpointBranchSmoke.ts"],
+    "src/ai/whiteBox/lineupDeploymentPostmortem.ts": ["lineupDeploymentPostmortemSmoke.ts", "lineupCausalHeterogeneitySmoke.ts"],
+    "src/cli/lineupDeploymentPostmortem.ts": ["lineupDeploymentPostmortemSmoke.ts"],
+    "src/cli/freezeLineupDeploymentResearch.ts": ["freezeLineupDeploymentResearchSmoke.ts", "lineupHypothesisWorkbenchSmoke.ts"],
+    "src/cli/planLineupDeploymentPortfolio.ts": ["lineupHypothesisWorkbenchSmoke.ts", "managerResearchAgendaSmoke.ts"],
+    "src/cli/runLineupDeploymentPortfolio.ts": ["lineupSpeedCausalResultSmoke.ts", "managerMechanismLedgerSyncSmoke.ts", "parallelRegistrySmoke.ts"],
+    "src/ai/whiteBox/battleCandidateFrontier.ts": ["battleCandidateFrontierSmoke.ts"],
+    "src/cli/auditBattleCandidateFrontier.ts": ["battleCandidateFrontierSmoke.ts"],
+    "src/cli/planBattleFrontierResearch.ts": ["battleCandidateFrontierSmoke.ts", "battleReplaySmoke.ts"],
+    "src/cli/discoverBattleConditionalMechanisms.ts": ["battleCandidateFrontierSmoke.ts"],
+    "src/cli/auditBattleConditionalResearch.ts": ["battleCandidateFrontierSmoke.ts"],
+    "src/cli/summarizeBattleFrontierResearchPortfolio.ts": ["battleCandidateFrontierSmoke.ts"],
+    "src/ai/whiteBox/battleConditionalWorkbench.ts": ["battleCandidateFrontierSmoke.ts"],
+    "src/cli/runBattleFrontierResearch.ts": ["battleReplaySmoke.ts", "parallelRegistrySmoke.ts"],
+    "src/cli/freezeBattleFrontierHoldout.ts": ["battleCandidateFrontierSmoke.ts", "battleReplaySmoke.ts"],
+    "src/cli/planBattleFrontierHoldout.ts": ["battleCandidateFrontierSmoke.ts", "battleReplaySmoke.ts"],
+    "src/cli/auditBattleFrontierHoldout.ts": ["battleAggregationSmoke.ts", "battleReplaySmoke.ts"],
+    "src/cli/finalizeBattleFrontierResearchOptions.ts": ["managerResearchAgendaSmoke.ts", "battleAggregationSmoke.ts"],
+    "src/cli/summarizeLineupDeploymentPortfolio.ts": ["lineupDeploymentPortfolioSummarySmoke.ts"],
+    "src/ai/managerResearchAgenda.ts": ["managerResearchAgendaSmoke.ts", "managerResearchReviewCliSmoke.ts"],
+    "src/cli/managerResearchAgendas.ts": ["managerResearchAgendaSmoke.ts", "managerResearchReviewCliSmoke.ts"],
+    "src/cli/draftLeagueV12.ts": ["v12Smoke.ts", "lineupAssistCanarySmoke.ts"],
+    "src/cli/draftLeagueV4.ts": ["v12Smoke.ts", "lineupAssistCanarySmoke.ts"],
+    "src/draft/lineupStudySource.ts": ["historicalRuntimeCheckpointSmoke.ts", "toolingDoctorSmoke.ts"],
   };
   return explicitImpact(testFile, changedFile) || (impacts[changedFile] ?? []).includes(path.basename(testFile));
 }
@@ -104,6 +143,7 @@ function packageCheckFingerprint(name: string): string {
   return stable({dependencies: value.dependencies, devDependencies: value.devDependencies, optionalDependencies: value.optionalDependencies, peerDependencies: value.peerDependencies, engines: value.engines, packageManager: value.packageManager, type: value.type, main: value.main, scripts});
 }
 function referencedScripts(command: string): string[] { return [...command.matchAll(/npm(?:\.cmd)?\s+run\s+([a-zA-Z0-9:_-]+)/g)].map(match => match[1]); }
+function resolveScriptFiles(name: string, seen = new Set<string>()): string[] { if (seen.has(name)) return []; seen.add(name); const command = String(packageJson.scripts[name] ?? ""), direct = [...command.matchAll(/tsx\s+([^\s]+\.ts)/g)].map(match => normalize(match[1])), nested = referencedScripts(command).flatMap(reference => resolveScriptFiles(reference, seen)); return [...new Set([...direct, ...nested])].sort(); }
 function stable(value: unknown): string { if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`; if (value && typeof value === "object") return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stable((value as any)[key])}`).join(",")}}`; return JSON.stringify(value); }
 function safe(value: string): string { return value.replace(/[^a-z0-9.-]+/gi, "-"); }
 function option(name: string, fallback: string): string { const index = args.indexOf(name); return index >= 0 ? args[index + 1] ?? fallback : fallback; }

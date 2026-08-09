@@ -192,6 +192,8 @@ assert.deepEqual(learningTrace, evaluateWhiteBoxLearning(learningInput), "learni
 const cappedLearning = evaluateWhiteBoxLearning({...learningInput, parameters: {"learning.maximumtraitdelta": .01}});
 assert.equal(cappedLearning.traits.find(entry => entry.trait === "risk")!.appliedDelta, .01);
 assert.equal(cappedLearning.traits.find(entry => entry.trait === "risk")!.capped, true);
+const saturatedLearning = evaluateWhiteBoxLearning({...learningInput, development: {...learningInput.development, strategies: Object.fromEntries(Object.keys(learningInput.development.strategies).map(trait => [trait, {mean: 1, confidence: 1, effectiveSamples: 12}])) as typeof learningInput.development.strategies}, evidence: learningInput.evidence.map(entry => ({...entry, value: 1}))});
+assert(saturatedLearning.traits.every(entry => entry.posteriorAfter.mean === 1), "capped posterior mass must remain normalized");
 assert.throws(() => evaluateWhiteBoxLearning({...learningInput, evidence: learningInput.evidence.slice(0, 5)}), /Missing learning evidence/);
 
 const evolutionInput = evolutionCompetitors(false);
@@ -200,7 +202,7 @@ const evolutionB = evolveManagerPopulation(evolutionInput, 1, "whitebox-evolutio
 assert.deepEqual(evolutionA, evolutionB, "evolution and its audit must be deterministic for a fixed seed");
 assert.equal(evolutionA.length, 6);
 assert(evolutionA.some(entry => entry.protectedCopy && entry.whiteBoxEvolutionTrace.mutation.gates.length === 0));
-assert(evolutionA.filter(entry => !entry.protectedCopy).every(entry => entry.whiteBoxEvolutionTrace.mutation.gates.length === 50));
+assert(evolutionA.filter(entry => !entry.protectedCopy).every(entry => entry.whiteBoxEvolutionTrace.mutation.gates.length === 49));
 assert(evolutionA.every(entry => Object.keys(entry.whiteBoxEvolutionTrace.parameters).length === 18));
 let inheritedCrossover = false;
 for (let attempt = 0; attempt < 100 && !inheritedCrossover; attempt += 1) {
@@ -278,7 +280,7 @@ function evolutionCompetitors(atBounds: boolean): EvolutionCompetitor[] {
 function boundedGenome(): NonNullable<ManagerProfile["genome"]> {
   const genome = emptyGenome();
   Object.assign(genome.economics, {starPremium: .35, cashUtility: .35, bidAggression: .35, marketAwareness: .35});
-  Object.assign(genome.tactics, {aggression: .5, setupBias: .5, pivotBias: .5, recoveryBias: .5, statusBias: .5, teraBias: .5, switchBias: .5});
+  Object.assign(genome.tactics, {aggression: .5, setupBias: .5, pivotBias: .5, recoveryBias: .5, statusBias: .5, switchBias: .5});
   for (const role of ["hazards", "removal", "recovery", "pivot", "setup", "priority", "screens", "status", "physical", "special"] as const) genome.roles[role] = .8;
   Object.assign(genome.configuration, {speedInvestment: .7, bulkBias: .7, statusMoveBias: .7, coverageBias: .7, accuracyRisk: .7, choiceItemBias: .7, recoveryItemBias: .7});
   Object.assign(genome.systems, {weather: .8, trickRoom: .8, balance: .8, offense: .8, stall: .8, hazardPressure: .8, pivotCycle: .8, setupCore: .8});

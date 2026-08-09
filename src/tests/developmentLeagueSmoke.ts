@@ -25,7 +25,7 @@ const similarityBase = createNoviceProfiles(1)[0], similarityClone = cloneManage
 similarityContrast.traits = {risk: .9, stars: .1, synergy: .9, counter: .1, value: .9, flexibility: .1};
 similarityContrast.economics = {starPremium: .9, cashUtility: .1, bidAggression: .9, marketAwareness: .1};
 similarityContrast.learning = {rate: .9, exploration: .1, memoryDecay: .2};
-similarityContrast.tactics = {...similarityContrast.tactics, aggression: 1, setupBias: -1, pivotBias: 1, recoveryBias: -1, statusBias: 1, teraBias: -1, switchBias: 1};
+similarityContrast.tactics = {...similarityContrast.tactics, aggression: 1, setupBias: -1, pivotBias: 1, recoveryBias: -1, statusBias: 1, switchBias: 1};
 similarityContrast.preferredRoles = ["hazards", "setup", "priority"];
 assert.equal(personalitySimilarity(similarityBase, similarityClone).similarity, 1);
 assert(personalitySimilarity(similarityBase, similarityContrast).similarity < .85);

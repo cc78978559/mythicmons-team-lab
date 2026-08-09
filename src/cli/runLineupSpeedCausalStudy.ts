@@ -8,6 +8,9 @@ import {materializeHistoricalDynastyBoundary} from "../draft/historicalRuntimeCh
 import {acquireNamedRunLock} from "../draft/runLock";
 import {syncManagerMechanismLedgers} from "../ai/managerMechanismLedgerSync";
 import {acquireSourceCacheLease, gcSourceCaches, touchSourceCache} from "../draft/sourceCacheMaintenance";
+import {lineupStudySourceEvidence, lineupStudySourceIdentity, lineupStudySourceKey} from "../draft/lineupStudySource";
+import {AI_VERSION} from "../showdown/choice";
+import {buildEvidenceEpoch} from "../showdown/evidenceEpoch";
 
 const args = process.argv.slice(2);
 const root = process.cwd();
@@ -22,12 +25,17 @@ const plan = read<any>(planFile), officialStateFile = path.join(official, "dynas
 const hypothesisId = String(plan.hypothesisId ?? plan.hypothesis?.primaryFeature ?? "lineup-speed-causal-v1");
 const finalSeason = Math.max(...plan.selected.map((entry: any) => Number(entry.season))), sourceCacheRoot = path.resolve(option("--source-cache", "output/tooling/shadow-lineup-source-cache"));
 const sourceCacheBudgetBytes = integerOption("--source-cache-max-mb", Number(process.env.LINEUP_SOURCE_CACHE_MAX_MB ?? 4096), 512, 102400) * 1048576, sourceCacheMaxAgeDays = integerOption("--source-cache-max-age-days", Number(process.env.LINEUP_SOURCE_CACHE_MAX_AGE_DAYS ?? 30), 0, 3650);
-const sourceCacheIdentity = {officialStateSha256: fileHash(officialStateFile), finalSeason, runtimeInputsSha256: runtimeInputsHash(root)};
-const sourceCacheKey = crypto.createHash("sha256").update(JSON.stringify(sourceCacheIdentity)).digest("hex"), studySource = path.join(sourceCacheRoot, sourceCacheKey), manifestFile = path.join(out, "causal-manifest.json");
+const preparedSourceOption = option("--prepared-source-cache", ""), preparedStudySource = preparedSourceOption ? path.resolve(preparedSourceOption) : null, preparedMarker = preparedStudySource ? read<any>(path.join(preparedStudySource, "source-cache.json")) : null;
+const sourceCacheIdentity = preparedMarker?.identity ?? lineupStudySourceIdentity(root, officialStateFile, finalSeason);
+const sourceCacheKey = preparedMarker?.key ?? lineupStudySourceKey(sourceCacheIdentity), studySource = preparedStudySource ?? path.join(sourceCacheRoot, sourceCacheKey), manifestFile = path.join(out, "causal-manifest.json");
+const officialAudit = read<any>(path.join(official, "audit-summary.json")), currentPolicySha256 = buildEvidenceEpoch(AI_VERSION, "gen9ou").policySha256;
+const sourceEvidenceEpoch = {policySha256: String(officialAudit.evidenceEpoch?.policySha256 ?? ""), formalActivationAllowed: officialAudit.schemaVersion === 6 && officialAudit.evidenceEpoch?.policySha256 === currentPolicySha256 && officialAudit.evidenceEpoch?.formalActivationReady === true};
 fs.mkdirSync(out, {recursive: true});
 void main().catch(error => { console.error(error instanceof Error ? error.stack ?? error.message : String(error)); process.exitCode = 1; });
 
 async function main(): Promise<void> {
+  if (!sourceEvidenceEpoch.formalActivationAllowed) throw new Error("Official source is outside the current formal evidence epoch; generate and audit a current-policy season first");
+  if (fs.existsSync(manifestFile)) clearStaleCausalLock();
   const lock = acquireNamedRunLock(out, ".lineup-causal.lock", {workflow: "lineup-causal", hypothesisId, official, plan: planFile});
   let sourceLease: {release: () => void} | undefined;
   try {
@@ -93,6 +101,11 @@ function finalizeCompletedStudy(manifest: any): void {
 
 function prepareStudySource(): void {
   fs.mkdirSync(sourceCacheRoot, {recursive: true});
+  if (preparedStudySource) {
+    assertPreparedStudySource();
+    touchSourceCache(studySource, sourceCacheKey, "causal-study-prepared-reuse");
+    return;
+  }
   gcSourceCaches(sourceCacheRoot, path.dirname(sourceCacheRoot), {budgetBytes: sourceCacheBudgetBytes, maxAgeDays: sourceCacheMaxAgeDays, apply: true, protectedKeys: [sourceCacheKey]});
   const cacheLock = acquireNamedRunLock(sourceCacheRoot, `.${sourceCacheKey.slice(0, 24)}.lock`, {workflow: "lineup-causal-source-cache", sourceCacheKey, finalSeason});
   try {
@@ -102,7 +115,7 @@ function prepareStudySource(): void {
       assertSafeStudySource(studySource); fs.rmSync(studySource, {recursive: true, force: true});
     }
     const temporary = path.join(sourceCacheRoot, `.${sourceCacheKey}.${process.pid}.${crypto.randomBytes(6).toString("hex")}.tmp`);
-    try { buildStudySource(temporary); write(path.join(temporary, "source-cache.json"), {schemaVersion: 1, key: sourceCacheKey, identity: sourceCacheIdentity, evidence: studySourceEvidence(temporary)}); fs.renameSync(temporary, studySource); touchSourceCache(studySource, sourceCacheKey, "causal-study-created"); }
+    try { buildStudySource(temporary); write(path.join(temporary, "source-cache.json"), {schemaVersion: 1, key: sourceCacheKey, identity: sourceCacheIdentity, evidence: studySourceEvidence(temporary)}); fs.renameSync(temporary, studySource); touchSourceCache(studySource, sourceCacheKey, "causal-study-created"); gcSourceCaches(sourceCacheRoot, path.dirname(sourceCacheRoot), {budgetBytes: sourceCacheBudgetBytes, maxAgeDays: sourceCacheMaxAgeDays, apply: true, protectedKeys: [sourceCacheKey]}); }
     catch (error) { assertSafeStudySource(temporary); fs.rmSync(temporary, {recursive: true, force: true}); throw error; }
   } finally { cacheLock.release(); }
 }
@@ -134,7 +147,7 @@ function validStudySourceCache(): boolean {
   catch { return false; }
 }
 
-function studySourceEvidence(source: string): Record<string, string> { const files = ["dynasty-state.json"]; for (let season = Number(officialState.completedSeason) + 1; season <= finalSeason; season++) files.push(`season-${String(season).padStart(2, "0")}/season.json`, `season-${String(season).padStart(2, "0")}/decision-ledger.json`); return Object.fromEntries(files.map(relative => { const file = path.join(source, relative); if (!fs.existsSync(file)) throw new Error(`Causal source cache evidence is missing: ${relative}`); return [relative, fileHash(file)]; })); }
+function studySourceEvidence(source: string): Record<string, string> { return lineupStudySourceEvidence(source, Number(officialState.completedSeason) + 1, finalSeason); }
 
 function ensureStartingCheckpoint(targetRoot: string): void {
   const season = Number(officialState.completedSeason);
@@ -166,7 +179,7 @@ function verifyPlanAgainstSource(): void {
 
 function loadManifest(): any {
   if (fs.existsSync(manifestFile)) return read<any>(manifestFile);
-  const manifest = {schemaVersion: 1, plan: planFile, planSha256: fileHash(planFile), sourceCache: {key: sourceCacheKey, identity: sourceCacheIdentity, retained: true}, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), items: plan.selected.map((entry: any) => ({...entry, status: "pending"}))};
+  const manifest = {schemaVersion: 1, evidenceEpoch: sourceEvidenceEpoch, plan: planFile, planSha256: fileHash(planFile), sourceCache: {key: sourceCacheKey, identity: sourceCacheIdentity, retained: true}, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), items: plan.selected.map((entry: any) => ({...entry, status: "pending"}))};
   write(manifestFile, manifest); return manifest;
 }
 
@@ -230,6 +243,7 @@ function summarize(manifest: any, emit = true, recordedCache: any = manifest.sou
       retainedCapsuleBytes: retainedBytes,
     },
     activationStatus: "shadow-only",
+    evidenceEpoch: sourceEvidenceEpoch,
     temporaryStudySourceRemoved: false,
     sharedStudySourceCache: recordedCache,
   };
@@ -265,12 +279,32 @@ function writeManifest(manifest: any): void {
 function runSync(script: string, toolArgs: string[], extraEnv: Record<string, string>): void { const result = spawnSync(process.execPath, [require.resolve("tsx/cli"), script, ...toolArgs], {cwd: root, env: {...process.env, ...extraEnv}, encoding: "utf8", maxBuffer: 64 * 1024 * 1024}); if (result.status !== 0) throw new Error(`${path.basename(script)} failed:\n${result.stderr || result.stdout}`); }
 function runAsync(script: string, toolArgs: string[]): Promise<void> { return new Promise((resolve, reject) => { const child = spawn(process.execPath, [require.resolve("tsx/cli"), script, ...toolArgs], {cwd: root, env: process.env, stdio: ["ignore", "pipe", "pipe"]}); const output: Buffer[] = []; child.stdout.on("data", chunk => output.push(chunk)); child.stderr.on("data", chunk => output.push(chunk)); child.on("error", reject); child.on("close", code => code === 0 ? resolve() : reject(new Error(`${path.basename(script)} failed:\n${Buffer.concat(output).toString("utf8").slice(-12000)}`))); }); }
 function safeCase(item: any): string { return `s${String(item.season).padStart(2, "0")}-${item.managerId}-${crypto.createHash("sha1").update(item.decisionId).digest("hex").slice(0, 10)}`; }
-function assertSafeStudySource(candidate: string): void { const resolved = path.resolve(candidate), cache = path.resolve(sourceCacheRoot), name = path.basename(resolved).replace(/^\./, ""); if (path.dirname(resolved) !== cache || !name.startsWith(sourceCacheKey)) throw new Error(`Unsafe causal source-cache cleanup: ${resolved}`); }
-function runtimeInputsHash(project: string): string {
-  const inputs = [...walk(path.join(project, "src")).filter(file => file.endsWith(".ts") && !file.includes(`${path.sep}tests${path.sep}`)), ...walk(path.join(project, "benchmarks", "gen9expanded")), ...["package.json", "package-lock.json", "tsconfig.json"].map(file => path.join(project, file)).filter(file => fs.existsSync(file))].sort();
-  const digest = crypto.createHash("sha256"); for (const file of inputs) digest.update(path.relative(project, file).replaceAll("\\", "/")).update("\0").update(fs.readFileSync(file)).update("\0"); return digest.digest("hex");
+function clearStaleCausalLock(): void {
+  const file = path.join(out, ".lineup-causal.lock");
+  if (!fs.existsSync(file)) return;
+  let owner: any;
+  try { owner = read<any>(file); } catch { throw new Error(`Cannot recover malformed causal lock: ${file}`); }
+  const pid = Number(owner?.pid);
+  if (owner?.schemaVersion !== 1 || !Number.isInteger(pid) || pid < 1) throw new Error(`Cannot recover invalid causal lock owner: ${file}`);
+  try { process.kill(pid, 0); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") { fs.rmSync(file); return; } throw error; }
+  throw new Error(`Cannot recover while causal lock owner ${pid} is alive: ${file}`);
 }
-function walk(directory: string): string[] { if (!fs.existsSync(directory)) return []; const result: string[] = []; for (const entry of fs.readdirSync(directory, {withFileTypes: true})) { const file = path.join(directory, entry.name); if (entry.isDirectory()) result.push(...walk(file)); else if (entry.isFile()) result.push(file); } return result; }
+
+function assertPreparedStudySource(): void {
+  if (path.dirname(studySource) !== path.resolve(sourceCacheRoot) || path.basename(studySource) !== sourceCacheKey || !/^[a-f0-9]{64}$/.test(sourceCacheKey)) throw new Error(`Prepared source cache is outside the configured cache root: ${studySource}`);
+  if (preparedMarker?.schemaVersion !== 1 || preparedMarker.key !== sourceCacheKey || Number(preparedMarker.identity?.finalSeason) !== finalSeason) throw new Error("Prepared source cache marker does not match the causal plan final season");
+  const state = read<any>(path.join(studySource, "dynasty-state.json")); if (Number(state.completedSeason) !== finalSeason) throw new Error("Prepared source cache dynasty is incomplete");
+  const evidence = preparedMarker.evidence; if (!evidence || !Object.keys(evidence).length) throw new Error("Prepared source cache has no evidence map");
+  for (const [relative, expected] of Object.entries(evidence)) { const file = path.join(studySource, relative); if (!fs.existsSync(file) || fileHash(file) !== expected) throw new Error(`Prepared source cache evidence mismatch: ${relative}`); }
+  for (const season of new Set<number>(plan.selected.map((entry: any) => Number(entry.season)))) {
+    const checkpoint = path.join(studySource, ".season-checkpoints", `season-${String(season - 1).padStart(2, "0")}`, "checkpoint.json");
+    if (!fs.existsSync(checkpoint)) throw new Error(`Prepared source cache lacks causal branch checkpoint for S${season}: ${checkpoint}`);
+    const value = read<any>(checkpoint), runtimeManifest = String(value.runtime?.manifest ?? ""), runtimeFile = path.join(studySource, runtimeManifest);
+    if (!runtimeManifest || !fs.existsSync(runtimeFile)) throw new Error(`Prepared source cache lacks historical runtime for S${season}: ${runtimeManifest || "unspecified"}`);
+  }
+}
+function assertSafeStudySource(candidate: string): void { const resolved = path.resolve(candidate), cache = path.resolve(sourceCacheRoot), name = path.basename(resolved).replace(/^\./, ""); if (path.dirname(resolved) !== cache || !name.startsWith(sourceCacheKey)) throw new Error(`Unsafe causal source-cache cleanup: ${resolved}`); }
 function fileHash(file: string): string { return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex"); }
 function read<T>(file: string): T { return JSON.parse(fs.readFileSync(file, "utf8")) as T; }
 function write(file: string, value: unknown): void { fs.mkdirSync(path.dirname(file), {recursive: true}); const temporary = `${file}.${process.pid}.tmp`; fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, "utf8"); fs.renameSync(temporary, file); }

@@ -1,380 +1,2138 @@
 {
-    "package":  "mythicmons-team-lab-v13-dynasty-portable",
-    "createdAt":  "2026-07-12T10:12:38.7179333+08:00",
-    "aiVersion":  "stateful-choice-v12-with-dynasty-v4",
-    "savedTeamCount":  42,
-    "requiresFirstRunNpmCi":  true,
-    "excluded":  [
-                     "node_modules",
-                     "historical output",
-                     "scratch work",
-                     "credentials"
-                 ],
-    "files":  [
-                  {
-                      "path":  "benchmarks/gen9expanded/balanced-core.txt",
-                      "bytes":  980,
-                      "sha256":  "993c5441b34c448db92f0e7003a4e578e570bc68e15e9d2140a0cc37fc971524"
-                  },
-                  {
-                      "path":  "benchmarks/gen9expanded/fat-balance.txt",
-                      "bytes":  906,
-                      "sha256":  "1b3758b40fcd9d6a37d419b7ab00d6c599831909cfb93df787164de3670f4079"
-                  },
-                  {
-                      "path":  "benchmarks/gen9expanded/hazard-stack.txt",
-                      "bytes":  985,
-                      "sha256":  "b363b8a610476cd69075bffec74e3d4ec656619e677577941e9b97b7f2d5f358"
-                  },
-                  {
-                      "path":  "benchmarks/gen9expanded/index.json",
-                      "bytes":  1504,
-                      "sha256":  "aa23b184dcfba9983aae73b6ae987b87fdc93665c334845543ef920a20ced7fd"
-                  },
-                  {
-                      "path":  "benchmarks/gen9expanded/offense-pressure.txt",
-                      "bytes":  988,
-                      "sha256":  "28fc2b5dee168e402cc408172e884608377bf91db56ab7f144aa1e2d4039efcb"
-                  },
-                  {
-                      "path":  "benchmarks/gen9expanded/rain-offense.txt",
-                      "bytes":  950,
-                      "sha256":  "9cad85e414f34ff79d671133d4be180cbd29507dc49caa74bb54b06bc275313d"
-                  },
-                  {
-                      "path":  "benchmarks/gen9expanded/trick-room.txt",
-                      "bytes":  1010,
-                      "sha256":  "eeb4c1b9de86d38b39f271e7d733e4324ceeb438e20dfc844a4f0f300c96b53d"
-                  },
-                  {
-                      "path":  "benchmarks/gen9expanded/ubers-balance.txt",
-                      "bytes":  859,
-                      "sha256":  "fa13ddda922c8ad50f94599a2eaa35c8190409116f7669b181cb3e6d3839a21f"
-                  },
-                  {
-                      "path":  "benchmarks/gen9expanded/ubers-dual-bike.txt",
-                      "bytes":  883,
-                      "sha256":  "8560394dbefaee6c149db7d675cc5d3c242e06501470f0ece118a3b921eff623"
-                  },
-                  {
-                      "path":  "benchmarks/gen9expanded/ubers-rain.txt",
-                      "bytes":  887,
-                      "sha256":  "8f1be801fe4eb9c359f69655e722a70f51e2c4bcc1de29b4d37f99bf0cd3635f"
-                  },
-                  {
-                      "path":  "benchmarks/gen9expanded/ubers-stall.txt",
-                      "bytes":  838,
-                      "sha256":  "7477cdb5e688acad6a35fd88942596204e377640e37b4f0294bd4afc01685b99"
-                  },
-                  {
-                      "path":  "benchmarks/gen9ou/balanced-core.txt",
-                      "bytes":  980,
-                      "sha256":  "993c5441b34c448db92f0e7003a4e578e570bc68e15e9d2140a0cc37fc971524"
-                  },
-                  {
-                      "path":  "benchmarks/gen9ou/fat-balance.txt",
-                      "bytes":  906,
-                      "sha256":  "1b3758b40fcd9d6a37d419b7ab00d6c599831909cfb93df787164de3670f4079"
-                  },
-                  {
-                      "path":  "benchmarks/gen9ou/hazard-stack.txt",
-                      "bytes":  985,
-                      "sha256":  "b363b8a610476cd69075bffec74e3d4ec656619e677577941e9b97b7f2d5f358"
-                  },
-                  {
-                      "path":  "benchmarks/gen9ou/index.json",
-                      "bytes":  1096,
-                      "sha256":  "c548fe2fed006014ea7cd9c5dbdb3360ca40914c88f59e9bf2ed70cfacf9a293"
-                  },
-                  {
-                      "path":  "benchmarks/gen9ou/offense-pressure.txt",
-                      "bytes":  988,
-                      "sha256":  "28fc2b5dee168e402cc408172e884608377bf91db56ab7f144aa1e2d4039efcb"
-                  },
-                  {
-                      "path":  "benchmarks/gen9ou/rain-offense.txt",
-                      "bytes":  950,
-                      "sha256":  "9cad85e414f34ff79d671133d4be180cbd29507dc49caa74bb54b06bc275313d"
-                  },
-                  {
-                      "path":  "benchmarks/gen9ou/trick-room.txt",
-                      "bytes":  1010,
-                      "sha256":  "eeb4c1b9de86d38b39f271e7d733e4324ceeb438e20dfc844a4f0f300c96b53d"
-                  },
-                  {
-                      "path":  "data/draft/g1-six-team.json",
-                      "bytes":  3943,
-                      "sha256":  "a96cc01d3986bc26d3103527eccaf39479dc9a934efc687ed09ada67687cd8f5"
-                  },
-                  {
-                      "path":  "data/draft/g2-six-team.json",
-                      "bytes":  4858,
-                      "sha256":  "e6c32529024879eb99f14e760e799fab96587d0c6590b25af26063a2f3480388"
-                  },
-                  {
-                      "path":  "data/draft/g3-six-team.json",
-                      "bytes":  4421,
-                      "sha256":  "151b6a60703fb9e0e2f606f9409e42f601db00f6442765234657f7edfa7c4f9d"
-                  },
-                  {
-                      "path":  "data/draft/g4-six-team.json",
-                      "bytes":  3799,
-                      "sha256":  "4bc1c66f868834da598c85f51fa9c3bafdf793e4662a3be220006927e01f9364"
-                  },
-                  {
-                      "path":  "data/draft/g5-six-team.json",
-                      "bytes":  3109,
-                      "sha256":  "17116485a65a9059edd9276ece9dc8b6c5ccc9a843b1b50af592395c75c1ea60"
-                  },
-                  {
-                      "path":  "data/draft/g6-six-team.json",
-                      "bytes":  3522,
-                      "sha256":  "26b251ee0368869f27c952514e661256ac410626d0df59e42dbd02f656eea8e7"
-                  },
-                  {
-                      "path":  "data/sandbox/g1.json",
-                      "bytes":  3575,
-                      "sha256":  "87296fcdf5f85a2250c2930b1031ceddba0995721c0e06cce1c6bda4de7d0ee3"
-                  },
-                  {
-                      "path":  "data/sandbox/g2.json",
-                      "bytes":  3698,
-                      "sha256":  "2023936220a91d8c682f058184ab16dbc265b8f62c934ba9a3801ddfc68449ef"
-                  },
-                  {
-                      "path":  "data/teams.json",
-                      "bytes":  250580,
-                      "sha256":  "6faa66407271f22e8ebe64c315cf38c173eb041f29d48e7b6286b22337910033"
-                  },
-                  {
-                      "path":  "examples/sandbox-overlord.json",
-                      "bytes":  1179,
-                      "sha256":  "45e6f3141c1f03aae81055715f65f49e81a5e6dd25017140177c991c370c5898"
-                  },
-                  {
-                      "path":  "examples/teamA.txt",
-                      "bytes":  980,
-                      "sha256":  "993c5441b34c448db92f0e7003a4e578e570bc68e15e9d2140a0cc37fc971524"
-                  },
-                  {
-                      "path":  "examples/teamB.txt",
-                      "bytes":  961,
-                      "sha256":  "5b910e21652c5c830b5e93d138365652a28793a3ae947da103e8d3605562ac25"
-                  },
-                  {
-                      "path":  "HANDOFF.md",
-                      "bytes":  2774,
-                      "sha256":  "7325d840d864dbe2255087a2462e0ed2616cf3090333582be015b4aca32e3f11"
-                  },
-                  {
-                      "path":  "package.json",
-                      "bytes":  2033,
-                      "sha256":  "739f872c4e9d9c16cfedb67a9414e91e867304ae329095b763ffe5dc6b0ba814"
-                  },
-                  {
-                      "path":  "package-lock.json",
-                      "bytes":  77363,
-                      "sha256":  "e6ee01df8c90f01d4e16502697c7e150b43b167dd2d3ff1ec134d84a7e499e09"
-                  },
-                  {
-                      "path":  "README.md",
-                      "bytes":  10296,
-                      "sha256":  "a70d5aeb6ab4bca66d842d9933d476d395db3c13bdf2a60ca9c8ed6e82edab77"
-                  },
-                  {
-                      "path":  "setup-portable.ps1",
-                      "bytes":  1703,
-                      "sha256":  "6909cdbbe03d8c48f52afade30417098d77032d3577ea9553e182e6f4e216197"
-                  },
-                  {
-                      "path":  "src/cli/draftLeagueV3.ts",
-                      "bytes":  43708,
-                      "sha256":  "6382bfecc22a044bb0cd2ce2052c01b5c16a88df71a985531bc49fb3c5ba7b76"
-                  },
-                  {
-                      "path":  "src/cli/draftLeagueV4.ts",
-                      "bytes":  24572,
-                      "sha256":  "11da6ff7f50915af4cb67b9a87cb5615e630f7bbf5a87b4838868707cc0010d9"
-                  },
-                  {
-                      "path":  "src/cli/draftTournament.ts",
-                      "bytes":  33817,
-                      "sha256":  "81acb647d33f55dbf3f0024473f36fb0aa84b729a45455824672b1c991cb2fbd"
-                  },
-                  {
-                      "path":  "src/cli/evaluate.ts",
-                      "bytes":  3311,
-                      "sha256":  "462c68be43d63300e111263eaf2cc55284c87999749253c0bb96a5986f5d803a"
-                  },
-                  {
-                      "path":  "src/cli/modernHybrids.ts",
-                      "bytes":  31564,
-                      "sha256":  "e8ed2eca85ad7127a51d5c6f714bd4fa9ee16803ed51875e7a589aebb3a483e2"
-                  },
-                  {
-                      "path":  "src/cli/sandbox.ts",
-                      "bytes":  4121,
-                      "sha256":  "5127a68f1dd5c6c8c0e2ffe43ef58796cf1843670dad6eb72faf5e3616140b73"
-                  },
-                  {
-                      "path":  "src/cli/simulate.ts",
-                      "bytes":  4742,
-                      "sha256":  "b0216bf299f66a003bbb67e9395b8a2b7e7ee489a1068fc1a4a920e077fe0a41"
-                  },
-                  {
-                      "path":  "src/cli/team.ts",
-                      "bytes":  6076,
-                      "sha256":  "cf8305f5967be93bd89be74ebfbf374bb9ebcc548a51198b2a631fc3a19798bd"
-                  },
-                  {
-                      "path":  "src/cli/variants.ts",
-                      "bytes":  11452,
-                      "sha256":  "15feb65ac5c22657837c062ecde32524e0c8a1acb0dc222cee6f4bb4962221ee"
-                  },
-                  {
-                      "path":  "src/draft/battleDecisionExtractor.ts",
-                      "bytes":  2868,
-                      "sha256":  "fd6d6fa64bfd5262f2757fc26c2c21a5451edbd6560a8388e46fcfc627e088c4"
-                  },
-                  {
-                      "path":  "src/draft/customRegistry.ts",
-                      "bytes":  228,
-                      "sha256":  "dc0c1a9e1febd33158967b0ee1700186032fe4b497e91867bca8c6eead255266"
-                  },
-                  {
-                      "path":  "src/draft/decisionLedger.ts",
-                      "bytes":  3622,
-                      "sha256":  "31655db0c39025aea6a7d1bc033358ac62f425a56556c96c47921cc47513b6fe"
-                  },
-                  {
-                      "path":  "src/draft/dynastyLearning.ts",
-                      "bytes":  10212,
-                      "sha256":  "2ccfc03c11431ee8ef1ab103f7b2024e0b26f6ca8ecb7a57837cbf40c6c86023"
-                  },
-                  {
-                      "path":  "src/draft/managerProfiles.ts",
-                      "bytes":  2730,
-                      "sha256":  "036be48862c7c43824a3cfc0a9d37d7526f61ff0e2779a4b785be87583b15fd9"
-                  },
-                  {
-                      "path":  "src/draft/scoring.ts",
-                      "bytes":  687,
-                      "sha256":  "990b206d40a17f672826385662910882ac346e7421889c8eba96350ae99d4814"
-                  },
-                  {
-                      "path":  "src/eval/benchmarkPool.ts",
-                      "bytes":  1023,
-                      "sha256":  "72206ab86b660efa70e7bdd49b8f016a5bd4829a04811c5dcdddee8e7386d56d"
-                  },
-                  {
-                      "path":  "src/eval/evaluator.ts",
-                      "bytes":  12320,
-                      "sha256":  "6c757707f710d698b9724730bc75152adabfbef326752844f07cbebfdc6bcfbb"
-                  },
-                  {
-                      "path":  "src/eval/logAnalysis.ts",
-                      "bytes":  11564,
-                      "sha256":  "6ba05b49a6581bf5c73d549a3d04f1d2858eade577a07ca697e2587fc5d6bc89"
-                  },
-                  {
-                      "path":  "src/eval/report.ts",
-                      "bytes":  5156,
-                      "sha256":  "4ad723dfd968557b77cf3030a09d78baf223624fb1a73e5bb9b9bf89868343ec"
-                  },
-                  {
-                      "path":  "src/eval/types.ts",
-                      "bytes":  2668,
-                      "sha256":  "8f2e82f02f19ca8506ceeb2c7493e3f69761530cfeba9b17614bd7a36f788e81"
-                  },
-                  {
-                      "path":  "src/sandbox/compiler.ts",
-                      "bytes":  24114,
-                      "sha256":  "6f1c04a7f1197241b63770ea1df327bc1b2edc8ea03bf331effbb713a1114ea6"
-                  },
-                  {
-                      "path":  "src/sandbox/installer.ts",
-                      "bytes":  12615,
-                      "sha256":  "b10cb65199375ab72e36843a8d6e35e22ebb74603cfe2a7cfa41926d298c727e"
-                  },
-                  {
-                      "path":  "src/sandbox/types.ts",
-                      "bytes":  1550,
-                      "sha256":  "220d916e3ec6edce21eb87e432500fc21bd0d00c93919f297479ae66582cf8a5"
-                  },
-                  {
-                      "path":  "src/showdown/args.ts",
-                      "bytes":  1598,
-                      "sha256":  "0c1e1ab43fe1b7c0686333dddfdbd286804d911b49bd4f781463a7d7922b3554"
-                  },
-                  {
-                      "path":  "src/showdown/battle.ts",
-                      "bytes":  8244,
-                      "sha256":  "e57a07371cc90f303495b75bbb277c8a2f638005b440e9ea0af217b57dac00c9"
-                  },
-                  {
-                      "path":  "src/showdown/choice.ts",
-                      "bytes":  114890,
-                      "sha256":  "35d3d792d19480b6c6601f32cb12b9dc44c4575d370bfe1633d56996ec401e0b"
-                  },
-                  {
-                      "path":  "src/showdown/seed.ts",
-                      "bytes":  610,
-                      "sha256":  "120b46c39efe803125c93d237634192fb9a675f3a5ed1289ec8213a615ea8528"
-                  },
-                  {
-                      "path":  "src/showdown/team.ts",
-                      "bytes":  1725,
-                      "sha256":  "deee99569907615679bcf9941b21a007bba2afd586020554c758c2f148426046"
-                  },
-                  {
-                      "path":  "src/store/teamDatabase.ts",
-                      "bytes":  4132,
-                      "sha256":  "d74b22d21d763af93d0f56316933ef02425c725358f6379528b93cc448c17f61"
-                  },
-                  {
-                      "path":  "src/tests/dynastySmoke.ts",
-                      "bytes":  3837,
-                      "sha256":  "b82909f14aa3e12149c32f16c866ec40ba84c8dbb1b42048c0a968572b6746a8"
-                  },
-                  {
-                      "path":  "src/tests/regressions.ts",
-                      "bytes":  80680,
-                      "sha256":  "026eba84ed2a9fcd93e624809782175df084a0a5412163e5cc527d62fef2e135"
-                  },
-                  {
-                      "path":  "src/tests/sandboxSmoke.ts",
-                      "bytes":  2837,
-                      "sha256":  "787699c95d95e89079efb567ffc939017a7f39996c516a229e8d08aa4cecadf9"
-                  },
-                  {
-                      "path":  "src/variants/generator.ts",
-                      "bytes":  8683,
-                      "sha256":  "930944ad3647813f3f73d245b77dff07a51a1e393e6b688e0a27e87192aa4032"
-                  },
-                  {
-                      "path":  "src/variants/report.ts",
-                      "bytes":  3793,
-                      "sha256":  "bc2f6b3747b4f1af54246905480e6e7b1298a702bd904e790048522a9555a547"
-                  },
-                  {
-                      "path":  "src/variants/types.ts",
-                      "bytes":  1015,
-                      "sha256":  "b545929e76873ef14052d283e04ed53cf8d21d03124117c01a05e33d43891506"
-                  },
-                  {
-                      "path":  "tsconfig.json",
-                      "bytes":  230,
-                      "sha256":  "0f82dd1eea00bd6f4eb5b3f8878942f33530c2b8ce8315851a3d5509cb935646"
-                  },
-                  {
-                      "path":  "vendor/node-static-disabled/index.js",
-                      "bytes":  288,
-                      "sha256":  "7bd7a934ebbfac948073d88ce155432e51413b6d77c4520addfd8df616d8564c"
-                  },
-                  {
-                      "path":  "vendor/node-static-disabled/package.json",
-                      "bytes":  227,
-                      "sha256":  "155b57b5e22dcc98f006ed66e1a2be30de696fdd157212cadb265c896c6adfbe"
-                  }
-              ]
+  "schemaVersion": 2,
+  "package": "mythicmons-team-lab-portable",
+  "packageVersion": "1.1.0",
+  "createdAt": "2026-08-09T03:56:29.704Z",
+  "aiVersion": "stateful-choice-v16-no-tera-dynamax-v1",
+  "savedTeamCount": 42,
+  "requiresFirstRunNpmCi": true,
+  "excluded": [
+    "node_modules",
+    "output",
+    "historical evidence",
+    "credentials",
+    "machine-specific state"
+  ],
+  "files": [
+    {
+      "path": ".github/workflows/validation.yml",
+      "bytes": 1503,
+      "sha256": "8fbe85cf966442c46f813baff1e9bc04fb6164f9127e02d7e3695ae3ce161429"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 103,
+      "sha256": "c65b456c386926f98ca60d398e08651c629e44a53052a5399b2cd144e8cdd57b"
+    },
+    {
+      "path": "HANDOFF.md",
+      "bytes": 3367,
+      "sha256": "51bddc00a6f274f336b8c35ad3a1acda80428cba320a36f34525120104d76c7a"
+    },
+    {
+      "path": "README.md",
+      "bytes": 20900,
+      "sha256": "6b3c8f40dce5b2e522b06794906380b9781a637005350e723b97008f1ce17360"
+    },
+    {
+      "path": "benchmarks/gen9expanded/balanced-core.txt",
+      "bytes": 980,
+      "sha256": "993c5441b34c448db92f0e7003a4e578e570bc68e15e9d2140a0cc37fc971524"
+    },
+    {
+      "path": "benchmarks/gen9expanded/fat-balance.txt",
+      "bytes": 906,
+      "sha256": "1b3758b40fcd9d6a37d419b7ab00d6c599831909cfb93df787164de3670f4079"
+    },
+    {
+      "path": "benchmarks/gen9expanded/hazard-stack.txt",
+      "bytes": 985,
+      "sha256": "b363b8a610476cd69075bffec74e3d4ec656619e677577941e9b97b7f2d5f358"
+    },
+    {
+      "path": "benchmarks/gen9expanded/index.json",
+      "bytes": 1504,
+      "sha256": "aa23b184dcfba9983aae73b6ae987b87fdc93665c334845543ef920a20ced7fd"
+    },
+    {
+      "path": "benchmarks/gen9expanded/offense-pressure.txt",
+      "bytes": 988,
+      "sha256": "28fc2b5dee168e402cc408172e884608377bf91db56ab7f144aa1e2d4039efcb"
+    },
+    {
+      "path": "benchmarks/gen9expanded/rain-offense.txt",
+      "bytes": 950,
+      "sha256": "9cad85e414f34ff79d671133d4be180cbd29507dc49caa74bb54b06bc275313d"
+    },
+    {
+      "path": "benchmarks/gen9expanded/trick-room.txt",
+      "bytes": 1010,
+      "sha256": "eeb4c1b9de86d38b39f271e7d733e4324ceeb438e20dfc844a4f0f300c96b53d"
+    },
+    {
+      "path": "benchmarks/gen9expanded/ubers-balance.txt",
+      "bytes": 859,
+      "sha256": "fa13ddda922c8ad50f94599a2eaa35c8190409116f7669b181cb3e6d3839a21f"
+    },
+    {
+      "path": "benchmarks/gen9expanded/ubers-dual-bike.txt",
+      "bytes": 883,
+      "sha256": "8560394dbefaee6c149db7d675cc5d3c242e06501470f0ece118a3b921eff623"
+    },
+    {
+      "path": "benchmarks/gen9expanded/ubers-rain.txt",
+      "bytes": 887,
+      "sha256": "8f1be801fe4eb9c359f69655e722a70f51e2c4bcc1de29b4d37f99bf0cd3635f"
+    },
+    {
+      "path": "benchmarks/gen9expanded/ubers-stall.txt",
+      "bytes": 838,
+      "sha256": "7477cdb5e688acad6a35fd88942596204e377640e37b4f0294bd4afc01685b99"
+    },
+    {
+      "path": "benchmarks/gen9ou/balanced-core.txt",
+      "bytes": 980,
+      "sha256": "993c5441b34c448db92f0e7003a4e578e570bc68e15e9d2140a0cc37fc971524"
+    },
+    {
+      "path": "benchmarks/gen9ou/fat-balance.txt",
+      "bytes": 906,
+      "sha256": "1b3758b40fcd9d6a37d419b7ab00d6c599831909cfb93df787164de3670f4079"
+    },
+    {
+      "path": "benchmarks/gen9ou/hazard-stack.txt",
+      "bytes": 985,
+      "sha256": "b363b8a610476cd69075bffec74e3d4ec656619e677577941e9b97b7f2d5f358"
+    },
+    {
+      "path": "benchmarks/gen9ou/index.json",
+      "bytes": 1096,
+      "sha256": "c548fe2fed006014ea7cd9c5dbdb3360ca40914c88f59e9bf2ed70cfacf9a293"
+    },
+    {
+      "path": "benchmarks/gen9ou/offense-pressure.txt",
+      "bytes": 988,
+      "sha256": "28fc2b5dee168e402cc408172e884608377bf91db56ab7f144aa1e2d4039efcb"
+    },
+    {
+      "path": "benchmarks/gen9ou/rain-offense.txt",
+      "bytes": 950,
+      "sha256": "9cad85e414f34ff79d671133d4be180cbd29507dc49caa74bb54b06bc275313d"
+    },
+    {
+      "path": "benchmarks/gen9ou/trick-room.txt",
+      "bytes": 1010,
+      "sha256": "eeb4c1b9de86d38b39f271e7d733e4324ceeb438e20dfc844a4f0f300c96b53d"
+    },
+    {
+      "path": "data/bosses/g1-red.json",
+      "bytes": 3533,
+      "sha256": "8c21c97599b11ab9c6af693d4eadc193787b52076233860d30251c18932e8af6"
+    },
+    {
+      "path": "data/draft/g1-six-team.json",
+      "bytes": 5836,
+      "sha256": "140f7699ebc5ab7932e5d402504876166f73bcc064058e484e8eaf07b571ec1c"
+    },
+    {
+      "path": "data/draft/g2-six-team.json",
+      "bytes": 4932,
+      "sha256": "7de683ce7aca4f5b9d5168454a3f8d763385ae539a0ebbfc289aae0358662eba"
+    },
+    {
+      "path": "data/draft/g3-six-team.json",
+      "bytes": 3391,
+      "sha256": "ed49ebfdab04827732e8c998a28ece8c44629bd5c95605b2bcfb668789320872"
+    },
+    {
+      "path": "data/draft/g4-six-team.json",
+      "bytes": 3828,
+      "sha256": "97f3da3a215dd8a8b96e02427d99afb159ad78375a68e4552c0db7df4cc66c12"
+    },
+    {
+      "path": "data/draft/g5-six-team.json",
+      "bytes": 3113,
+      "sha256": "c60427207dc34bef27c7eead236f674eb5f8611b243e483f6e66945ea56814fb"
+    },
+    {
+      "path": "data/draft/g6-six-team.json",
+      "bytes": 2976,
+      "sha256": "712eabe265024371695a3ed84b8e6bb18b15cd24a222058a83bb9694e2a19d30"
+    },
+    {
+      "path": "data/lineup-audit-hypotheses.json",
+      "bytes": 7592,
+      "sha256": "ed67d0ad29c4e229731ccc632cf80e78d7d666abe0834f1c7c943e284adbcb89"
+    },
+    {
+      "path": "data/sandbox/g1.json",
+      "bytes": 3575,
+      "sha256": "87296fcdf5f85a2250c2930b1031ceddba0995721c0e06cce1c6bda4de7d0ee3"
+    },
+    {
+      "path": "data/sandbox/g2.json",
+      "bytes": 3698,
+      "sha256": "2023936220a91d8c682f058184ab16dbc265b8f62c934ba9a3801ddfc68449ef"
+    },
+    {
+      "path": "data/shadow-evidence-registry.json",
+      "bytes": 6471,
+      "sha256": "95cba8ccc79c8c22959703b024b46be5e6e7ba77357fac42be1dd39864e22721"
+    },
+    {
+      "path": "data/teams.json",
+      "bytes": 250580,
+      "sha256": "6faa66407271f22e8ebe64c315cf38c173eb041f29d48e7b6286b22337910033"
+    },
+    {
+      "path": "docs/AI_PIPELINE_CONTROL.md",
+      "bytes": 4621,
+      "sha256": "6c1d51c80097e89ef332cbdbad57397f0c031c509a9debb86a62f48d2528aed4"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "bytes": 5869,
+      "sha256": "45ea87365a8edd45123bb1980798ca5f19b0186fcd35992a952fc8f5a21637f8"
+    },
+    {
+      "path": "docs/AUTONOMOUS_RESEARCH.md",
+      "bytes": 2780,
+      "sha256": "b1849475b8886bf785ac2c84a7dcb057b903ddf7ae97faf8215b63ccafcdf13a"
+    },
+    {
+      "path": "docs/CAREER_JOURNEYS.md",
+      "bytes": 3184,
+      "sha256": "3707bc7cd48ef87f6f3ab74bd33fc0d9ee9205832e4cdc52ef5e2c1db9425fa9"
+    },
+    {
+      "path": "docs/CURRENT_STATUS_AND_ROADMAP.md",
+      "bytes": 23064,
+      "sha256": "868a687893f5ee0c299201c12110a4f2f6923de0fe6b88bf8a6049a8f5c23ce5"
+    },
+    {
+      "path": "docs/DECISION_DOSSIERS.md",
+      "bytes": 2230,
+      "sha256": "872ff8247ba0fb75e0c518bf02036d1ddce2128302e49d9419856a015311527f"
+    },
+    {
+      "path": "docs/DEVELOPMENT_ECOLOGY_30.md",
+      "bytes": 2720,
+      "sha256": "fddf6988fd0b0178804d89deeddb096d3d1bc8c09c22b1691e6fe255818aa4fe"
+    },
+    {
+      "path": "docs/DEVELOPMENT_ECOLOGY_BASELINE.md",
+      "bytes": 2687,
+      "sha256": "2b19cd15624d3249bc2997e65e45889399dc66c510ef33a1275d11ca93b351f7"
+    },
+    {
+      "path": "docs/DEVELOPMENT_ECOLOGY_CALIBRATION.md",
+      "bytes": 5764,
+      "sha256": "7051269985dc74afa62567c31c537048899d9cf2659d6aaf1e15244a1b452b1e"
+    },
+    {
+      "path": "docs/DEVELOPMENT_LEAGUE.md",
+      "bytes": 30373,
+      "sha256": "182e182cb23ff86fd44d978ff7081bac9acca2f74d3416bb482068fb517983f6"
+    },
+    {
+      "path": "docs/EVIDENCE_EPOCH.md",
+      "bytes": 3198,
+      "sha256": "2714098f718ce42b159ce64107a697eb3cb9def7c1035fe93721fd188d55eb0c"
+    },
+    {
+      "path": "docs/FORMAL_VALIDATION.md",
+      "bytes": 2872,
+      "sha256": "ad1b9678751a7c9beca4b5c44352b71a2abc167a53eaa2d9c37364ce4685314a"
+    },
+    {
+      "path": "docs/MANAGER_MECHANISM_LEDGERS.md",
+      "bytes": 19189,
+      "sha256": "43a7469c342357840d74393bc1f47be88a4b3e6206edd2d5667159b73b697283"
+    },
+    {
+      "path": "docs/MANAGER_PROGRAM_V2.md",
+      "bytes": 2275,
+      "sha256": "94632f80c1fb2d749cdbfb80c30ef1fda887d8e8dd81a27353984373de348ff8"
+    },
+    {
+      "path": "docs/PARALLEL_CUSTOM_REGISTRY.md",
+      "bytes": 3961,
+      "sha256": "01e11dba2b56a250b1d7d7a9af1d328a798c5428f1fb9188a51ea0d91dd0038c"
+    },
+    {
+      "path": "docs/POSITION_VALUE.md",
+      "bytes": 1712,
+      "sha256": "d5b9f03785ac9bda4076e1e6b36b690dfc60402e59df4cdb87a0c82df047431e"
+    },
+    {
+      "path": "docs/SEASON_REPORTING.md",
+      "bytes": 1641,
+      "sha256": "3ca8ba0e5da2db50acb04cdb7157c655d258b23977e5945e5f60264125314f19"
+    },
+    {
+      "path": "docs/SHADOW_DIAGNOSTICS.md",
+      "bytes": 19425,
+      "sha256": "e85f35655472fa1cb09090cabe7ac193c91c7b7987e1b18397f1050137c93eb7"
+    },
+    {
+      "path": "docs/STAGE_1_DECISION_DOSSIER_DELIVERY.md",
+      "bytes": 2799,
+      "sha256": "79270778ef7df764b9d2866df073a7a0a8a40b12d1024132cd591e451b78084c"
+    },
+    {
+      "path": "docs/STAGE_2_POSITION_VALUE_DELIVERY.md",
+      "bytes": 3020,
+      "sha256": "64d7301f4bd33b92c2db950ed9393b2d4149eb3f516d064a356e28dbb360ee2f"
+    },
+    {
+      "path": "docs/STAGE_3_MANAGER_PROGRAM_V2_DELIVERY.md",
+      "bytes": 4122,
+      "sha256": "c44ccc6deabd48b3f6c5febea08cf8cbbd08b40dfb1450dbc2467a2f1810ab6d"
+    },
+    {
+      "path": "docs/STAGE_4_AUTONOMOUS_RESEARCH_DELIVERY.md",
+      "bytes": 4671,
+      "sha256": "bd90bd8c8a239e6cb1b4742751a44edf8a843722cf54a8799fb57916bdee0106"
+    },
+    {
+      "path": "docs/STAGE_5_FORMAL_VALIDATION_DELIVERY.md",
+      "bytes": 3898,
+      "sha256": "b9a95d41af17fc5a27390bf25eb7863c6cafa5e75f7eb8f9b064ef96023c5f27"
+    },
+    {
+      "path": "docs/STAGE_6_TOOL_INTEGRATION_DELIVERY.md",
+      "bytes": 4691,
+      "sha256": "a5646044d5e7928225853ed3234e8013204acacf70e943787f41e10add04cabb"
+    },
+    {
+      "path": "docs/STRATEGY_PROGRAM_EVOLUTION.md",
+      "bytes": 28313,
+      "sha256": "a9f14677dde1035a1a4f0fde4849ba1f43c63413a7d608cd4e17bdd6c15c5542"
+    },
+    {
+      "path": "docs/TACTICAL_MEMORY_ABLATION.md",
+      "bytes": 9985,
+      "sha256": "39fcd519b5d7f78b3a5cf290c190e26f9b1b4bc6dd11a6b167f42403e85d56bd"
+    },
+    {
+      "path": "docs/UNIFIED_COUNTERFACTUAL_EVIDENCE.md",
+      "bytes": 17630,
+      "sha256": "b6ba60732c1df00e92822d4e4a8e8ee3afc5195eae8a044ecf8d845730300dba"
+    },
+    {
+      "path": "docs/V12_AUDIT.md",
+      "bytes": 2226,
+      "sha256": "a019c1e6bd52fe21bb694b04e84cfd70e4614962ee8d8f6b6edd8b2fadf97804"
+    },
+    {
+      "path": "docs/WHITE_BOX_AI.md",
+      "bytes": 48554,
+      "sha256": "d6730d73e19e6726078b05aff9e12310275f8db12c8ebbd8c7613009acf97023"
+    },
+    {
+      "path": "examples/sandbox-overlord.json",
+      "bytes": 1179,
+      "sha256": "45e6f3141c1f03aae81055715f65f49e81a5e6dd25017140177c991c370c5898"
+    },
+    {
+      "path": "examples/teamA.txt",
+      "bytes": 980,
+      "sha256": "993c5441b34c448db92f0e7003a4e578e570bc68e15e9d2140a0cc37fc971524"
+    },
+    {
+      "path": "examples/teamB.txt",
+      "bytes": 961,
+      "sha256": "5b910e21652c5c830b5e93d138365652a28793a3ae947da103e8d3605562ac25"
+    },
+    {
+      "path": "package-lock.json",
+      "bytes": 80346,
+      "sha256": "5148892bb525025e4fdeac719d1476b23d9339caae3f56be274798bad2c7dcac"
+    },
+    {
+      "path": "package.json",
+      "bytes": 21327,
+      "sha256": "aa87ecca043ea0ebd177d2ab96d812262016f36e1410576389eb6f22932c3c21"
+    },
+    {
+      "path": "setup-portable.ps1",
+      "bytes": 1703,
+      "sha256": "6909cdbbe03d8c48f52afade30417098d77032d3577ea9553e182e6f4e216197"
+    },
+    {
+      "path": "src/ai/autonomousResearch.ts",
+      "bytes": 12702,
+      "sha256": "d79f915ba7327a054d5b3cd7d7c0754cdf2626475ed046e3d384dd52cbeb5f25"
+    },
+    {
+      "path": "src/ai/battleActionFamily.ts",
+      "bytes": 1415,
+      "sha256": "245e2695a1bbba49e934ac07ac07bed2ea83bb3085a85b19b812cfb22dd72ff6"
+    },
+    {
+      "path": "src/ai/formalValidation.ts",
+      "bytes": 7384,
+      "sha256": "ecc409b446e756caf323120529e600efd9aaf1c679c742b0633eb8086c8c0225"
+    },
+    {
+      "path": "src/ai/managerMechanismLedger.ts",
+      "bytes": 12841,
+      "sha256": "b2393a7abc4f173980aeb4342b11b003365d8ab1c7da638726afdc6cce62054a"
+    },
+    {
+      "path": "src/ai/managerMechanismLedgerSync.ts",
+      "bytes": 7342,
+      "sha256": "abbd336ea48ca0bc60ae2f7059650fe041e106d7ca285a650136e59d0fb97a7b"
+    },
+    {
+      "path": "src/ai/managerProgramV2.ts",
+      "bytes": 18000,
+      "sha256": "ce78c741c203bbb5273618c1009da1dc8e5410b919a45da6ff11013308ea3646"
+    },
+    {
+      "path": "src/ai/managerResearchAgenda.ts",
+      "bytes": 14969,
+      "sha256": "a0b918af93fea640bc167cf4b77278911e84c7293476cefec0a4ff7f75b6b380"
+    },
+    {
+      "path": "src/ai/pipelineControl.ts",
+      "bytes": 5240,
+      "sha256": "11b8f4542d4339e9f2185945e4a15c743a61269fa1f4c3e540c8460b83f184b4"
+    },
+    {
+      "path": "src/ai/positionValue.ts",
+      "bytes": 27835,
+      "sha256": "47929551c3b3e7ad286070c852e13969fc2d477604b2e24c7bf530965cf729da"
+    },
+    {
+      "path": "src/ai/whiteBox/academyContractConcession.ts",
+      "bytes": 1646,
+      "sha256": "0302c75b9fa7e062e72ce359a95c938bbe5ead2fd867e98b1a5827a48b77a15e"
+    },
+    {
+      "path": "src/ai/whiteBox/academyContractCounterfactual.ts",
+      "bytes": 8867,
+      "sha256": "300e863f6ccb4c373a3142cbdfc1b6253be2e8706de5190540d513f6f268cd18"
+    },
+    {
+      "path": "src/ai/whiteBox/acquisition.ts",
+      "bytes": 3630,
+      "sha256": "d0e6f2a27717e12134573c2c2c37584ccdbf4798ced700dee840e5d45066f7d9"
+    },
+    {
+      "path": "src/ai/whiteBox/acquisitionApproval.ts",
+      "bytes": 2769,
+      "sha256": "4712b731b43ad0702927adb6b8d8eb170dc01aa6290361ad08c4cef317710eef"
+    },
+    {
+      "path": "src/ai/whiteBox/auction.ts",
+      "bytes": 4660,
+      "sha256": "21c631b576bd5f16cbd2027228e413a3d3edde68c7b3503f5bb2ece698b81b48"
+    },
+    {
+      "path": "src/ai/whiteBox/audit.ts",
+      "bytes": 12995,
+      "sha256": "be721d3d6a65c66e8c6df521927ab237f68434209f03e51e9e4929be1d0a7934"
+    },
+    {
+      "path": "src/ai/whiteBox/battle.ts",
+      "bytes": 2854,
+      "sha256": "76a11a2937272bcc5f8e33655ac61631d4650930617efd61adea57fbe16dc316"
+    },
+    {
+      "path": "src/ai/whiteBox/battleAggregation.ts",
+      "bytes": 9168,
+      "sha256": "f5698e3dae4ebb9eb99e4adf8223ed8bd6ae12d16eb07650591e192f8e2b0039"
+    },
+    {
+      "path": "src/ai/whiteBox/battleApproval.ts",
+      "bytes": 4384,
+      "sha256": "d21142f0da1eaf33c9bce254268d24cc6dde8be431e248f76fd4739f3a71d79d"
+    },
+    {
+      "path": "src/ai/whiteBox/battleCandidateFrontier.ts",
+      "bytes": 10476,
+      "sha256": "098410d3016f22246d5e7359b5345a11db501b171f89ba07fd420b355edf9a1d"
+    },
+    {
+      "path": "src/ai/whiteBox/battleCausalSignature.ts",
+      "bytes": 11234,
+      "sha256": "e4aa3a0972c0c4cacaa90a712990ae8c757b43b95bcd9ab98157ab97bb94d1e5"
+    },
+    {
+      "path": "src/ai/whiteBox/battleConditionalWorkbench.ts",
+      "bytes": 9964,
+      "sha256": "424ca5f7092a550765a756d9263861eb923e8471e9a7c2b6f11eed67c2a69e09"
+    },
+    {
+      "path": "src/ai/whiteBox/battleScope.ts",
+      "bytes": 1886,
+      "sha256": "d446b92d0dad03007612c4905cbaecb0a59dad230809eab12a5afc64b4b51498"
+    },
+    {
+      "path": "src/ai/whiteBox/bidApproval.ts",
+      "bytes": 2070,
+      "sha256": "7000a7595fc8fb68ea352882bc7835c14c21370283db12077883ff2b8370756c"
+    },
+    {
+      "path": "src/ai/whiteBox/causalBoundaryAudit.ts",
+      "bytes": 10845,
+      "sha256": "fc7e957e5bb64c1e1de97da543c5f30f62d0b7643da2be5d4f38258f982d853f"
+    },
+    {
+      "path": "src/ai/whiteBox/counterfactual.ts",
+      "bytes": 6801,
+      "sha256": "5fb36f368d86d2f281ae389513265e66cf3082362922d38e2b9a84d0dac0205d"
+    },
+    {
+      "path": "src/ai/whiteBox/counterfactualBatch.ts",
+      "bytes": 4876,
+      "sha256": "3b84e948e680bbf61cf946b02b1f8d7fc624453b34f6c9decd8ef4dcb20fb660"
+    },
+    {
+      "path": "src/ai/whiteBox/counterfactualCapsule.ts",
+      "bytes": 4389,
+      "sha256": "3ce711e985bd2aa638586689abe6814ae968cc3d7452536e17d092d2e59a3040"
+    },
+    {
+      "path": "src/ai/whiteBox/decision.ts",
+      "bytes": 8577,
+      "sha256": "e6938cf4ac9bd88c13daaef51ce77c0374f8500ca94ee4c77ad2b8bfb34750cf"
+    },
+    {
+      "path": "src/ai/whiteBox/evolution.ts",
+      "bytes": 11816,
+      "sha256": "f5f75cf6daafd35f655b5799af3f33fc489f6edb8a584572f71e44f783d0418c"
+    },
+    {
+      "path": "src/ai/whiteBox/keeper.ts",
+      "bytes": 3529,
+      "sha256": "7015c43abdfc947d992743efaea5e9637f42f30d7d534bbe8276f3459fab65af"
+    },
+    {
+      "path": "src/ai/whiteBox/learning.ts",
+      "bytes": 4362,
+      "sha256": "a296f67e349380b701f9be4376172d6e8e3433c83887e3651d97a90e35110120"
+    },
+    {
+      "path": "src/ai/whiteBox/lineup.ts",
+      "bytes": 22150,
+      "sha256": "fd404b70c3be9c8dd83cc264131acbd8fafab2565436a2bda0703f5c74da1a8c"
+    },
+    {
+      "path": "src/ai/whiteBox/lineupApproval.ts",
+      "bytes": 12719,
+      "sha256": "db03420a529766aa222bbea429346803c437cbff11311ee633a2d9baa62b7910"
+    },
+    {
+      "path": "src/ai/whiteBox/lineupAssistCanary.ts",
+      "bytes": 9968,
+      "sha256": "e64bb6648c1b2efff1a79bd3fd8e670bc4db7963e7637e19a80ccad428ffc7f9"
+    },
+    {
+      "path": "src/ai/whiteBox/lineupCausalHeterogeneity.ts",
+      "bytes": 4593,
+      "sha256": "a134c2174835cd076e28b774f58a5818106e028f6354c1ef9b00e2f79b8284ae"
+    },
+    {
+      "path": "src/ai/whiteBox/lineupDeploymentPostmortem.ts",
+      "bytes": 9885,
+      "sha256": "a9c789b0204694ea26ea12058361fb8ce3460afc2f3f418ba112efaa8f02befa"
+    },
+    {
+      "path": "src/ai/whiteBox/lineupHypothesisWorkbench.ts",
+      "bytes": 27803,
+      "sha256": "6b5c7087401a983cc843d910a3e9de0e1b72f8d8acdc73da2afc8844a2f23a2e"
+    },
+    {
+      "path": "src/ai/whiteBox/lineupMechanismDiscovery.ts",
+      "bytes": 10391,
+      "sha256": "563a0ee658152f7620e502acb154bd4b5ba2d7176b71cd7378cb7a1aab6dd92f"
+    },
+    {
+      "path": "src/ai/whiteBox/lineupPilot.ts",
+      "bytes": 7514,
+      "sha256": "9a7fa05fe5c0987cce96b297451e66acafdbd90ad066738080fded2ac8a29ec0"
+    },
+    {
+      "path": "src/ai/whiteBox/lineupPilotReview.ts",
+      "bytes": 12776,
+      "sha256": "4dde58fbb2de774cd4bea3062995795798fc6e3a6e53a6fae141803cc0d068ca"
+    },
+    {
+      "path": "src/ai/whiteBox/lineupRepresentationAudit.ts",
+      "bytes": 6332,
+      "sha256": "8b391a6023040344809da654154bcd9e4b7ccb2dc2a4fff941f4b50cc83e484c"
+    },
+    {
+      "path": "src/ai/whiteBox/lineupRepresentationOutcomeReview.ts",
+      "bytes": 12471,
+      "sha256": "be6a8d187abeefac10dbf37f99588f307cb7dd705c33d7c855bf06a24d8040a5"
+    },
+    {
+      "path": "src/ai/whiteBox/lineupSpeedCausalPlan.ts",
+      "bytes": 5331,
+      "sha256": "a249ba63b124c6dae3ddbf8016343c0f4ba5e452e187ed3c9f5ccc4280c38183"
+    },
+    {
+      "path": "src/ai/whiteBox/lineupSpeedCausalResult.ts",
+      "bytes": 3369,
+      "sha256": "540ec017c19e62a949e9ffe4a2a49afac3cf51c5a205562f4619be59e234bd73"
+    },
+    {
+      "path": "src/ai/whiteBox/lineupStudySampleMerge.ts",
+      "bytes": 2297,
+      "sha256": "0236ceaa38bfdd6aff9f946a5e6229848b93553787a513884e3ed3c3ca0828a6"
+    },
+    {
+      "path": "src/ai/whiteBox/lineupTraceRetention.ts",
+      "bytes": 367,
+      "sha256": "47dd5a124b508f3ad1b56b7cc3fa2c5de6c7923313084eb93b1a6466d710a066"
+    },
+    {
+      "path": "src/ai/whiteBox/marketFlow.ts",
+      "bytes": 12208,
+      "sha256": "aa3c2651e3b3a68b42a7967e22dd1640e44e5f8b4fc6db30479432129c50610c"
+    },
+    {
+      "path": "src/ai/whiteBox/memory.ts",
+      "bytes": 9945,
+      "sha256": "db7dece4cc2e9db572b8d108fc77fd6e905cbce0a8f6a488be225253a6ee6837"
+    },
+    {
+      "path": "src/ai/whiteBox/opportunity.ts",
+      "bytes": 7984,
+      "sha256": "f55ddfccee56caf91ecf739e9ec40ff837e9dacf5691c9f0345daa00169ec084"
+    },
+    {
+      "path": "src/ai/whiteBox/parameters.ts",
+      "bytes": 15708,
+      "sha256": "35cf17fbbbefab1d03ab6f57074932f90e9614aa91abb4f94b3f0b76133661a7"
+    },
+    {
+      "path": "src/ai/whiteBox/portfolioBidCounterfactual.ts",
+      "bytes": 10020,
+      "sha256": "a3d1a607e2cf102cbe3ebbda9c8fc4fb054d782af100c453d11bd93e1ebc7510"
+    },
+    {
+      "path": "src/ai/whiteBox/programDecisionLabels.ts",
+      "bytes": 7469,
+      "sha256": "bf1413e37de8bf557a2d44b03d42dc98c0fb82f1106205bd3e75a92cb8747965"
+    },
+    {
+      "path": "src/ai/whiteBox/programDecisionLearning.ts",
+      "bytes": 12392,
+      "sha256": "fcbe6f87d3194052e4d108314fdcf2aa8e8c3c614b4d554df49668739a91a4e7"
+    },
+    {
+      "path": "src/ai/whiteBox/programDecisionLocalOutcome.ts",
+      "bytes": 2779,
+      "sha256": "165958a425154a6650e84b9dd7c5808f903c8a9198f15aef7c131fec9078d17f"
+    },
+    {
+      "path": "src/ai/whiteBox/prospectiveLineupIncubator.ts",
+      "bytes": 21451,
+      "sha256": "7060c7d799953df76233e5b2807f627c2ef1a7c4ff20efa98b3d6188a6c60196"
+    },
+    {
+      "path": "src/ai/whiteBox/release.ts",
+      "bytes": 10442,
+      "sha256": "b992d16902adf7ec609037db66e71b955d57552f3c32793641dbdec2e41feca5"
+    },
+    {
+      "path": "src/ai/whiteBox/releaseRegistry.ts",
+      "bytes": 8716,
+      "sha256": "16fc67a086676d819d719f174764492a592d396d95e44eeb3f770f4f25fc5c40"
+    },
+    {
+      "path": "src/ai/whiteBox/retention.ts",
+      "bytes": 2152,
+      "sha256": "49558c0cdd6ae4f50f9eb65ff111bcde012354e2b60d5ff5dcd6b30c690a4fd0"
+    },
+    {
+      "path": "src/ai/whiteBox/review.ts",
+      "bytes": 8535,
+      "sha256": "ca554dbd1e79f516a14e5104b49dfe3146609b5880036887ce4f223eb7fce27b"
+    },
+    {
+      "path": "src/ai/whiteBox/sampling.ts",
+      "bytes": 2431,
+      "sha256": "4f19f65ce03c79319b94810eb5426e2f9e83aeaebb8790de7110998bc2e725a6"
+    },
+    {
+      "path": "src/ai/whiteBox/shadowExperimentPlanner.ts",
+      "bytes": 10078,
+      "sha256": "e080fe5f6736c2d9c47d70f6554c585804839561fcadd5aa0d7d41ab33bedf26"
+    },
+    {
+      "path": "src/ai/whiteBox/soak.ts",
+      "bytes": 6167,
+      "sha256": "52b4c785f9f627089699c884c8be6707145d6128db93370f04fb5ce7d858f5bd"
+    },
+    {
+      "path": "src/ai/whiteBox/strategyProgramAggregation.ts",
+      "bytes": 14221,
+      "sha256": "04fe2a2371608cbba24bf69a300a814363148e4254f137e7ca644088366af824"
+    },
+    {
+      "path": "src/ai/whiteBox/strategyProgramReplication.ts",
+      "bytes": 4153,
+      "sha256": "6577d73d39f88234359b00b065cb8ff621cc774dce4b51f450e1b95117321084"
+    },
+    {
+      "path": "src/ai/whiteBox/strategyProgramScreening.ts",
+      "bytes": 2174,
+      "sha256": "ef7c1bbee2f3c4341f1b657b594ed757ce1e01a1c2c641ddf7d9d17659301a75"
+    },
+    {
+      "path": "src/ai/whiteBox/tacticalMemoryAblation.ts",
+      "bytes": 5616,
+      "sha256": "3bdcdaf7b477797371cfb9e960e5bb189acb0e83d38e9e3579ae0c3f34f6a1b0"
+    },
+    {
+      "path": "src/ai/whiteBox/tacticalTimingArchive.ts",
+      "bytes": 17953,
+      "sha256": "a835cde46157bd3c3b36d109955e41eb28bccd44f22d708b8784492765068288"
+    },
+    {
+      "path": "src/ai/whiteBox/unifiedAggregation.ts",
+      "bytes": 11607,
+      "sha256": "e99a97c51b3abc113d639c6cf6336c1bdb57b77484211e757d54ef0345c1f51d"
+    },
+    {
+      "path": "src/ai/whiteBox/unifiedEvidence.ts",
+      "bytes": 42210,
+      "sha256": "bffa24186a83e51dbb65c08b5b283df9f6f2389c80f92d95781eb91fe141f979"
+    },
+    {
+      "path": "src/cli/aggregateWhiteBoxCounterfactual.ts",
+      "bytes": 2008,
+      "sha256": "79ce66992dc7c3604b5015a213fb0ddf5238ff169d7031c6f63eaa8b67fb87fe"
+    },
+    {
+      "path": "src/cli/aiPipeline.ts",
+      "bytes": 38970,
+      "sha256": "430787483c96f71b5ef663d249b614f45571e43ab477686209d45e8541e98798"
+    },
+    {
+      "path": "src/cli/applyDevelopmentPromotion.ts",
+      "bytes": 23446,
+      "sha256": "6a41ac8f46b60ca61bda03564cf6f6bb85fa980bc74e54bb4aa6e569698aed08"
+    },
+    {
+      "path": "src/cli/archiveTacticalTiming.ts",
+      "bytes": 3070,
+      "sha256": "c8499d94f31c00d66ec834b130fb7b0910ea5f271eb2ca24b8c8035e04188ed0"
+    },
+    {
+      "path": "src/cli/auditBattleCandidateFrontier.ts",
+      "bytes": 3104,
+      "sha256": "3087b7c9e9111f74ab01fa02839aec1fbcf05e798eae2d8e0d0d2907461c08d3"
+    },
+    {
+      "path": "src/cli/auditBattleConditionalResearch.ts",
+      "bytes": 10474,
+      "sha256": "94c5b5eb5491696686fb4a0f7ede089d49cf80177fc3db7cf553baee1898c227"
+    },
+    {
+      "path": "src/cli/auditBattleFrontierHoldout.ts",
+      "bytes": 10865,
+      "sha256": "da458e2d40da55534dded3c9ddc904fb4a6ab8e0afe8836507a7f195b1555a0a"
+    },
+    {
+      "path": "src/cli/auditCausalBoundaries.ts",
+      "bytes": 6373,
+      "sha256": "a05694389e5a5005e2b3b1448801a677b687c5681900e629340102d1ff571cb1"
+    },
+    {
+      "path": "src/cli/auditEvidenceEpochs.ts",
+      "bytes": 1009,
+      "sha256": "e39db3a85937207ca2189391e8cd7777d51098b3b8a2dc733aab4cb68ad2582d"
+    },
+    {
+      "path": "src/cli/auditLineupCausalHeterogeneity.ts",
+      "bytes": 4095,
+      "sha256": "99dd961fe04cf837f43d740a4fdd0df82444fdac2670e7898fa4aefdf1e1a550"
+    },
+    {
+      "path": "src/cli/auditLineupHypotheses.ts",
+      "bytes": 4607,
+      "sha256": "fed33082e9f659c87019147d4f4a0aa9ee3bfd307f5169ae8238416a32c3ed31"
+    },
+    {
+      "path": "src/cli/auditShadowLineupRepresentation.ts",
+      "bytes": 3306,
+      "sha256": "70bd9cb7c34e07f9bdf4b812e9b599eb0807a198648acdd3724de513961bc5b9"
+    },
+    {
+      "path": "src/cli/auditV10.ts",
+      "bytes": 4224,
+      "sha256": "ed7fa43c215b25b39fbdcdb0481b454100c56de173b3e0fb427e9a1c00705f8f"
+    },
+    {
+      "path": "src/cli/auditV12.ts",
+      "bytes": 10038,
+      "sha256": "b02f267a35e2ef927577b2c8f5cdcb794616fd2b8479b59bb70fe58c5c52119f"
+    },
+    {
+      "path": "src/cli/auditWhiteBox.ts",
+      "bytes": 1361,
+      "sha256": "5c4c8d62f6ab6717093625720fe51092769ffd90ae5e591cdb1ec9522421dd5c"
+    },
+    {
+      "path": "src/cli/auditWhiteBoxLineupAssist.ts",
+      "bytes": 3553,
+      "sha256": "cd32c594a7f823dfed2c604780eebbb5c19dd8eda33636bba919c235b46d4141"
+    },
+    {
+      "path": "src/cli/autonomousResearch.ts",
+      "bytes": 43761,
+      "sha256": "bc87b334b84190ebd8f85ae1dfc534b1be7d50212e9b323a3be76771d5197f50"
+    },
+    {
+      "path": "src/cli/benchmarkLineupRepresentationAccumulation.ts",
+      "bytes": 18888,
+      "sha256": "64dd4fe9d774da62b2502fd08fa48434d0ebe3a13a42e76fdd26f3a2a9929a73"
+    },
+    {
+      "path": "src/cli/bossChallenge.ts",
+      "bytes": 20218,
+      "sha256": "d8e53507a6ecd4687c3e1d762bd0bdea26561d87f8aa3c98415f3cd3325ea4c3"
+    },
+    {
+      "path": "src/cli/buildOfficialHistory.ts",
+      "bytes": 6063,
+      "sha256": "b8f47434b56cff38975b71b3754c21efcd1941c68993b18db3b6ced6cec6b83e"
+    },
+    {
+      "path": "src/cli/bulkStatCalculator.ts",
+      "bytes": 1518,
+      "sha256": "da80bcc6942b4a81052be3397a5e067cfa4b17af5787f298aacc0356876b0872"
+    },
+    {
+      "path": "src/cli/calibrateDevelopmentLeague.ts",
+      "bytes": 7908,
+      "sha256": "1e1fd64cc78b684753e63e209f6b3e8d80d26a892baee478ffc7e9ed46f77095"
+    },
+    {
+      "path": "src/cli/careerArchive.ts",
+      "bytes": 1233,
+      "sha256": "9435da9046511a5fe7e362bffe4fb358f2302d2a53b82194ae4c3b165099284e"
+    },
+    {
+      "path": "src/cli/checkAffected.ts",
+      "bytes": 21147,
+      "sha256": "dfa52e08572360ec53bbf80c6a6aacd6d68e87eee4ed15c00ca4e80539a6f7a1"
+    },
+    {
+      "path": "src/cli/compactDevelopmentLeague.ts",
+      "bytes": 4246,
+      "sha256": "d7e3734748ed61d8c1476ef15e01107e65a2af2acfbae0508ce1a7099f1472cc"
+    },
+    {
+      "path": "src/cli/compactLineupCounterfactual.ts",
+      "bytes": 598,
+      "sha256": "a280daa9cdedbe6858084c1f6a9171901986452be90aea11c7f3cbacc87f628e"
+    },
+    {
+      "path": "src/cli/counterfactualAcademyContract.ts",
+      "bytes": 19951,
+      "sha256": "1b86fc76ef55f0dc172ea60d9357bebb15b0b49bfe80c9b0486e1395d1a81b92"
+    },
+    {
+      "path": "src/cli/counterfactualProgramDecision.ts",
+      "bytes": 10276,
+      "sha256": "ddfee27d0ba80bce9210799a6de27c3f560cb9ac9a8d253104d86486a8097f5f"
+    },
+    {
+      "path": "src/cli/counterfactualPunctuatedEvolution.ts",
+      "bytes": 10672,
+      "sha256": "04a95a2fc6ed63695fc27c441d3a8dce65b75c5d37b7c16ca11f2ebb6e59d917"
+    },
+    {
+      "path": "src/cli/counterfactualShadowProgram.ts",
+      "bytes": 20626,
+      "sha256": "83a80fec77c60a2b9f068bdffaf68dcd22b064d93463dcfbf507101f2a6867c5"
+    },
+    {
+      "path": "src/cli/counterfactualTacticalMemory.ts",
+      "bytes": 5080,
+      "sha256": "290babf23fe6e89d3dc449c7adbbade2aefcd2b4f06c6269f8511bdb8b8deb8d"
+    },
+    {
+      "path": "src/cli/counterfactualWhiteBox.ts",
+      "bytes": 7071,
+      "sha256": "5239767b8dbd830649e3a790a2f0e16987539afcce1fbf9cfe32688792e0112a"
+    },
+    {
+      "path": "src/cli/counterfactualWhiteBoxBattle.ts",
+      "bytes": 7168,
+      "sha256": "c81b4834eeab69789c79630b5dd77578e5cd25390636eb777ab23ac110223561"
+    },
+    {
+      "path": "src/cli/counterfactualWhiteBoxBid.ts",
+      "bytes": 18628,
+      "sha256": "541040b6b940f959a87fcaedbd05926ca504f9feffe82436f690cf9764333420"
+    },
+    {
+      "path": "src/cli/counterfactualWhiteBoxLearning.ts",
+      "bytes": 7472,
+      "sha256": "6446b13cf1b0d59c25d67a7cfe482cadab696e9552210892349b8fdcdebdb4f6"
+    },
+    {
+      "path": "src/cli/counterfactualWhiteBoxLineup.ts",
+      "bytes": 9252,
+      "sha256": "7d2efa3ee6f60f9357da9cc1f68119ce921353396eee14b3669b88a8f29d0cdb"
+    },
+    {
+      "path": "src/cli/curateAcademyContractPersonalityEvidence.ts",
+      "bytes": 5800,
+      "sha256": "e26c5bd83ac70b91168d8916ce1334a661740142641f0746c5ce8dd6974905a1"
+    },
+    {
+      "path": "src/cli/decisionDossiers.ts",
+      "bytes": 2069,
+      "sha256": "cbfa7528fa7e338f51ae82f28dbb8294bbe5ceb2cbde66d51e3ffcd3f2f60145"
+    },
+    {
+      "path": "src/cli/developmentLeague.ts",
+      "bytes": 55912,
+      "sha256": "190d5185a75ee42f5a23db7a1d0e1b121a4131689c5d873339b474c0f72e87ce"
+    },
+    {
+      "path": "src/cli/developmentLeagueSoak.ts",
+      "bytes": 17921,
+      "sha256": "abbae0e504d265872ade25a6a3c0f172888c81ca7c2f73a1534f6c7207613174"
+    },
+    {
+      "path": "src/cli/discoverBattleConditionalMechanisms.ts",
+      "bytes": 9782,
+      "sha256": "5c033224a4c43b3f56caefff5fb727df340eea26f019ff2ae08fa15ec06882a8"
+    },
+    {
+      "path": "src/cli/discoverShadowLineupMechanisms.ts",
+      "bytes": 4440,
+      "sha256": "bbaa134a6f07a68a6865d748635575592109b4feca555dae0c7c9f7fafe48eec"
+    },
+    {
+      "path": "src/cli/draftLeagueV10.ts",
+      "bytes": 1471,
+      "sha256": "628e981fdbbea203b2a085b4d087ce7365f1d8ba89263cc861c6fc6274ef5098"
+    },
+    {
+      "path": "src/cli/draftLeagueV11.ts",
+      "bytes": 1873,
+      "sha256": "92b58b838f4b509bd0969148ce32ebbd8dd44698e46a206535df90e129293fb4"
+    },
+    {
+      "path": "src/cli/draftLeagueV12.ts",
+      "bytes": 4510,
+      "sha256": "8efcdafa3885c4cdd4b3392ea8b64f6a7788894b9e2cb415b0125f3e553d5396"
+    },
+    {
+      "path": "src/cli/draftLeagueV3.ts",
+      "bytes": 138601,
+      "sha256": "cadd3fcd358d1e9bd45594d7bd1182be9927f13e8ca0a90c691c634178545d39"
+    },
+    {
+      "path": "src/cli/draftLeagueV4.ts",
+      "bytes": 113036,
+      "sha256": "284f3ee2c13e1b171074833ec742bc013eba2746678c13d2f7632c4910ae0367"
+    },
+    {
+      "path": "src/cli/draftLeagueV9.ts",
+      "bytes": 1475,
+      "sha256": "ca148b8aa4509115cc192863e9f3ab4b63f7862c9e251bdc238e75a44a867518"
+    },
+    {
+      "path": "src/cli/draftTournament.ts",
+      "bytes": 33841,
+      "sha256": "58457932ee6368c0d4389d809317fa9524ea39a8a8cf4b9a02fc0eb189447fe2"
+    },
+    {
+      "path": "src/cli/evaluate.ts",
+      "bytes": 3319,
+      "sha256": "587e8c96aab84e22e4f3c6ffaf7de50cd96de42b647cc547be67ca6c2cad1874"
+    },
+    {
+      "path": "src/cli/expandBattleShadowSources.ts",
+      "bytes": 9917,
+      "sha256": "ab9703109493a8312b34bdbf27ed013cdaf250699d34d9b4ca00c50777e5c548"
+    },
+    {
+      "path": "src/cli/exportBattleAssistApproval.ts",
+      "bytes": 913,
+      "sha256": "d4156a30a4c11b0bc0e1fe3be2cf0eea8973f5e088400c48df6663ba279cc25a"
+    },
+    {
+      "path": "src/cli/exportLineupAssistApproval.ts",
+      "bytes": 2536,
+      "sha256": "1284d2d93a74ddc3e3ae816690d937662b1bced2f484ecadbba46258ee4c1808"
+    },
+    {
+      "path": "src/cli/exportWhiteBoxRelease.ts",
+      "bytes": 1774,
+      "sha256": "8cec8e184ad9cb15921639e86a76bbe2521650405f4d07b7992857eaaf5e9b1e"
+    },
+    {
+      "path": "src/cli/finalizeBattleFrontierResearchOptions.ts",
+      "bytes": 3372,
+      "sha256": "ed858c92bef27ca4f2f4e9e3dc0f874aaaba6149249e10d1adc8b0d7a66106b7"
+    },
+    {
+      "path": "src/cli/formalValidation.ts",
+      "bytes": 60756,
+      "sha256": "b15a5f1399bafa4b8fc8e127a645d1c6edef2332f745a2c8610e916aa5326c70"
+    },
+    {
+      "path": "src/cli/freezeBattleFrontierHoldout.ts",
+      "bytes": 5215,
+      "sha256": "bbb5c59c805d3afc3871f1282496fc2944e586b0fb112f3ce25d0a85f9ed2666"
+    },
+    {
+      "path": "src/cli/freezeLineupCausalScope.ts",
+      "bytes": 6179,
+      "sha256": "8a729dcad27691e955a58de6b82a881458edd81de61ef87947432f0a3af3014b"
+    },
+    {
+      "path": "src/cli/freezeLineupDeploymentResearch.ts",
+      "bytes": 7129,
+      "sha256": "2c9cd58132cb4f67820cf480df7b4e6623a4243c18ec69179888786e01e1e7dd"
+    },
+    {
+      "path": "src/cli/generatePositionValueCorpus.ts",
+      "bytes": 5776,
+      "sha256": "60e61cbf1ad129931c6bebf53eebf9269029cdf6254753b97472b00dbfb7721e"
+    },
+    {
+      "path": "src/cli/generateProgramDecisionSources.ts",
+      "bytes": 8000,
+      "sha256": "14b4105678a0283be3d7bdff73c1282c69bcada4823320ae464fa8836211e9ec"
+    },
+    {
+      "path": "src/cli/importWhiteBoxRelease.ts",
+      "bytes": 725,
+      "sha256": "8e57e00d05f5eb9818d9935f3d98eec1674abc8026c1537a6a1ce0fcf83bb315"
+    },
+    {
+      "path": "src/cli/incubateProspectiveLineupFeatures.ts",
+      "bytes": 7362,
+      "sha256": "903277c6a62b30d7f3d820a2a5d11af41ca6733428b25619d448385c0aeb7505"
+    },
+    {
+      "path": "src/cli/leagueControl.ts",
+      "bytes": 21926,
+      "sha256": "fa022ed6987ba6bc68842fdaa1ccaee12005945b904e417ebec7123c748d6089"
+    },
+    {
+      "path": "src/cli/learnProgramDecisionLabels.ts",
+      "bytes": 1906,
+      "sha256": "63321b3f624693c4839109051719ae1abdefcf845a8fa8390e9f68202425b6ac"
+    },
+    {
+      "path": "src/cli/lineupDeploymentPostmortem.ts",
+      "bytes": 3871,
+      "sha256": "fa149d5a998de7730c6ef635b54afe550812884cfbd97392bde256af06903133"
+    },
+    {
+      "path": "src/cli/lineupResearch.ts",
+      "bytes": 13347,
+      "sha256": "d30205e068f869ba7e597465ee37a3c369bb87ac87d5cccdaa9d89d231348a7c"
+    },
+    {
+      "path": "src/cli/manageDevelopmentAiReleaseRegistry.ts",
+      "bytes": 8278,
+      "sha256": "e49cb03bf2e1b8dfc7be9885b0334613c4fd54fc4adb09d2cf76578329c5df02"
+    },
+    {
+      "path": "src/cli/manageWhiteBoxReleaseRegistry.ts",
+      "bytes": 1380,
+      "sha256": "a6f877c329536f25aff76ebc58c634f4c75c23fca68629437a7a19a2e92ec32b"
+    },
+    {
+      "path": "src/cli/managerMechanismLedgers.ts",
+      "bytes": 4231,
+      "sha256": "df0aa8bb163881070786df0cf242cec282688a889a9dda4ddc196fb5656469b0"
+    },
+    {
+      "path": "src/cli/managerProgramV2.ts",
+      "bytes": 22655,
+      "sha256": "4898b8f53561e4b8d57d931cea91afbc14e43bb2939f0944733eeb714738ecad"
+    },
+    {
+      "path": "src/cli/managerResearchAgendas.ts",
+      "bytes": 17751,
+      "sha256": "0e37a9d6fa97a1110d653afa06653d25f7dcbedb938b3e955f8890b8309db532"
+    },
+    {
+      "path": "src/cli/mergeLineupStudySamples.ts",
+      "bytes": 1840,
+      "sha256": "8b980d649dc4ffc7dd68b96ffc559e4a583b97117fc2a4d25a5ee3c42434a001"
+    },
+    {
+      "path": "src/cli/modernHybrids.ts",
+      "bytes": 31590,
+      "sha256": "97fb101ba6b56585cc56832b8cc97fc78a32cb2e0994d23fb3146915895811e7"
+    },
+    {
+      "path": "src/cli/packageManifest.ts",
+      "bytes": 2039,
+      "sha256": "6388cdd393117c4e7460961aae9c78811d3075b403b4768cbbf1da38fdfb1b0a"
+    },
+    {
+      "path": "src/cli/planBattleFrontierHoldout.ts",
+      "bytes": 8040,
+      "sha256": "cd6d2d0819ff3e3c190fe4ff5b89b682bb7ebcfb4a6be9a17cd106c3ce191bab"
+    },
+    {
+      "path": "src/cli/planBattleFrontierResearch.ts",
+      "bytes": 8865,
+      "sha256": "5961b4899e72728505261cfc1e4b72340c1a1ffd5cbdb530aa3fc6a9d3570f1e"
+    },
+    {
+      "path": "src/cli/planLineupDeploymentPortfolio.ts",
+      "bytes": 4585,
+      "sha256": "a36e273a8d607cb8afcae30ec3ed4b5f4004a2f7e0bf034b0b4f44920e9094a6"
+    },
+    {
+      "path": "src/cli/planLineupHypothesisStudy.ts",
+      "bytes": 9569,
+      "sha256": "b08d3ed656540e5dbd10f50eb165f785e7c292af9585bfe799bb1e46e9cea8a2"
+    },
+    {
+      "path": "src/cli/planLineupSpeedCausalStudy.ts",
+      "bytes": 4101,
+      "sha256": "78dae8c08d38baaec6995ec808e55db029a53fbd688de011386acb4ed7dde2d1"
+    },
+    {
+      "path": "src/cli/positionValue.ts",
+      "bytes": 2026,
+      "sha256": "d4f2ce18ad8fec4b3ddb52af186080e24710162da966e2c9e040f938a7a075a1"
+    },
+    {
+      "path": "src/cli/promoteDevelopmentManager.ts",
+      "bytes": 13222,
+      "sha256": "797b9d023a1a017b748d43a5b1597b4f93c9dfc73ffed1084226823d45ba0758"
+    },
+    {
+      "path": "src/cli/rebindLineupStudySourceCache.ts",
+      "bytes": 3283,
+      "sha256": "2615a4b3a5cd829a433314ffca5fdfbc283c9be741712d6c450676f20eb60570"
+    },
+    {
+      "path": "src/cli/refreshSeasonReports.ts",
+      "bytes": 2790,
+      "sha256": "9b7a1542ee68b94a0cdf424a1f5e56aa3e4fc3f30aed94fb86f3506b38ba59b5"
+    },
+    {
+      "path": "src/cli/refreshShadowLineupTraces.ts",
+      "bytes": 11661,
+      "sha256": "a7b09a9182ef448b14c997519fd0253a4e1db3c25ca335a5b711071d0775353d"
+    },
+    {
+      "path": "src/cli/releaseDevelopmentAi.ts",
+      "bytes": 12523,
+      "sha256": "9baa28f63a42133dc8d74d16069b0360812dbf919d3c8f72110c1f74ee5df7c3"
+    },
+    {
+      "path": "src/cli/repairLineupSourceCacheCheckpoint.ts",
+      "bytes": 4952,
+      "sha256": "8088655e5d0e2c0a57a10a1a8d5ac459d5dbe734405ca95f0235f20b16da8b48"
+    },
+    {
+      "path": "src/cli/repairV12Contracts.ts",
+      "bytes": 1669,
+      "sha256": "885d01fdd6656492fdfe211b34a8df4ded6eac2fb305964bc249441a234292db"
+    },
+    {
+      "path": "src/cli/replicateShadowProgram.ts",
+      "bytes": 5297,
+      "sha256": "f4bd88a9ea90b4e3029f12103e42dafcda80f6a1fb4cd552fccb22a68446e1d4"
+    },
+    {
+      "path": "src/cli/reviewLineupRepresentationOutcomes.ts",
+      "bytes": 6834,
+      "sha256": "d90a4df19bfffe5c177f85205a61523f9a5e7fbb99aeea91899d5483799eb33a"
+    },
+    {
+      "path": "src/cli/reviewShadowLineupPilot.ts",
+      "bytes": 7230,
+      "sha256": "88e6f3e35e9db6b22f3916931ab242cd0a5e08c8f751612616faa4cc30db4771"
+    },
+    {
+      "path": "src/cli/reviewWhiteBox.ts",
+      "bytes": 1097,
+      "sha256": "80c525aab422d77beb43245560fa6b7955ce5b2c7285d90a78a529b24225d405"
+    },
+    {
+      "path": "src/cli/runBattleFrontierResearch.ts",
+      "bytes": 11355,
+      "sha256": "71d50805305f55a8fa1627eb4a09e595e286f6366d9ffac675dd1429f75b1484"
+    },
+    {
+      "path": "src/cli/runLineupAssistCanary.ts",
+      "bytes": 7879,
+      "sha256": "2eb646b9e83d284e07e78bbb218d4a2d3923f37682b728d174a132104fab27a0"
+    },
+    {
+      "path": "src/cli/runLineupDeploymentPortfolio.ts",
+      "bytes": 5400,
+      "sha256": "e068d564d2426dc141c035ba5f3b9ce44974685a26ba4045216dd1f56b581114"
+    },
+    {
+      "path": "src/cli/runLineupSpeedCausalStudy.ts",
+      "bytes": 26864,
+      "sha256": "d428af0b4e8f7985cf4adf4de4a5d180b2f771bc6d922216d5a8880079ff3712"
+    },
+    {
+      "path": "src/cli/runOfficialSeasonCycle.ts",
+      "bytes": 24895,
+      "sha256": "0e273c765b6acabb6250d3965e65ee6ff5bc6b3342688d07b611efe4613341ea"
+    },
+    {
+      "path": "src/cli/sampleAcademyContractCounterfactuals.ts",
+      "bytes": 10868,
+      "sha256": "b3f75d7dd70dbf6cd9cb5de0f17107612dd150819e8f6aa2674fadfd1b78ccad"
+    },
+    {
+      "path": "src/cli/sampleProgramDecisionLabels.ts",
+      "bytes": 12493,
+      "sha256": "de2fe1f0fc5e3f3ea292d42719b9e32f1c86dfc305f2a528988d08be5ebbdfc1"
+    },
+    {
+      "path": "src/cli/sampleStrategyProgramEvolution.ts",
+      "bytes": 15865,
+      "sha256": "b3492037f0f1bdcb0061a97608b751c7a54e8ba9e19c9a7f297e80129608b7c1"
+    },
+    {
+      "path": "src/cli/sampleTacticalMemoryAblation.ts",
+      "bytes": 15573,
+      "sha256": "27d087988e400fa5676f7d65f4a96c0700020c181cc6bf201640384df0622fd3"
+    },
+    {
+      "path": "src/cli/sampleWhiteBoxBattle.ts",
+      "bytes": 11910,
+      "sha256": "b384226f6c77d7a55a62b74d5bc412b96c11bddbac221d77e8c0680c1a92bf7c"
+    },
+    {
+      "path": "src/cli/sampleWhiteBoxCounterfactual.ts",
+      "bytes": 10682,
+      "sha256": "cda6dc6b26fcd292d546265c0301e14df8ac539cd4125e44d4c2e430b0b98b5f"
+    },
+    {
+      "path": "src/cli/sampleWhiteBoxLineup.ts",
+      "bytes": 9142,
+      "sha256": "484304acb4c74f65c4a0570f73e8f0b95aeca9a1af7841f96bee04ff5daa2d1b"
+    },
+    {
+      "path": "src/cli/sandbox.ts",
+      "bytes": 4121,
+      "sha256": "5127a68f1dd5c6c8c0e2ffe43ef58796cf1843670dad6eb72faf5e3616140b73"
+    },
+    {
+      "path": "src/cli/scanWhiteBoxOpportunity.ts",
+      "bytes": 1458,
+      "sha256": "e663e74154befa69a5a96b2836d3b854aea58b4ffac00c8bd01986d9a9e23b9a"
+    },
+    {
+      "path": "src/cli/screenAcademyContracts.ts",
+      "bytes": 5696,
+      "sha256": "40a509a2719894d351a71d53aad61caaa38d059e1201300bf73d27fdf9cb35bd"
+    },
+    {
+      "path": "src/cli/screenPortfolioBids.ts",
+      "bytes": 3953,
+      "sha256": "4f7e9060f0e5bc1bbce5c3afdaff66eb996f23b343ab376763398aefca6a2f98"
+    },
+    {
+      "path": "src/cli/screenStrategyProgramCandidates.ts",
+      "bytes": 5064,
+      "sha256": "5c67f662ee4c3e890552ebe03cb98dcc735a340415c3184d3cb8fb98cc2f03fc"
+    },
+    {
+      "path": "src/cli/seasonBrief.ts",
+      "bytes": 1244,
+      "sha256": "581c9df7f4020158aa9c38a6578b9bb71e60b842a79094e80a6887c4ed7a88f0"
+    },
+    {
+      "path": "src/cli/shadowDiagnostics.ts",
+      "bytes": 28592,
+      "sha256": "ca92cf4d1473724c13fe1678ff72b5ec059b5838c6ad6bfd4fd5f9421be3e914"
+    },
+    {
+      "path": "src/cli/shadowLineupPilot.ts",
+      "bytes": 13588,
+      "sha256": "ad2782beabdf3e5f7751e32005210dd4f30de3c3a542eee49689a175906e62d1"
+    },
+    {
+      "path": "src/cli/simulate.ts",
+      "bytes": 4750,
+      "sha256": "e692494fc01894574b0635c0f00b5836f93122d39bcf259be1b10c98305855dd"
+    },
+    {
+      "path": "src/cli/summarizeBattleFrontierResearchPortfolio.ts",
+      "bytes": 9217,
+      "sha256": "4f268edb775182412d63423378f98a8a54821a5356d8490bd6c5a7501bc28845"
+    },
+    {
+      "path": "src/cli/summarizeLineupDeploymentPortfolio.ts",
+      "bytes": 5667,
+      "sha256": "734b1665bb5889f9585ee1bc2b0072faf80c3773d5eee8940a04cece32172fd0"
+    },
+    {
+      "path": "src/cli/team.ts",
+      "bytes": 6076,
+      "sha256": "cf8305f5967be93bd89be74ebfbf374bb9ebcc548a51198b2a631fc3a19798bd"
+    },
+    {
+      "path": "src/cli/toolingDoctor.ts",
+      "bytes": 19398,
+      "sha256": "50b90cb766d316507e1f5888716584542af9c72af815a34424da4f22e210cac3"
+    },
+    {
+      "path": "src/cli/unifiedWhiteBoxEvidence.ts",
+      "bytes": 21430,
+      "sha256": "122cb72c2fc4222b8ea00971724c10623803a4eec74c676d9786b9743be8c6b8"
+    },
+    {
+      "path": "src/cli/validateDevelopmentEcologyPopulations.ts",
+      "bytes": 6845,
+      "sha256": "40209d3d47f7458651050547c2664f2b14a902fc5e5839b721f204373e0a050e"
+    },
+    {
+      "path": "src/cli/validateDevelopmentEcologySeeds.ts",
+      "bytes": 12160,
+      "sha256": "dd657ca7f065a0356d3922e720e14e1abfe04409de2cc8bb80d90bcc4d5b5ad1"
+    },
+    {
+      "path": "src/cli/validateRegistry.ts",
+      "bytes": 410,
+      "sha256": "9a7dd310b0c5af5984e6e158953635f6a83d053293eb5cefc9e5fa6cb483ad97"
+    },
+    {
+      "path": "src/cli/variants.ts",
+      "bytes": 11452,
+      "sha256": "15feb65ac5c22657837c062ecde32524e0c8a1acb0dc222cee6f4bb4962221ee"
+    },
+    {
+      "path": "src/cli/whiteBoxSoak.ts",
+      "bytes": 7202,
+      "sha256": "4af57db06257d11c9e77a43983b501c4bd7864d112b87ef59e4c0cfb407976c8"
+    },
+    {
+      "path": "src/draft/academyContracts.ts",
+      "bytes": 17489,
+      "sha256": "24c6200fc6995b8464c0db907b37cf1fb2822724f057c39daddeaccbae7d2732"
+    },
+    {
+      "path": "src/draft/academyEnvironment.ts",
+      "bytes": 15188,
+      "sha256": "d159d2e10d141edd0725871c9f414bfcf212e66f69f5626f0f0a12619b23632d"
+    },
+    {
+      "path": "src/draft/academyTalentMarket.ts",
+      "bytes": 13397,
+      "sha256": "00ba62f2d3f1a5ec36fc2edb5b120e7f210a92c5b38b35bb9a44ef74994f1bdb"
+    },
+    {
+      "path": "src/draft/battleDecisionExtractor.ts",
+      "bytes": 4543,
+      "sha256": "905814ad238c977701d29f8beaecdc56580359d3f65800d7b09cbab1494fe57e"
+    },
+    {
+      "path": "src/draft/bossLeague.ts",
+      "bytes": 4850,
+      "sha256": "d33656fc25390c6c69b69fddb61815f385ce1f2b6df2c9d1535d2ab06a363e1a"
+    },
+    {
+      "path": "src/draft/bulkStatAllocator.ts",
+      "bytes": 4271,
+      "sha256": "71349498f65886055139eaa3ce8c32e442dd6dd1e5277ace5f9f097390d3281f"
+    },
+    {
+      "path": "src/draft/careerArchive.ts",
+      "bytes": 32484,
+      "sha256": "aaacbfe9d5709c3045a0d138ba4c05a3f9b1c70818835b32c470b34c6b701ef7"
+    },
+    {
+      "path": "src/draft/configurationTelemetry.ts",
+      "bytes": 4873,
+      "sha256": "1a1ff18b1e4caf80ef9c4c972f4b73251f49bd99be9a0abf6012d5577aa76a18"
+    },
+    {
+      "path": "src/draft/contractStateRepair.ts",
+      "bytes": 2519,
+      "sha256": "73ddd068560ad9c51fc62b50448eba0409714c6299d56581d898f4773ffbbf77"
+    },
+    {
+      "path": "src/draft/customRegistry.ts",
+      "bytes": 295,
+      "sha256": "d51f60944a23b5e1a76f74071d1bb055d6deb220733ede133c7ce0a063f79c42"
+    },
+    {
+      "path": "src/draft/decisionDossierStore.ts",
+      "bytes": 41671,
+      "sha256": "6fda2102073388010527be17b2bd05f77ec5f498dd7f7b8c3aa09946026d16f2"
+    },
+    {
+      "path": "src/draft/decisionLedger.ts",
+      "bytes": 3622,
+      "sha256": "31655db0c39025aea6a7d1bc033358ac62f425a56556c96c47921cc47513b6fe"
+    },
+    {
+      "path": "src/draft/dynastyCheckpointBranch.ts",
+      "bytes": 8907,
+      "sha256": "350e1e4c0977f837371892fdd5f0fdba1054b1da59cd3101c2500170f22e9cca"
+    },
+    {
+      "path": "src/draft/dynastyLearning.ts",
+      "bytes": 27197,
+      "sha256": "fd8c7b363b182555f190f04cb89efb8251838d809176381a9a6dd605eed5004b"
+    },
+    {
+      "path": "src/draft/dynastyStateStore.ts",
+      "bytes": 8332,
+      "sha256": "2df5fedcd8d234b147e59ac3f082ba83feac03aa43219406220bcbf9904bbe9e"
+    },
+    {
+      "path": "src/draft/evidenceEpochAudit.ts",
+      "bytes": 9102,
+      "sha256": "f8bfe6e0be6a50f119db4eaccddf3ba33e72fb36e41cf0efd901131436979862"
+    },
+    {
+      "path": "src/draft/historicalRuntimeCheckpoint.ts",
+      "bytes": 25799,
+      "sha256": "cf9bc60493286cd907b6362796f0b156ac19c334b65306886904b918661eca9b"
+    },
+    {
+      "path": "src/draft/leagueHealth.ts",
+      "bytes": 5286,
+      "sha256": "542f94d63b7c45082789417f4db6750ea8b548ba7da4eac8a6454a555e341ce4"
+    },
+    {
+      "path": "src/draft/lineageDiversity.ts",
+      "bytes": 1417,
+      "sha256": "e43d53f95760a75fac400c542c8404a522ce2d4964a64416cb4a20ae7b114426"
+    },
+    {
+      "path": "src/draft/lineupStudySource.ts",
+      "bytes": 3004,
+      "sha256": "c44c95c8469cd48b1990e533ff1653b584ffd91f70534c35599c422c4b4a54a8"
+    },
+    {
+      "path": "src/draft/lineups.ts",
+      "bytes": 896,
+      "sha256": "b4d7d8cd54d5399e6aa529cd4744b90d74c2a05b6ff054d52378468914611e8f"
+    },
+    {
+      "path": "src/draft/managerLifecycle.ts",
+      "bytes": 2569,
+      "sha256": "2a16e88a3d01fbe674cd97c7e820f7b4ec96d772965168cfe1f5d79441d1a265"
+    },
+    {
+      "path": "src/draft/managerProfiles.ts",
+      "bytes": 13017,
+      "sha256": "94db315374e7a99df42811992e02a79941c0c2ff69744cb670e4bc147b3cbc94"
+    },
+    {
+      "path": "src/draft/naturalEvolution.ts",
+      "bytes": 19480,
+      "sha256": "d4de07edf6699f7c162b85e32bac83b599db6e7fa5f9bfd78dcd7e129512c247"
+    },
+    {
+      "path": "src/draft/personalitySimilarity.ts",
+      "bytes": 3249,
+      "sha256": "b190087aac9543e03d1f7042977b40e3e2906746b2820e1f685b8e93c2c321ff"
+    },
+    {
+      "path": "src/draft/portfolioAuction.ts",
+      "bytes": 3682,
+      "sha256": "07a99c7ef88181f12c1b8b0c088aae61a4bcf5456b4394fba153b52cea360a9b"
+    },
+    {
+      "path": "src/draft/punctuatedEvolution.ts",
+      "bytes": 13347,
+      "sha256": "155afcfda198fc60eef145411cec90169f072140469083affafc3e6356c097ab"
+    },
+    {
+      "path": "src/draft/qualityDiversity.ts",
+      "bytes": 2044,
+      "sha256": "bf4d80073a820ba83ef3dd2018e088c324983944b44b0ed6d1ae43e36982a14b"
+    },
+    {
+      "path": "src/draft/registrySnapshot.ts",
+      "bytes": 6640,
+      "sha256": "08b55c9ed61ff163e21bd1732d9a9f957d37dd870df8b9416b9ddeb1d0c0c0bb"
+    },
+    {
+      "path": "src/draft/runLock.ts",
+      "bytes": 1371,
+      "sha256": "dcf4a8e57300056c85f8ff173d59e6fda9686e6bfcfd139cdd44ca5b5baee6a0"
+    },
+    {
+      "path": "src/draft/scoring.ts",
+      "bytes": 687,
+      "sha256": "990b206d40a17f672826385662910882ac346e7421889c8eba96350ae99d4814"
+    },
+    {
+      "path": "src/draft/seasonBrief.ts",
+      "bytes": 11997,
+      "sha256": "ff99075c7bc0e4d0757a528284bfb2b3859146b90fff75858dfcc6f48716ab11"
+    },
+    {
+      "path": "src/draft/sourceCacheMaintenance.ts",
+      "bytes": 8498,
+      "sha256": "a52fb2625abf5ae354d3ea9ab638a6732995624f54f1837a8ceaf0f5cfe8923b"
+    },
+    {
+      "path": "src/draft/sportsMarket.ts",
+      "bytes": 7484,
+      "sha256": "546a15f60117b3d5983fa402771917b4849da0790ed3b26f13da667734730d90"
+    },
+    {
+      "path": "src/draft/stageGeneration.ts",
+      "bytes": 9582,
+      "sha256": "5c70d463824e3ea911550fb57e21441215cfda1cbe23dea40a8ca10ba598cdfd"
+    },
+    {
+      "path": "src/draft/storageIndex.ts",
+      "bytes": 2615,
+      "sha256": "352262d2abee1774e4aab35aee92c2fd0ed6dfe814d167fdf8219a778003b07a"
+    },
+    {
+      "path": "src/draft/strategyProgram.ts",
+      "bytes": 21176,
+      "sha256": "e0c27ccf72ee299fa9a6ae05c704fcd07d2f403acdee56f7b90f44ff8815ce4e"
+    },
+    {
+      "path": "src/draft/strategyProgramOpportunity.ts",
+      "bytes": 10214,
+      "sha256": "6c491ae3c5b457f591be0c45686dbe6ae86c1efc3a899fc45d968ca734bf653e"
+    },
+    {
+      "path": "src/draft/tacticalMemory.ts",
+      "bytes": 13710,
+      "sha256": "af7c9099fb47d7ebbd383f6a79a48dba8054a126b49a97fd80ad3a3f0f922c80"
+    },
+    {
+      "path": "src/draft/v10Audit.ts",
+      "bytes": 11849,
+      "sha256": "99232c97d4186b1aebe4a9109e374ab085149e879d39cee910f515ba0f81fc93"
+    },
+    {
+      "path": "src/draft/v12Audit.ts",
+      "bytes": 29430,
+      "sha256": "c9d37611cc42552d6933c1a9072e85e04318de8ec1269f6d796a5ea2ac7bdc0b"
+    },
+    {
+      "path": "src/eval/benchmarkPool.ts",
+      "bytes": 1023,
+      "sha256": "72206ab86b660efa70e7bdd49b8f016a5bd4829a04811c5dcdddee8e7386d56d"
+    },
+    {
+      "path": "src/eval/evaluator.ts",
+      "bytes": 12346,
+      "sha256": "b87b0604450db831442b873d2a13c71267638bb87dbcca89d1dc68d2a83bde9a"
+    },
+    {
+      "path": "src/eval/logAnalysis.ts",
+      "bytes": 11564,
+      "sha256": "6ba05b49a6581bf5c73d549a3d04f1d2858eade577a07ca697e2587fc5d6bc89"
+    },
+    {
+      "path": "src/eval/report.ts",
+      "bytes": 5164,
+      "sha256": "640dc52dd8f62fc22646a39360d30f2b2295ea5181ea5f12646690658d52ce9f"
+    },
+    {
+      "path": "src/eval/types.ts",
+      "bytes": 2668,
+      "sha256": "8f2e82f02f19ca8506ceeb2c7493e3f69761530cfeba9b17614bd7a36f788e81"
+    },
+    {
+      "path": "src/sandbox/compiler.ts",
+      "bytes": 24605,
+      "sha256": "5a60af094b48aeef859b5b4a42b58101fe4c587f821f3ad7fc17746c9e7d1550"
+    },
+    {
+      "path": "src/sandbox/installer.ts",
+      "bytes": 13858,
+      "sha256": "0e3165bb281a41e2355317568b704472a832e28fa67f3bfdcc77cf35a00f69be"
+    },
+    {
+      "path": "src/sandbox/types.ts",
+      "bytes": 1549,
+      "sha256": "0476ecbc422731489f92bebe798344c818ac9dabac7e57ab8d09a84bee849e6b"
+    },
+    {
+      "path": "src/showdown/args.ts",
+      "bytes": 1598,
+      "sha256": "0c1e1ab43fe1b7c0686333dddfdbd286804d911b49bd4f781463a7d7922b3554"
+    },
+    {
+      "path": "src/showdown/battle.ts",
+      "bytes": 25550,
+      "sha256": "5464b0d0f8be7c6957c0a4d0835e27721c1db1a08855b6fea7e6f112064e5421"
+    },
+    {
+      "path": "src/showdown/choice.ts",
+      "bytes": 130092,
+      "sha256": "e6738081f2abaa05406123ceca6d681a9f773141f4e13b13482aebf7535b8ddf"
+    },
+    {
+      "path": "src/showdown/evidenceEpoch.ts",
+      "bytes": 6193,
+      "sha256": "37c880ace3370b06e4419354d97676ae2a01edc5fca2e848147cc0a22f7309c1"
+    },
+    {
+      "path": "src/showdown/mechanics.ts",
+      "bytes": 811,
+      "sha256": "12bb2b06661a9db0699554fcd2d1a9a6cfd3e0869d3f2bf913f8840fcde8ec10"
+    },
+    {
+      "path": "src/showdown/seed.ts",
+      "bytes": 610,
+      "sha256": "120b46c39efe803125c93d237634192fb9a675f3a5ed1289ec8213a615ea8528"
+    },
+    {
+      "path": "src/showdown/team.ts",
+      "bytes": 1725,
+      "sha256": "deee99569907615679bcf9941b21a007bba2afd586020554c758c2f148426046"
+    },
+    {
+      "path": "src/store/teamDatabase.ts",
+      "bytes": 4132,
+      "sha256": "d74b22d21d763af93d0f56316933ef02425c725358f6379528b93cc448c17f61"
+    },
+    {
+      "path": "src/tests/academyContractCounterfactualSmoke.ts",
+      "bytes": 4864,
+      "sha256": "41861ec12d5341cd1f60e88207294ea132b42fb313c894b46be24b5b7b9eb7df"
+    },
+    {
+      "path": "src/tests/aiPipelineCliSmoke.ts",
+      "bytes": 10668,
+      "sha256": "c69c02b11077a76c8e22b6c3445776470fc41644b1f7cded8b21f1d8718e0fa0"
+    },
+    {
+      "path": "src/tests/autonomousResearchSmoke.ts",
+      "bytes": 3384,
+      "sha256": "ca6787c285a481892462dd4b2bde858c2f2c61b8dc3a5a03049d8d55d3049a33"
+    },
+    {
+      "path": "src/tests/battleAggregationSmoke.ts",
+      "bytes": 2382,
+      "sha256": "c4eb825136a8455a44b25b105e3098630866c55567ab83928e465d18fd6a3b13"
+    },
+    {
+      "path": "src/tests/battleApprovalSmoke.ts",
+      "bytes": 2501,
+      "sha256": "ce783cd33ae19d513ffb571dde24e851e0e3c88af7b7980168625cd9b46c7213"
+    },
+    {
+      "path": "src/tests/battleCandidateFrontierSmoke.ts",
+      "bytes": 14203,
+      "sha256": "a385b1dd06c9b874d01d6ddab7a706b530e7ce5a5a3c609c8d837db61c8e6436"
+    },
+    {
+      "path": "src/tests/battleCausalSignatureSmoke.ts",
+      "bytes": 2011,
+      "sha256": "a8b933585e7527aa147111ed4de312782b928e071a61cd46a741fdea25c03621"
+    },
+    {
+      "path": "src/tests/battleReplaySmoke.ts",
+      "bytes": 8440,
+      "sha256": "b761a88cb7792e3edde57a082cf4083279a8a33fe1cbd606eb8a303fd9c7ca71"
+    },
+    {
+      "path": "src/tests/battleSamplerSmoke.ts",
+      "bytes": 4560,
+      "sha256": "67247535ffa8eb689cafbb1cc4024a7e1b18180911e6143c62acf474bc8838ad"
+    },
+    {
+      "path": "src/tests/battleShadowExpansionSmoke.ts",
+      "bytes": 3219,
+      "sha256": "b622ccf98ad083b2ed76a5e123e24d51ad52cf5f17cc434e890caeb944b47e62"
+    },
+    {
+      "path": "src/tests/bidCounterfactualSmoke.ts",
+      "bytes": 9676,
+      "sha256": "88b6bf878b9f23df84a641c195e011413a76e9e2cc49eb88154c14fc5ef36e7c"
+    },
+    {
+      "path": "src/tests/bossLeagueSmoke.ts",
+      "bytes": 1864,
+      "sha256": "3107eab2723599cf215f52ea46eda3444b6ba45650446f483b48255adf1f2b0d"
+    },
+    {
+      "path": "src/tests/bulkStatAllocatorSmoke.ts",
+      "bytes": 5228,
+      "sha256": "2db16801bb520383b6eeaa7f1c70e1eeba12b671efb92ce23c9b7778c542a0ff"
+    },
+    {
+      "path": "src/tests/careerArchiveSmoke.ts",
+      "bytes": 6556,
+      "sha256": "e90eea4ec24da8d4830740694b8f81a73085acce3f37fc1f8fa488490a44e9ea"
+    },
+    {
+      "path": "src/tests/causalBoundaryAuditSmoke.ts",
+      "bytes": 1996,
+      "sha256": "f8bfa093e4a7727659071526bdd0848fabaa40410c0e5a2784ee9cd94b42f689"
+    },
+    {
+      "path": "src/tests/checkAffectedSmoke.ts",
+      "bytes": 3694,
+      "sha256": "439fe5df16f14251b476b9a062ebaf2f8e1ca3bb0227f3c4dc32a8d382efc312"
+    },
+    {
+      "path": "src/tests/counterfactualCapsuleSmoke.ts",
+      "bytes": 3217,
+      "sha256": "cd003ab90424066d80a19143109b972d52e30c1258822b0350730af3fedc1993"
+    },
+    {
+      "path": "src/tests/decisionDossierSmoke.ts",
+      "bytes": 3873,
+      "sha256": "3affd48a622661659b4339fba253743c1f28d3cc5a6403b5661a0354396bf3d9"
+    },
+    {
+      "path": "src/tests/developmentLeagueSmoke.ts",
+      "bytes": 36441,
+      "sha256": "85f16176d8465fff0ea14bc88fc9e4770c1bdfbd6c22dacfca05b2d9e0c5a469"
+    },
+    {
+      "path": "src/tests/draftConfigCompileSmoke.ts",
+      "bytes": 1614,
+      "sha256": "c1f6ac4e5cfc07321d6cc124d92da49000f6f9c7d976515394c884e2bb0b3504"
+    },
+    {
+      "path": "src/tests/dynastyCheckpointBranchSmoke.ts",
+      "bytes": 3369,
+      "sha256": "56ddf9116cbce5e8bf839c1c4f62d5a1ed372e920893d14be5d8e98c765caf26"
+    },
+    {
+      "path": "src/tests/dynastySmoke.ts",
+      "bytes": 8535,
+      "sha256": "759e5ed903f247df0f7dffad1c27a43809645b205a96938b56961906454c7c46"
+    },
+    {
+      "path": "src/tests/dynastyStateStoreSmoke.ts",
+      "bytes": 2655,
+      "sha256": "8b6cd57efe70654ed68a792af8683dce23e72c0cbf8300fa552adc4a865639ca"
+    },
+    {
+      "path": "src/tests/evidenceEpochSmoke.ts",
+      "bytes": 3205,
+      "sha256": "19c31d82c47a19224ed0388146b098e8395342e093b529b1985a4655f4da9828"
+    },
+    {
+      "path": "src/tests/formalValidationSmoke.ts",
+      "bytes": 2519,
+      "sha256": "ee4212ff5451c592e560f3ea22bd571703fccf0a2dd392bb08ea651a63a27dae"
+    },
+    {
+      "path": "src/tests/freezeLineupDeploymentResearchSmoke.ts",
+      "bytes": 3512,
+      "sha256": "42ddac983448927383c2aad449d7e326be980f0c2cc306df03a8394b73d62012"
+    },
+    {
+      "path": "src/tests/historicalRuntimeCheckpointSmoke.ts",
+      "bytes": 7908,
+      "sha256": "d359df774ea06fd76f87ba1fc41e95259fdc98435a47a4fce5eb34572cf214d6"
+    },
+    {
+      "path": "src/tests/inPlacePromotionSmoke.ts",
+      "bytes": 9619,
+      "sha256": "cc554fe2796e3a385fedfc886faf0af94adb6bbddb7f158c2ac16e61bf704836"
+    },
+    {
+      "path": "src/tests/leagueControlSmoke.ts",
+      "bytes": 5714,
+      "sha256": "79eb99abbfaa6336990849dbd5c76184f12b0991f9b3f21710fbaff8cf2ed61c"
+    },
+    {
+      "path": "src/tests/learningCounterfactualSmoke.ts",
+      "bytes": 2563,
+      "sha256": "edc2241e0ef5a394845b8694662ecc66ae5d85fd8eacc4091913e2547cc6a65d"
+    },
+    {
+      "path": "src/tests/lineupApprovalSmoke.ts",
+      "bytes": 3884,
+      "sha256": "466212ba3aa446e11c258cb80eca72f67ce2ebe7f087b705f92acc901ed4ffc9"
+    },
+    {
+      "path": "src/tests/lineupAssistCanarySmoke.ts",
+      "bytes": 2658,
+      "sha256": "2a3461c54ff02ffdd964e6bb3aa8c32daa9495a4a81f4d43a54a9f10512a86d6"
+    },
+    {
+      "path": "src/tests/lineupCausalHeterogeneitySmoke.ts",
+      "bytes": 942,
+      "sha256": "9043150cb6dac13a821223b8150653abfa748e41bc5cb21556d234a67a2eb3f5"
+    },
+    {
+      "path": "src/tests/lineupDeploymentPortfolioSummarySmoke.ts",
+      "bytes": 2227,
+      "sha256": "5bba11b1228b402dd822cdadb0e02b912c02dd441452541913a0025fe233da90"
+    },
+    {
+      "path": "src/tests/lineupDeploymentPostmortemSmoke.ts",
+      "bytes": 2827,
+      "sha256": "b0042012e8ac7347a8c87099670fff7f48d0be24d4b5aa1135212af4c7c56114"
+    },
+    {
+      "path": "src/tests/lineupHypothesisWorkbenchSmoke.ts",
+      "bytes": 10204,
+      "sha256": "88ceab53f48c3d5f47c822b0dae4b28578e846b77d10cc7252598118ecc4ec9a"
+    },
+    {
+      "path": "src/tests/lineupMechanismDiscoverySmoke.ts",
+      "bytes": 1631,
+      "sha256": "02fcd412e0d698145fd7b0f0d58d0436f73ab13b4ec43e9c64a1eba9b3090a96"
+    },
+    {
+      "path": "src/tests/lineupPilotReviewSmoke.ts",
+      "bytes": 5596,
+      "sha256": "10204312f09d10450263b006b206424514936ccb8ace380adf70520773733a98"
+    },
+    {
+      "path": "src/tests/lineupPilotSmoke.ts",
+      "bytes": 2848,
+      "sha256": "1efaa522295a75563eb1e3ccfb84845c217315340afb76c014dd6b15b89af3b9"
+    },
+    {
+      "path": "src/tests/lineupRepresentationAuditSmoke.ts",
+      "bytes": 1630,
+      "sha256": "403d3164a2dc79b53324dc212f2ce98e030de4a08008246333a8626682af6651"
+    },
+    {
+      "path": "src/tests/lineupRepresentationOutcomeReviewSmoke.ts",
+      "bytes": 2083,
+      "sha256": "c5e605bc65ef3b3dd0d2b2646852038295d9124581c9c925b1b8f0b399ca16f3"
+    },
+    {
+      "path": "src/tests/lineupRepresentationSmoke.ts",
+      "bytes": 6244,
+      "sha256": "e926b3754e491ba482c2bd480260f9e20ec39b8433ba7da904ac004951060ded"
+    },
+    {
+      "path": "src/tests/lineupResearchControlSmoke.ts",
+      "bytes": 3035,
+      "sha256": "df16a08276c25eba456fcb5a1f2e8259dde7853faa15bc684a33e8c4025cc53c"
+    },
+    {
+      "path": "src/tests/lineupSpeedCausalPlanSmoke.ts",
+      "bytes": 1252,
+      "sha256": "d7b1ffb92381d9e9ae02f97abc325df3761c813f0d75dd3b1fb105a64380942c"
+    },
+    {
+      "path": "src/tests/lineupSpeedCausalResultSmoke.ts",
+      "bytes": 1313,
+      "sha256": "81834e3907f0f199ebd310ff0a00140880151f0c10853cda4660ea92455f13cd"
+    },
+    {
+      "path": "src/tests/lineupStudySampleMergeSmoke.ts",
+      "bytes": 1090,
+      "sha256": "37c2d9c2392787615cd74bc88041a33a14298cff5ba59159aa24f2cb3ef92a5d"
+    },
+    {
+      "path": "src/tests/lineupTraceRetentionSmoke.ts",
+      "bytes": 633,
+      "sha256": "6dd13b64a92c446ab5a9984f51d04ae8ed2386cfc1a10b5d058cd0cf608cb1b7"
+    },
+    {
+      "path": "src/tests/lineupsSmoke.ts",
+      "bytes": 780,
+      "sha256": "527afc7917d140ea63a7374bd981725fbd8381a489a267f2fc7918c3ad0ec458"
+    },
+    {
+      "path": "src/tests/managerMechanismLedgerSmoke.ts",
+      "bytes": 2593,
+      "sha256": "50048295f0e43f31152db2f05e2657425631d4d61557a45e32e71b10962eb181"
+    },
+    {
+      "path": "src/tests/managerMechanismLedgerSyncSmoke.ts",
+      "bytes": 3314,
+      "sha256": "3520fa444f5ba74ce1b2bca497618aa240399a0fb456514101068a1b12b5be3d"
+    },
+    {
+      "path": "src/tests/managerProgramV2Smoke.ts",
+      "bytes": 3232,
+      "sha256": "2946b19618f2de60ed08a6eef82e40f2a326467da59a7e4e6c8f3f8033d6fc4f"
+    },
+    {
+      "path": "src/tests/managerResearchAgendaSmoke.ts",
+      "bytes": 4907,
+      "sha256": "488407b0e773f88e30b48ca2a78bba430e4cb8a768b0cefbe3395ba6b1bc577c"
+    },
+    {
+      "path": "src/tests/managerResearchReviewCliSmoke.ts",
+      "bytes": 4662,
+      "sha256": "67ed11c2a3cf28d903d10dfe62a098a7c941241c4f54bea9940c07ebc3c7a4a6"
+    },
+    {
+      "path": "src/tests/officialSeasonCycleSmoke.ts",
+      "bytes": 8879,
+      "sha256": "efed04d9d9590388ea20ebe21c328afd7625c36ef03541634921f5570e7a6527"
+    },
+    {
+      "path": "src/tests/parallelRegistrySmoke.ts",
+      "bytes": 3693,
+      "sha256": "36ac61c4d505d275ce246af81c1ef07aa90ca983434863a05a3e950ca854a4bf"
+    },
+    {
+      "path": "src/tests/pipelineControlSmoke.ts",
+      "bytes": 2764,
+      "sha256": "0c5a725bc92ce2d098f5099f740aee05d35380c1e40a7257037c29e806571a75"
+    },
+    {
+      "path": "src/tests/positionValueSmoke.ts",
+      "bytes": 4913,
+      "sha256": "178ee50c573044f76e325192a79059f418c4d6e8a239d342ec580b5ba025298e"
+    },
+    {
+      "path": "src/tests/programDecisionCounterfactualSmoke.ts",
+      "bytes": 4630,
+      "sha256": "65cefb8ab66abc3e02b48b11df765d296c6596dbdcca798172483e9a3ba2c1ea"
+    },
+    {
+      "path": "src/tests/programDecisionLearningSmoke.ts",
+      "bytes": 2437,
+      "sha256": "5955e9ca8fbff8f0cf03ae31ab6d2ae096d8f922d58ad4225829459bff1baa83"
+    },
+    {
+      "path": "src/tests/programDecisionLocalOutcomeSmoke.ts",
+      "bytes": 1627,
+      "sha256": "9abb0f9aa5dbf61577890816e7b56983e883f3e8a3b15113b65a585027cdb317"
+    },
+    {
+      "path": "src/tests/promotionFlowSmoke.ts",
+      "bytes": 5818,
+      "sha256": "381879c9e279caca2e302978bc050fd365605baf48c7963a09a8d681c977e562"
+    },
+    {
+      "path": "src/tests/prospectiveLineupIncubatorSmoke.ts",
+      "bytes": 2941,
+      "sha256": "83138f5dc3d366ebddd58b295b3c6aaa6be5b6250d040bae826ac636c38e4e2b"
+    },
+    {
+      "path": "src/tests/punctuatedEvolutionCounterfactualSmoke.ts",
+      "bytes": 2682,
+      "sha256": "bb8d38f750abf7e6f6ee93d9ee6ae85f8ec372cbcc5f3954cc3a46d45cbd8d9d"
+    },
+    {
+      "path": "src/tests/punctuatedEvolutionSmoke.ts",
+      "bytes": 5149,
+      "sha256": "9791d117184cd1ac3ace2b3933284dc716f40bd2fd3f06eb9750bf04779e7f41"
+    },
+    {
+      "path": "src/tests/regressions.ts",
+      "bytes": 99179,
+      "sha256": "a3c5161f70e296a7ed93f42441528c92d1e6b453c03e8afc2297c9e686eb26a2"
+    },
+    {
+      "path": "src/tests/sandboxSmoke.ts",
+      "bytes": 2837,
+      "sha256": "787699c95d95e89079efb567ffc939017a7f39996c516a229e8d08aa4cecadf9"
+    },
+    {
+      "path": "src/tests/seasonBriefSmoke.ts",
+      "bytes": 2696,
+      "sha256": "219e334a5f05b5be89577751e6d95868fbfc72fca96e15fc9528f9d6f9ae36f6"
+    },
+    {
+      "path": "src/tests/shadowDiagnosticsSmoke.ts",
+      "bytes": 4718,
+      "sha256": "bcd9b3df1ebf96ad40848aa32caf4747fb85770febec1b0f26000227e15175c1"
+    },
+    {
+      "path": "src/tests/shadowExperimentPlannerSmoke.ts",
+      "bytes": 2303,
+      "sha256": "35a477b8405019ba9bd141a11f6b73988a5015a58fd73c947f070f2773a3c8a4"
+    },
+    {
+      "path": "src/tests/shadowProgramCounterfactualSmoke.ts",
+      "bytes": 4132,
+      "sha256": "4d58b9cd5cef6438b5ca034e59de832f6f59114b1312fef29975deb42221e2bc"
+    },
+    {
+      "path": "src/tests/stageGenerationSmoke.ts",
+      "bytes": 4994,
+      "sha256": "58f75b9908977aa294285eaa71c6ae7be7179f19023e4f7c6eb54baee26542b4"
+    },
+    {
+      "path": "src/tests/strategyProgramReplicationSmoke.ts",
+      "bytes": 1367,
+      "sha256": "2e5806b356c1973b89211ef823f2c8aadeedb13f288349cb1f58c0f130fa731e"
+    },
+    {
+      "path": "src/tests/strategyProgramSamplerSmoke.ts",
+      "bytes": 5793,
+      "sha256": "51399e03de794ac41f6185cef94dccb6431149c694192ff9ae9c4f0464b8b6e9"
+    },
+    {
+      "path": "src/tests/strategyProgramScreeningSmoke.ts",
+      "bytes": 1974,
+      "sha256": "2d3d08112eb366b289a94f03fab2075ea9aadaf62e6fd9c5b88be8db993a11ab"
+    },
+    {
+      "path": "src/tests/strategyProgramSmoke.ts",
+      "bytes": 8086,
+      "sha256": "be26603f26a7e6c9ee5256372ec6351620edd1ca6fbe3d14af919b80b8590701"
+    },
+    {
+      "path": "src/tests/tacticalMemoryAblationSmoke.ts",
+      "bytes": 5241,
+      "sha256": "45f10e2d23da80e3736ebfc8f75ae59e9b8f1470b3d0e55b9f03f218d6ea330a"
+    },
+    {
+      "path": "src/tests/tacticalMemoryPolicySamplerSmoke.ts",
+      "bytes": 4120,
+      "sha256": "e1b05b823db3f78c884bbf61d09d9beccf9a59d7c6e5c335422d461f59b7a925"
+    },
+    {
+      "path": "src/tests/tacticalMemorySmoke.ts",
+      "bytes": 7726,
+      "sha256": "7493c4bcae79691cea0424398b18a3d001d0f8d792787910f514ea859cc7d897"
+    },
+    {
+      "path": "src/tests/tacticalTimingArchiveSmoke.ts",
+      "bytes": 4085,
+      "sha256": "54c1ec60e9bb0b0939d41e6f09ff1baaee40cdd0ac4cf4847a0905bc879fd6ed"
+    },
+    {
+      "path": "src/tests/toolingDoctorSmoke.ts",
+      "bytes": 2551,
+      "sha256": "44925d39a2b6d177e03aaaf774bd884a17e879fdb1b3ff36feb26deda8872e31"
+    },
+    {
+      "path": "src/tests/unifiedWhiteBoxEvidenceSmoke.ts",
+      "bytes": 17821,
+      "sha256": "602afe772a048da503c4cbbb0b86b06e18b14115c5486ef88bd6dfcd068b1bf5"
+    },
+    {
+      "path": "src/tests/v10AuditSmoke.ts",
+      "bytes": 1715,
+      "sha256": "fe5802fea6183a87de08035cdec271f8e3e767c5e66e14343ac184c1b72e8c9b"
+    },
+    {
+      "path": "src/tests/v10Smoke.ts",
+      "bytes": 3051,
+      "sha256": "799af6b3bce5d07711c1000e8e79dd6d6c5feb8066e13a88abc74bf1588c47f5"
+    },
+    {
+      "path": "src/tests/v11Smoke.ts",
+      "bytes": 3048,
+      "sha256": "78d561305e6c3eb369c6b77b179e30d2857c65bd84da0abb12ee58d37d8dedc1"
+    },
+    {
+      "path": "src/tests/v12Smoke.ts",
+      "bytes": 11630,
+      "sha256": "7fc6c9451865409e323d7050a2197726f0ae399225a785f4ee1556f80d418841"
+    },
+    {
+      "path": "src/tests/v9Smoke.ts",
+      "bytes": 2305,
+      "sha256": "baf0700685fdc14f3c5e7deec422bad9b0c51b6ba6baac67f1220acb4650d7f0"
+    },
+    {
+      "path": "src/tests/whiteBoxAuditSmoke.ts",
+      "bytes": 2110,
+      "sha256": "2f4092aacba433da6d7950b126ada8d21f5414cf8b8dd390fb5b186f633c23b5"
+    },
+    {
+      "path": "src/tests/whiteBoxBoundaryBatch.ts",
+      "bytes": 8059,
+      "sha256": "a426951f7068b6b65150581f1a230b2a482f2d10ec182bfb31bf9a625939b86b"
+    },
+    {
+      "path": "src/tests/whiteBoxCounterfactualBatchSmoke.ts",
+      "bytes": 1503,
+      "sha256": "661eda3e9a4a0405c8cd313fdd30b3eb8b4ec2ae6c16af222706ec48bec93b7a"
+    },
+    {
+      "path": "src/tests/whiteBoxCounterfactualSmoke.ts",
+      "bytes": 1723,
+      "sha256": "a86d77b964b6cf5bea6697b3fefe2e3b55b575eb4cfd2eaa1faf0421568e9b54"
+    },
+    {
+      "path": "src/tests/whiteBoxReleaseRegistrySmoke.ts",
+      "bytes": 3669,
+      "sha256": "14aedafd5effe8f21c52a30eae1dbdd7d01393ba469abd760b7c7b65a3c2200c"
+    },
+    {
+      "path": "src/tests/whiteBoxReleaseSmoke.ts",
+      "bytes": 2508,
+      "sha256": "8d6635494578af3c749992a3685dd3012aee3acb5b54f5f81b4b1b7b5e284412"
+    },
+    {
+      "path": "src/tests/whiteBoxRetentionSmoke.ts",
+      "bytes": 2707,
+      "sha256": "44e6a77cd0fec11986c58ec603ef6b4de1125d51b134be880c8951d94ee603b6"
+    },
+    {
+      "path": "src/tests/whiteBoxReviewSmoke.ts",
+      "bytes": 1606,
+      "sha256": "0197d23b6fa9477e80b6e618ab620a7189e6ff8d32248c1b469a26ef66fb796f"
+    },
+    {
+      "path": "src/tests/whiteBoxSamplingSmoke.ts",
+      "bytes": 1201,
+      "sha256": "ddbd87b8f612a427bedcacdea77749ddd13d3b84ac65addbcbd8c46e56b67961"
+    },
+    {
+      "path": "src/tests/whiteBoxSmoke.ts",
+      "bytes": 26931,
+      "sha256": "cef736942e8be06f78c0bee27fdf0d31706f12d1552ae64bc84c54c28cb0c1be"
+    },
+    {
+      "path": "src/tests/whiteBoxSoakSmoke.ts",
+      "bytes": 2047,
+      "sha256": "091130154f1cecc600ef27f929cd5e7b0a704e3b05e7fa26437eedf69b5b19d6"
+    },
+    {
+      "path": "src/variants/generator.ts",
+      "bytes": 8683,
+      "sha256": "930944ad3647813f3f73d245b77dff07a51a1e393e6b688e0a27e87192aa4032"
+    },
+    {
+      "path": "src/variants/report.ts",
+      "bytes": 3793,
+      "sha256": "bc2f6b3747b4f1af54246905480e6e7b1298a702bd904e790048522a9555a547"
+    },
+    {
+      "path": "src/variants/types.ts",
+      "bytes": 1015,
+      "sha256": "b545929e76873ef14052d283e04ed53cf8d21d03124117c01a05e33d43891506"
+    },
+    {
+      "path": "tsconfig.json",
+      "bytes": 230,
+      "sha256": "0f82dd1eea00bd6f4eb5b3f8878942f33530c2b8ce8315851a3d5509cb935646"
+    },
+    {
+      "path": "vendor/node-static-disabled/index.js",
+      "bytes": 288,
+      "sha256": "7bd7a934ebbfac948073d88ce155432e51413b6d77c4520addfd8df616d8564c"
+    },
+    {
+      "path": "vendor/node-static-disabled/package.json",
+      "bytes": 227,
+      "sha256": "155b57b5e22dcc98f006ed66e1a2be30de696fdd157212cadb265c896c6adfbe"
+    },
+    {
+      "path": "work/beedrill-audit.ts",
+      "bytes": 17894,
+      "sha256": "8094bd170e0b86347dd9f137fcc3cf705f2eb983e016cd77f182905d46956678"
+    },
+    {
+      "path": "work/g1-g2-analysis.ts",
+      "bytes": 2315,
+      "sha256": "0472c6108a584d26a164964103df67ca5ad2a735219e379ce20f0dccbbced9d6"
+    },
+    {
+      "path": "work/g3-generational-audit.ts",
+      "bytes": 6101,
+      "sha256": "eeb05ce09cd765e0164ce492fe629ecc5078c2bf2c997267eadccc8482dbba56"
+    }
+  ]
 }

@@ -94,7 +94,7 @@ export interface UnifiedEvidenceCase {
 export interface UnifiedEvidencePlan {
   schemaVersion: 4;
   createdAt: string;
-  config: {maximumCases: number; maximumPerDomain: number; minimumImpact: number; portfolioBidScreens:string[]; historicalReplayFollowupSeasons:number};
+  config: {maximumCases: number; maximumPerDomain: number; minimumImpact: number; portfolioBidScreens:string[]; historicalReplayFollowupSeasons:number; domains:string[]|null};
   sources: Array<{root: string; seed: string; completedSeason: number; comparisons: number; agreements: number; differences: number; lineupCompleteComparisons: number; lineupIncompleteComparisons: number; lineupScenarioDifferences: number; lineupAssistApproved: number; battleTraceFiles: number; battleComparisons: number; battleDifferences: number; battleEvidence: "available" | "legacy-without-whitebox" | "not-retained"; memoryReplicas: number; memoryPolicies: number; learningReplicas:number; programEvolutionReplicas:number; fullEvolutionReplicas:number; bidReplicas:number; executableBidReplicas:number}>;
   metrics: {
     scanned: number;
@@ -113,15 +113,23 @@ export interface UnifiedEvidencePlan {
   cases: UnifiedEvidenceCase[];
 }
 
-export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {maximumCases?: number; maximumPerDomain?: number; minimumImpact?: number; portfolioBidScreens?:readonly string[]; historicalReplayFollowupSeasons?:number} = {}): UnifiedEvidencePlan {
+export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {maximumCases?: number; maximumPerDomain?: number; minimumImpact?: number; portfolioBidScreens?:readonly string[]; historicalReplayFollowupSeasons?:number; domains?:readonly string[]} = {}): UnifiedEvidencePlan {
   const maximumCases = integer(options.maximumCases ?? 60, 1, 10000, "maximumCases");
   const maximumPerDomain = integer(options.maximumPerDomain ?? 10, 1, 1000, "maximumPerDomain");
   const minimumImpact = finite(options.minimumImpact ?? 0, 0, 1e9, "minimumImpact");
   const historicalReplayFollowupSeasons=integer(options.historicalReplayFollowupSeasons??1,0,10,"historicalReplayFollowupSeasons");
   const portfolioBidScreens=[...new Set((options.portfolioBidScreens??[]).map(value=>path.resolve(value)))],screenEvidence=loadPortfolioScreenEvidence(portfolioBidScreens);
+  const domains=options.domains?.length?[...new Set(options.domains)].sort():null,battleOnly=domains?.length===1&&domains[0]==="battle";
+  if(domains&&!battleOnly)throw new Error(`Unsupported unified evidence domain filter: ${domains.join(",")}`);
   if (!inputs.length) throw new Error("Unified evidence planning requires at least one dynasty root");
   const sources: UnifiedEvidencePlan["sources"] = [], raw: UnifiedEvidenceCase[] = [];
   for (const input of [...new Set(inputs.map(value => path.resolve(value)))]) {
+    if(battleOnly){
+      const identity=loadSourceIdentity(input),battle=collectBattleCases(input,identity.seed,identity.completedSeason);
+      raw.push(...battle.cases);
+      sources.push({root:input,seed:identity.seed,completedSeason:identity.completedSeason,comparisons:0,agreements:0,differences:0,lineupCompleteComparisons:0,lineupIncompleteComparisons:0,lineupScenarioDifferences:0,lineupAssistApproved:0,battleTraceFiles:battle.files,battleComparisons:battle.comparisons,battleDifferences:battle.cases.length,battleEvidence:battle.comparisons?"available":battle.files?"legacy-without-whitebox":"not-retained",memoryReplicas:0,memoryPolicies:0,learningReplicas:0,programEvolutionReplicas:0,fullEvolutionReplicas:0,bidReplicas:0,executableBidReplicas:0});
+      continue;
+    }
     const review = reviewWhiteBoxDifferences(input);
     const state = loadDynastyState<any>(path.join(input, "dynasty-state.json"));
     const seed = String(state.seed ?? "unknown"), completedSeason = Number(state.completedSeason ?? 0);
@@ -155,7 +163,7 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
   return {
     schemaVersion: 4,
     createdAt: new Date().toISOString(),
-    config: {maximumCases, maximumPerDomain, minimumImpact,portfolioBidScreens,historicalReplayFollowupSeasons},
+    config: {maximumCases, maximumPerDomain, minimumImpact,portfolioBidScreens,historicalReplayFollowupSeasons,domains},
     sources,
     metrics: {
       scanned: raw.length,
@@ -173,6 +181,17 @@ export function buildUnifiedEvidencePlan(inputs: readonly string[], options: {ma
     },
     cases: unique,
   };
+}
+
+function loadSourceIdentity(root:string):{seed:string;completedSeason:number}{
+  const stateFile=path.join(root,"dynasty-state.json"),statusFile=path.join(root,"league-status.json");
+  if(!fs.existsSync(stateFile))throw new Error(`Missing evidence input: ${stateFile}`);
+  const handle=fs.openSync(stateFile,"r");
+  try{
+    const buffer=Buffer.alloc(65536),bytes=fs.readSync(handle,buffer,0,buffer.length,0),header=buffer.subarray(0,bytes).toString("utf8"),seed=header.match(/"seed"\s*:\s*"([^"]+)"/)?.[1],headerSeason=Number(header.match(/"completedSeason"\s*:\s*(\d+)/)?.[1]??NaN),status=fs.existsSync(statusFile)?readJson<any>(statusFile):null,completedSeason=Number(status?.completedSeason??headerSeason);
+    if(!seed||!Number.isInteger(completedSeason)||completedSeason<0)throw new Error(`Cannot read compact source identity: ${stateFile}`);
+    return{seed,completedSeason};
+  }finally{fs.closeSync(handle);}
 }
 
 function loadPortfolioScreenEvidence(files:readonly string[]):Map<string,any>{const evidence=new Map<string,any>();for(const input of files){const file=fs.existsSync(input)&&fs.statSync(input).isDirectory()?path.join(input,"portfolio-bid-screen.json"):input,value=readJson<any>(file);if(value.schemaVersion!==1||value.sourceVerified!==true||!Number.isInteger(value.season)||!Array.isArray(value.results))throw new Error(`Invalid portfolio bid screen: ${file}`);const root=path.resolve(value.source),capsule=loadPortfolioBidReplayCapsule(root,value.season);if(capsule.sourceHash!==value.sourceHash)throw new Error(`Portfolio bid screen source hash drifted: ${file}`);for(const result of value.results){const key=`${root}|${value.season}|${result.decisionId}`;if(evidence.has(key))throw new Error(`Duplicate portfolio bid screen result: ${result.decisionId}`);evidence.set(key,result);}}return evidence;}

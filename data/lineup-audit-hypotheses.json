@@ -85,6 +85,53 @@
       ],
       "scope": ["all-lineups"],
       "guardrails": [{"feature": "lineup.strengthFloor", "minimumDelta": -5}]
+    },
+    {
+      "id": "lineup-responsibility-resilience-v1",
+      "title": "Responsibility graph resilience",
+      "rationale": "A lineup may be robust when weighted opponent answers remain deep and the loss of any one member causes little coverage collapse.",
+      "stage": "proposed",
+      "minimumRepresentationVersion": 6,
+      "combine": "weighted-geometric-percentile",
+      "factors": [
+        {"feature": "lineup.weightedAnswerDeficit", "direction": "lower", "weight": 1},
+        {"feature": "lineup.weightedRedundancyDeficit", "direction": "lower", "weight": 1},
+        {"feature": "lineup.singleRemovalWeightedLoss", "direction": "lower", "weight": 1}
+      ],
+      "scope": ["representation-v6-lineups"],
+      "guardrails": [{"feature": "lineup.strengthFloor", "minimumDelta": -5}]
+    },
+    {
+      "id": "lineup-role-responsibility-decoupling-v1",
+      "title": "Role and matchup responsibility decoupling",
+      "rationale": "A lineup may be less fragile when irreplaceable structural roles and opponent-answer responsibility do not accumulate on the same member.",
+      "stage": "proposed",
+      "minimumRepresentationVersion": 6,
+      "combine": "weighted-geometric-percentile",
+      "factors": [
+        {"feature": "lineup.roleResponsibilityOverlapPeak", "direction": "lower", "weight": 1},
+        {"feature": "lineup.responsibilityLoadConcentration", "direction": "lower", "weight": 1}
+      ],
+      "scope": ["representation-v6-lineups"],
+      "guardrails": [
+        {"feature": "lineup.structuralCoverage", "minimumDelta": 0},
+        {"feature": "lineup.responsibilityAnswerFloor", "minimumDelta": -0.05}
+      ]
+    },
+    {
+      "id": "lineup-opponent-structure-depth-v1",
+      "title": "Opponent-structure answer depth",
+      "rationale": "Answers to an opponent's active setup, hazard, recovery, pivot, screen, priority, and status structure may matter more than undifferentiated average coverage.",
+      "stage": "proposed",
+      "minimumRepresentationVersion": 6,
+      "combine": "weighted-geometric-percentile",
+      "factors": [
+        {"feature": "lineup.opponentStructureAnswerFloor", "direction": "higher", "weight": 1},
+        {"feature": "lineup.opponentStructureRedundancyFloor", "direction": "higher", "weight": 1},
+        {"feature": "lineup.responsibilityTwoWayFloor", "direction": "higher", "weight": 1}
+      ],
+      "scope": ["representation-v6-lineups"],
+      "guardrails": [{"feature": "lineup.strengthFloor", "minimumDelta": -5}]
     }
   ]
 }

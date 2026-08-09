@@ -9,6 +9,9 @@ import type {TacticalMemoryAblationSample} from "../ai/whiteBox/tacticalMemoryAb
 import type {StrategyProgramCounterfactualSample} from "../ai/whiteBox/strategyProgramAggregation";
 import {compactWhiteBoxRun, type WhiteBoxRetentionTrace} from "../ai/whiteBox/retention";
 import {acquireNamedRunLock} from "../draft/runLock";
+import {classifyReplayEvidence} from "../draft/evidenceEpochAudit";
+import {AI_VERSION} from "../showdown/choice";
+import {buildEvidenceEpoch} from "../showdown/evidenceEpoch";
 
 type RunStatus = "complete" | "failed";
 interface ExperimentRun {hypothesisId: string; replicaId: string; seed: string; status: RunStatus; directory: string; startedAt: string; completedAt: string; retention?: WhiteBoxRetentionTrace[]; error?: string}
@@ -18,6 +21,7 @@ interface Manifest {
   plan: UnifiedEvidencePlan;
   runs: ExperimentRun[];
   stopReason: string | null;
+  evidenceEpoch: {policySha256: string; formalActivationAllowed: boolean};
 }
 
 const args = process.argv.slice(2), root = process.cwd();
@@ -37,12 +41,16 @@ if (previousRaw && ![2,3,4].includes(previousRaw.schemaVersion)) throw new Error
 const previous = [2,3,4].includes(previousRaw?.schemaVersion) ? previousRaw as Manifest : null;
 if (previous && JSON.stringify(previous.config) !== JSON.stringify(config)) throw new Error("Unified evidence configuration differs from the existing manifest; use a new --out directory");
 const plan = buildUnifiedEvidencePlan(inputs, {maximumCases, maximumPerDomain, minimumImpact,portfolioBidScreens,historicalReplayFollowupSeasons:followupSeasons});
-const manifest: Manifest = {schemaVersion: 4, config, plan, runs: previous?.runs ?? [], stopReason: null};
+const battleReplicas=plan.cases.filter(entry=>entry.domain==="battle"&&entry.selected&&entry.status==="executable").flatMap(entry=>entry.replicas.filter(replica=>replica.battleTarget));
+const battleEvidenceEligible=new Set(battleReplicas.filter(replica=>classifyReplayEvidence(path.join(replica.battleTarget!.sourceGame,"replay-input.json")).formalActivationAllowed).map(replica=>replica.id));
+const evidenceEpoch={policySha256:buildEvidenceEpoch(AI_VERSION,"gen9ou").policySha256,formalActivationAllowed:battleReplicas.length>0&&battleEvidenceEligible.size===battleReplicas.length};
+if(previous?.runs.length&&battleReplicas.length&&previous.evidenceEpoch?.policySha256!==evidenceEpoch.policySha256)throw new Error("Existing unified battle evidence predates the current evidence epoch; use a new --out directory");
+const manifest: Manifest = {schemaVersion: 4, config, plan, runs: previous?.runs ?? [], stopReason: null,evidenceEpoch};
 writePlan();
 
 if (args.includes("--run")) {
   const completed = new Set(manifest.runs.filter(run => run.status === "complete").map(run => run.replicaId));
-  const queue = plan.cases.filter(entry => entry.selected && entry.status === "executable" && entry.runner !== null).flatMap(hypothesis => oneReplicaPerSeed(hypothesis).filter(replica => !completed.has(replica.id)).map(replica => ({hypothesis, replica}))).slice(0, maximumExperiments);
+  const queue = plan.cases.filter(entry => entry.selected && entry.status === "executable" && entry.runner !== null).flatMap(hypothesis => oneReplicaPerSeed(hypothesis).filter(replica => !completed.has(replica.id)&& (hypothesis.domain!=="battle"||battleEvidenceEligible.has(replica.id))).map(replica => ({hypothesis, replica}))).slice(0, maximumExperiments);
   for (const {hypothesis, replica} of queue) {
     const outputMb = directorySize(out) / 1048576, freeGb = freeBytes(out) / 1073741824;
     if (outputMb >= maximumOutputMb) { manifest.stopReason = `output-budget:${round(outputMb)}MB/${maximumOutputMb}MB`; break; }

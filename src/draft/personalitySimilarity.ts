@@ -22,7 +22,7 @@ function parameterVector(profile: ManagerProfile): number[] {
     economics.starPremium, economics.cashUtility, economics.bidAggression, economics.marketAwareness,
     learning.rate, learning.exploration, learning.memoryDecay,
     tactics.expectedWeight, tactics.downsideWeight, tactics.worstWeight,
-    normalizedBias(tactics.aggression), normalizedBias(tactics.setupBias), normalizedBias(tactics.pivotBias), normalizedBias(tactics.recoveryBias), normalizedBias(tactics.statusBias), normalizedBias(tactics.teraBias), normalizedBias(tactics.switchBias),
+    normalizedBias(tactics.aggression), normalizedBias(tactics.setupBias), normalizedBias(tactics.pivotBias), normalizedBias(tactics.recoveryBias), normalizedBias(tactics.statusBias), normalizedBias(tactics.switchBias),
     ...CONFIGURATION_KEYS.map(key => genome?.configuration[key] ?? .5),
     ...SYSTEM_KEYS.map(key => genome?.systems[key] ?? .5),
     ...ORGANIZATION_KEYS.map(key => genome?.organization[key] ?? .5),

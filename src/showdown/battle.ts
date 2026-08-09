@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import {BattleStream, Teams} from "pokemon-showdown";
+import {BattleStream, Dex, Teams} from "pokemon-showdown";
 import {
   AI_VERSION,
   chooseAction,
@@ -19,6 +19,8 @@ import {
 import {seedToShowdownSeed} from "./seed";
 import {evaluateBattleAssistGate} from "../ai/whiteBox/battle";
 import {buildBattleAssistScope} from "../ai/whiteBox/battleScope";
+import {leagueBattleFormat} from "./mechanics";
+import {buildEvidenceEpoch, canonicalJson, validateEvidenceEpoch, type EvidenceContext, type EvidenceEpoch} from "./evidenceEpoch";
 
 export interface BattleInput {
   format: string;
@@ -41,6 +43,8 @@ export interface BattleInput {
   decisionIntervention?: BattleDecisionIntervention;
   battleAssistScopes?: string[];
   battleAssistApprovalSha256?: string;
+  evidenceContext?: EvidenceContext;
+  evidenceEpoch?: EvidenceEpoch;
 }
 
 export interface BattleDecisionIntervention {
@@ -52,7 +56,7 @@ export interface BattleDecisionIntervention {
 }
 
 export interface BattleReplayInput {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   aiVersion: string;
   format: string;
   teamA: string;
@@ -70,10 +74,11 @@ export interface BattleReplayInput {
   aiOpponentModelPolicy?: string;
   battleAssistScopes?: string[];
   battleAssistApprovalSha256?: string;
+  evidenceEpoch?: EvidenceEpoch;
 }
 
 export interface BattleReplayCapsule {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   sha256: string;
   input: BattleReplayInput;
 }
@@ -113,6 +118,8 @@ export interface MaxTurnAdjudication {
 
 export async function runBattle(input: BattleInput): Promise<BattleResult> {
   const stream = new BattleStream();
+  const configuredFormat = Dex.formats.get(input.format);
+  const format = leagueBattleFormat(input.format, configuredFormat.exists ? configuredFormat.ruleset : []);
   const seed = input.explicitSeed ? validateShowdownSeed(input.explicitSeed) : seedToShowdownSeed(input.seed, input.gameIndex);
   const rawBlocks: string[] = [];
   const publicLines: string[] = [];
@@ -131,6 +138,9 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
   const traceAiDecisions = input.traceAiDecisions ?? false;
   const battleAssistScopes=normalizeBattleAssistScopes(input.battleAssistScopes);
   const battleAssistApprovalSha256=normalizeOptionalSha256(input.battleAssistApprovalSha256);
+  const inheritedEvidenceContext = input.evidenceEpoch ? {registryHash: input.evidenceEpoch.content.registryHash, configurationPolicyVersion: input.evidenceEpoch.content.configurationPolicyVersion} : undefined;
+  const evidenceEpoch = buildEvidenceEpoch(AI_VERSION, format, input.evidenceContext ?? inheritedEvidenceContext);
+  if (input.evidenceEpoch && input.evidenceEpoch.epochSha256 !== evidenceEpoch.epochSha256) throw new Error("Replay evidence epoch differs from the current battle policy or effective format");
   if(battleAssistScopes.length&&(input.ai!=="search"||!traceAiDecisions))throw new Error("Battle assist scopes require search AI with decision tracing enabled");
   if(battleAssistScopes.length&&input.decisionIntervention)throw new Error("Battle assist scopes cannot be combined with a decision intervention");
   validateDecisionIntervention(input.decisionIntervention, input.ai, traceAiDecisions);
@@ -141,8 +151,8 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
     p2: Teams.unpack(input.teamB) ?? [],
   };
   const aiContexts = {
-    p1: createBattleAiContext(input.format, {openTeamSheets, teams, tacticalProfile: input.aiProfiles?.p1, opponentModel: input.aiOpponentModels?.p1}),
-    p2: createBattleAiContext(input.format, {openTeamSheets, teams, tacticalProfile: input.aiProfiles?.p2, opponentModel: input.aiOpponentModels?.p2}),
+    p1: createBattleAiContext(format, {openTeamSheets, teams, tacticalProfile: input.aiProfiles?.p1, opponentModel: input.aiOpponentModels?.p1}),
+    p2: createBattleAiContext(format, {openTeamSheets, teams, tacticalProfile: input.aiProfiles?.p2, opponentModel: input.aiOpponentModels?.p2}),
   };
   const pendingRequests: Partial<Record<"p1" | "p2", ChoiceRequest>> = {};
   const latestRequests: Partial<Record<"p1" | "p2", ChoiceRequest>> = {};
@@ -153,9 +163,9 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
   fs.mkdirSync(battleDir, {recursive: true});
   const replayInputPath = path.join(battleDir, "replay-input.json");
   const replayCapsule = createBattleReplayCapsule({
-    schemaVersion: 1,
+    schemaVersion: 2,
     aiVersion: AI_VERSION,
-    format: input.format,
+    format,
     teamA: input.teamA,
     teamB: input.teamB,
     seed,
@@ -171,6 +181,7 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
     aiOpponentModelPolicy: input.aiOpponentModelPolicy,
     battleAssistScopes,
     battleAssistApprovalSha256,
+    evidenceEpoch,
   });
   fs.writeFileSync(replayInputPath, `${JSON.stringify(replayCapsule, null, 2)}\n`, "utf8");
   let idleTimer: NodeJS.Timeout | undefined;
@@ -256,7 +267,7 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
   resetIdleTimer();
   wallClockTimer = setTimeout(() => abortAsStalled(`wall-clock timeout after ${wallClockTimeoutMs}ms`), wallClockTimeoutMs);
   stream.write(`>start ${JSON.stringify({
-    formatid: input.format,
+    formatid: format,
     seed,
     p1: {name: "Team A", team: input.teamA},
     p2: {name: "Team B", team: input.teamB},
@@ -280,7 +291,7 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
   fs.writeFileSync(rawLogPath, rawBlocks.join("\n\n"), "utf8");
   fs.writeFileSync(publicLogPath, publicLines.join("\n"), "utf8");
   fs.writeFileSync(decisionLogPath, `${JSON.stringify(decisionTraces, null, 2)}\n`, "utf8");
-  fs.writeFileSync(endDataPath, `${JSON.stringify({winner, turns, ended, timeout, adjudication, stalled, stallReason, errors, choiceRetries, seed, ai: input.ai, aiVersion: AI_VERSION, replayInput: path.basename(replayInputPath), replayInputSha256: replayCapsule.sha256, decisionIntervention: input.decisionIntervention ?? null, decisionInterventionApplied: interventionState.applied, battleAssistScopes,battleAssistApprovalSha256, battleAssistApplications:assistState.applications, aiProfiles: {p1: aiContexts.p1.tacticalProfile.id, p2: aiContexts.p2.tacticalProfile.id}, aiOpponentModelConfidence: {p1: aiContexts.p1.opponentModel.confidence, p2: aiContexts.p2.opponentModel.confidence}, openTeamSheets, traceAiDecisions, aiDecisionCount: decisionTraces.length, ...endData}, null, 2)}\n`, "utf8");
+  fs.writeFileSync(endDataPath, `${JSON.stringify({winner, turns, ended, timeout, adjudication, stalled, stallReason, errors, choiceRetries, seed, ai: input.ai, aiVersion: AI_VERSION, replayInput: path.basename(replayInputPath), replayInputSha256: replayCapsule.sha256, evidenceEpoch: replayCapsule.input.evidenceEpoch, evidencePolicySha256: replayCapsule.input.evidenceEpoch?.policySha256, evidenceContentSha256: replayCapsule.input.evidenceEpoch?.contentSha256, formalEvidenceContext: replayCapsule.input.evidenceEpoch?.formalContextComplete ?? false, decisionIntervention: input.decisionIntervention ?? null, decisionInterventionApplied: interventionState.applied, battleAssistScopes,battleAssistApprovalSha256, battleAssistApplications:assistState.applications, aiProfiles: {p1: aiContexts.p1.tacticalProfile.id, p2: aiContexts.p2.tacticalProfile.id}, aiOpponentModelConfidence: {p1: aiContexts.p1.opponentModel.confidence, p2: aiContexts.p2.opponentModel.confidence}, openTeamSheets, traceAiDecisions, aiDecisionCount: decisionTraces.length, ...endData}, null, 2)}\n`, "utf8");
 
   if (streamFailure) throw streamFailure;
   if (input.decisionIntervention && !interventionState.applied) {
@@ -320,12 +331,12 @@ export async function runBattle(input: BattleInput): Promise<BattleResult> {
 export function createBattleReplayCapsule(input: BattleReplayInput): BattleReplayCapsule {
   validateBattleReplayInput(input);
   const cloned = JSON.parse(JSON.stringify(input)) as BattleReplayInput;
-  return {schemaVersion: 1, sha256: replayInputDigest(cloned), input: cloned};
+  return {schemaVersion: input.schemaVersion, sha256: replayInputDigest(cloned), input: cloned};
 }
 
 export function loadBattleReplayCapsule(file: string): BattleReplayCapsule {
   const capsule = JSON.parse(fs.readFileSync(file, "utf8")) as BattleReplayCapsule;
-  if (capsule.schemaVersion !== 1 || capsule.input?.schemaVersion !== 1 || !/^[a-f0-9]{64}$/.test(capsule.sha256 ?? "")) {
+  if (![1, 2].includes(capsule.schemaVersion) || capsule.input?.schemaVersion !== capsule.schemaVersion || !/^[a-f0-9]{64}$/.test(capsule.sha256 ?? "")) {
     throw new Error(`Invalid battle replay capsule: ${file}`);
   }
   validateBattleReplayInput(capsule.input);
@@ -338,17 +349,8 @@ function replayInputDigest(input: BattleReplayInput): string {
   return crypto.createHash("sha256").update(canonicalJson(input)).digest("hex");
 }
 
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
 function validateBattleReplayInput(input: BattleReplayInput): void {
-  if (input.schemaVersion !== 1) throw new Error("Unsupported battle replay input schema");
+  if (![1, 2].includes(input.schemaVersion)) throw new Error("Unsupported battle replay input schema");
   if (!input.aiVersion || !input.format || !input.teamA || !input.teamB) throw new Error("Incomplete battle replay input");
   validateShowdownSeed(input.seed);
   if (!Number.isInteger(input.maxTurns) || input.maxTurns < 1) throw new Error("Invalid replay maxTurns");
@@ -358,6 +360,14 @@ function validateBattleReplayInput(input: BattleReplayInput): void {
     if (!policy || !models?.p1 || !models?.p2) throw new Error("Incomplete replay shadow opponent model");
   }
   if (input.aiOpponentModelPolicy !== undefined && !input.aiOpponentModelPolicy.trim()) throw new Error("Invalid replay opponent-model policy");
+  if (input.schemaVersion === 2) {
+    if (!input.evidenceEpoch) throw new Error("Replay schema 2 requires an evidence epoch");
+    const epochErrors = validateEvidenceEpoch(input.evidenceEpoch);
+    if (epochErrors.length) throw new Error(`Invalid replay evidence epoch: ${epochErrors.join("; ")}`);
+    if (input.evidenceEpoch.battlePolicy.aiVersion !== input.aiVersion || input.evidenceEpoch.content.format !== input.format) throw new Error("Replay evidence epoch does not bind its AI version and format");
+  } else if (input.evidenceEpoch) {
+    throw new Error("Replay schema 1 cannot declare an evidence epoch");
+  }
 }
 
 function normalizeOpponentModelShadows(value: BattleInput["aiOpponentModelShadows"]): BattleReplayInput["aiOpponentModelShadows"] {

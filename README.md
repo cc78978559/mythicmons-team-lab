@@ -4,13 +4,30 @@ MythicMons Team Lab is a local-first Pokémon Showdown simulation, draft-league,
 
 Current production capabilities, unfinished AI domains, activation gates, and the next implementation sequence are tracked in [`docs/CURRENT_STATUS_AND_ROADMAP.md`](docs/CURRENT_STATUS_AND_ROADMAP.md).
 
+<!-- GENERATED_STATUS:START -->
+## Verified Build Surface
+
+- Package baseline: `mythicmons-team-lab@1.1.0`
+- Local command inventory: 235 scripts, including 101 smoke suites
+- Autonomous research: `autonomous-research-v1.3-semantic-outcomes`
+- Formal validation: `formal-validation-v1.6-clustered-independent-environments`
+- Canary adapter protocol: `manager-program-v2-battle-rule-v1`
+- Formal canary authority: one battle decision domain, signed handoff, reviewed local adapter, manual promotion only
+- Formal inference: matchup-cluster votes across modern benchmark and current formal-league environments
+- Storage: content-addressed dynasty histories, independently reusable state fields, reference-audited dry-run GC
+- Machine-readable baseline: [`docs/RELEASE_BASELINE.json`](docs/RELEASE_BASELINE.json) (`5034c5ca37d9`)
+
+Regenerate this block and its signed baseline with `npm run baseline:generate`.
+<!-- GENERATED_STATUS:END -->
+
 ## Current Development Status
 
 - The persistent league supports 30 managers, scarce custom/legendary assets, ordinary background Pokémon, multi-season careers, promotion and relegation, a development league, Boss challenges, tactical memory, and auditable strategy-program evolution.
 - Expensive seasons, replays, counterfactuals, and learning evaluations run locally. Compact JSON/Markdown summaries are designed to be inspected without loading battle logs into an LLM context.
-- Program-decision evidence collection is resumable, disk-bounded, source-isolated, and protected by output-root workflow locks. Lineup labels use the directly affected series rather than distant season outcomes.
-- The current frozen lineup study contains 60 independent sources and 60 isolated labels: 9 better, 37 neutral, and 14 worse. Leave-one-source-out direction accuracy is 15/23, but total loss improves only 3.69% over the neutral baseline and decisiveness calibration is worse than baseline.
-- The learned lineup policy therefore remains inactive. Passing an evidence-count threshold never activates an AI operator by itself; predictive and safety gates must also pass.
+- The Stage 0-6 AI research chain is operationally healthy: 193,301 decision dossiers through S24, 150 current-era full battle traces across 21 managers, a 10,516-sample position-value corpus, 30 distinct Manager Program V2 behaviors, and 180 current-generation autonomous counterfactual experiments.
+- Formal validation history is now a signed research input. Rejected mechanisms are retired from rediscovery, inconclusive mechanisms return as explicit replication questions, and the compact portfolio retains three formal generations totaling 1,800 prospective battles and 168 experiments.
+- Formal autonomous control remains inactive. The current 900-battle generation rejected two mechanisms and left one inconclusive; no domain is eligible for a limited canary. A signed canary handoff records `no-candidate` instead of implying deployment readiness.
+- `npm run ai-pipeline -- status` is the canonical compact status. It separates engineering health, pipeline-cycle completion, research maturity, formal readiness, and the next product milestones.
 
 Detailed AI evidence and architecture notes are in [`docs/WHITE_BOX_AI.md`](docs/WHITE_BOX_AI.md) and [`docs/STRATEGY_PROGRAM_EVOLUTION.md`](docs/STRATEGY_PROGRAM_EVOLUTION.md).
 
@@ -78,6 +95,8 @@ npm run league -- report
 
 Formal audits aggregate one season at a time and reuse the content-hash index instead of traversing the league again to measure output size. `audit-run-state.json` records the current phase, season, elapsed time, and current/peak memory; `audit-failures.json` keeps the latest 20 failures, including an interrupted prior process detected on restart. `league status`, `doctor`, and `resume` verify that the clean audit signature still matches the current state boundary. A missing, failed, interrupted, or stale audit blocks resume.
 
+Battle evidence now has an explicit evidence epoch. New replay capsules bind the AI and Showdown versions, mechanics policy, effective format, immutable registry, and configuration policy. Old or mismatched evidence remains available as historical prior but cannot authorize a battle or lineup assist. Use `npm run audit:evidence-epochs -- --root <dir> --verify-events` for a cached one-pass scan; add `--require-current` or `--require-formal-context` as a CI gate. S22-S24 provide 2,310 audited current-policy, formal-context battles; S24 is the current runtime boundary. See [`docs/EVIDENCE_EPOCH.md`](docs/EVIDENCE_EPOCH.md).
+
 Use the unified local tooling doctor for storage and shared-source-cache maintenance:
 
 ```powershell
@@ -87,7 +106,7 @@ npm run tooling -- cache-gc
 npm run tooling -- cache-gc --apply
 ```
 
-The doctor writes a streaming top-level storage index and a cache-reference audit under `output/tooling/tooling-doctor`. Shared source caches record their last use, default to a 4096 MB budget, and are reclaimed oldest-first only when they have a valid content-addressed marker and no active-study reference. GC is a dry run unless `--apply` is present; use `--cache-budget-mb` and `--cache-max-age-days` to override the policy.
+The doctor writes a streaming top-level storage index and reference audits under `output/tooling/tooling-doctor`. Shared source caches record their last use, default to a 4096 MB budget, and are reclaimed oldest-first only when they have a valid content-addressed marker and no active-study reference. Dynasty histories are split into content-addressed gzip objects; unchanged history fields are reused by later checkpoints. The same doctor scans the live state and every historical checkpoint before proposing object deletion. GC is a dry run unless `--apply` is present; use `--cache-budget-mb`, `--cache-max-age-days`, `--dynasty-storage-budget-mb`, and `--dynasty-storage-grace-days` to override policy.
 
 Shadow diagnostics are also local-first:
 
@@ -154,8 +173,8 @@ Evaluation output is pool-relative, not an absolute claim that a team is "strong
 Use the same `--ai` value for every team you compare.
 
 - `basic`: default evaluation strategy. It estimates state-dependent move value from Showdown data, current typing, weather, STAB, rough damage/KO risk, speed order, accuracy, and common standard source abilities/items inside MythicMons composites; it switches out of zero-value or likely losing positions.
-- `tactical`: stateful evaluation strategy. It additionally prioritizes team plans such as Baton Pass, Trick Room, weather, screens, hazard control, recovery, and low-HP sacrifice moves. Its Baton Pass planner checks recipient compatibility, incoming KO risk, setup value, Substitute, and Speed Boost/Protect timing before passing. It preserves passed boosts, tracks Terastallized types, and uses role-aware leads and switch recipients.
-- `search`: V13 audited open-sheet limited-horizon strategy. It assigns heuristic policy shares to legal opponent move, switch, and Tera responses, evaluates expected value plus downside and worst-case risk, then adds discounted follow-up value from projected HP and the next favorable action. League managers can supply distinct risk weights and auditable biases for attacks, setup, pivots, recovery, status, switching, and Tera. It tracks reserve HP/status/items/PP, uses open-sheet stats for speed and damage, models common status consequences, and keeps every branch score finite. Search `simulate` runs write `ai-decisions.json` with candidate scores, personality adjustments, and response policy shares by default; use `--no-ai-trace` to disable it. Batch `evaluate` and `modern-hybrids` keep traces off unless `--ai-trace` is supplied. Open team sheets are enabled by default for this strategy; use `--no-open-team-sheets` for information-limited experiments.
+- `tactical`: stateful evaluation strategy. It additionally prioritizes team plans such as Baton Pass, Trick Room, weather, screens, hazard control, recovery, and low-HP sacrifice moves. Its Baton Pass planner checks recipient compatibility, incoming KO risk, setup value, Substitute, and Speed Boost/Protect timing before passing. It preserves passed boosts and uses role-aware leads and switch recipients.
+- `search`: V16 audited open-sheet limited-horizon strategy. It assigns heuristic policy shares to legal opponent move and switch responses, evaluates expected value plus downside and worst-case risk, then adds discounted follow-up value from projected HP and the next favorable action. League managers can supply distinct risk weights and auditable biases for attacks, setup, pivots, recovery, status, and switching. It tracks reserve HP/status/items/PP, uses open-sheet stats for speed and damage, models common status consequences, and keeps every branch score finite. Terastallization and Dynamax are disabled by the league format; compile-time Mega formes remain available. Search `simulate` runs write `ai-decisions.json` with candidate scores, personality adjustments, and response policy shares by default; use `--no-ai-trace` to disable it. Batch `evaluate` and `modern-hybrids` keep traces off unless `--ai-trace` is supplied. Open team sheets are enabled by default for this strategy; use `--no-open-team-sheets` for information-limited experiments.
 - `damage`: chooses the highest estimated damage or utility move and rarely switches except when forced.
 - `first`: deterministic first legal move/switch. Keep this for smoke tests and regressions, not strength evaluation.
 

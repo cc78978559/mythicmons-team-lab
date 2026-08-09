@@ -104,6 +104,8 @@ try {
   assert.equal(posterior.after.effectiveSamples, 6);
   assert(Math.abs(posterior.after.mean - 3.46 / 6) < 1e-12);
   assert.deepEqual(posterior.rollback, {mean: .5, confidence: 0, effectiveSamples: 2});
+  const saturatedPosterior = evaluateConfigurationPosterior("saturated", {mean: 1, confidence: 1, effectiveSamples: posterior.parameters["memory.configuration.maximumsamples"]}, 1, 4);
+  assert.equal(saturatedPosterior.after.mean, 1, "capped configuration posterior mass must remain normalized");
   const itemEvidence = evaluateConfigurationEvidence({kind: "item", teamResult: .5, production: .5, triggerRate: 2});
   assert.equal(itemEvidence.evidence, .625);
   console.log("tactical memory smoke passed");

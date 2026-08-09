@@ -3,7 +3,7 @@ import {validateManagerMechanismLedger, type ManagerMechanismEntry, type Manager
 
 export const MANAGER_RESEARCH_AGENDA_SCHEMA_VERSION = 1;
 export type ResearchIntent = "new-causal-test" | "replicate-local-benefit" | "map-local-failure" | "resolve-local-contradiction";
-export interface ResearchHypothesisOption {id: string; title: string; observationalCandidate: boolean; causalConclusion: string | null}
+export interface ResearchHypothesisOption {id: string; title: string; observationalCandidate: boolean; researchEligible?: boolean; evidenceStatus?: "post-deployment-exploratory"|"observational-candidate-frontier"; causalConclusion: string | null; eligibleManagerIds?: string[]}
 export interface ResearchScoreComponents {novelty: number; epistemicValue: number; replicationNeed: number; localSignal: number; publicPersonalTension: number; deterministicExploration: number}
 export interface ManagerResearchQuestion {mechanismId: string; title: string; intent: ResearchIntent; score: number; eligible: boolean; components: ResearchScoreComponents; reasons: string[]; blockedReason?: string}
 export interface ManagerResearchAgenda {
@@ -64,8 +64,8 @@ export function summarizeManagerResearchAgendas(agendas: readonly ManagerResearc
 function questionFor(managerId: string, entry: ManagerMechanismEntry | undefined, hypothesis: ResearchHypothesisOption, round: number, policy: ManagerResearchPolicyState): ManagerResearchQuestion {
   const exploration = policy.exploration;
   const attempts = entry?.attempts ?? 0, nonNeutral = (entry?.better ?? 0) + (entry?.worse ?? 0), posterior = entry?.posterior ?? {mean: 0, uncertainty: 1, effectiveSamples: 0};
-  const intent = intentFor(entry), publicCandidate = hypothesis.observationalCandidate && !hypothesis.causalConclusion, personalReplication = Boolean(hypothesis.causalConclusion && entry && nonNeutral > 0 && attempts < 4);
-  const eligible = publicCandidate || personalReplication;
+  const intent = intentFor(entry), personalOpportunity = !hypothesis.eligibleManagerIds || hypothesis.eligibleManagerIds.includes(managerId), publicCandidate = personalOpportunity && (hypothesis.observationalCandidate || hypothesis.researchEligible === true) && !hypothesis.causalConclusion, personalReplication = Boolean(personalOpportunity && hypothesis.causalConclusion && entry && nonNeutral > 0 && attempts < 4);
+  const eligible = personalOpportunity && (publicCandidate || personalReplication);
   const novelty = 1 / Math.sqrt(1 + attempts), epistemicValue = posterior.uncertainty, replicationNeed = nonNeutral ? Math.max(0, 4 - attempts) / 4 : 0;
   const localSignal = Math.abs(posterior.mean) * (1 - posterior.uncertainty), publicPersonalTension = hypothesis.causalConclusion && Math.abs(posterior.mean) > 0 ? Math.abs(posterior.mean) * posterior.uncertainty : 0;
   const deterministicExploration = hashUnit(`${managerId}:${hypothesis.id}:${round}`);
@@ -74,11 +74,11 @@ function questionFor(managerId: string, entry: ManagerMechanismEntry | undefined
   const modePreference = modeMean(policy, intent) + .5 / Math.sqrt(1 + policy.modeEvidence[intent].attempts);
   const score = eligible ? round6(exploration * explore + (1 - exploration) * exploit + .15 * modePreference) : 0;
   const reasons = eligible ? [
-    publicCandidate ? "Public observational evidence permits a new causal question" : "A personal non-neutral result requires independent replication before belief",
+    publicCandidate ? hypothesis.evidenceStatus === "post-deployment-exploratory" ? "A deployment failure pattern permits a fresh causal question, but supplies no policy evidence" : hypothesis.evidenceStatus === "observational-candidate-frontier" ? "A legal reasonable candidate frontier permits a fresh causal question, but supplies no tactical answer" : "Public observational evidence permits a new causal question" : "A personal non-neutral result requires independent replication before belief",
     attempts ? `${attempts} personal attempt(s); uncertainty ${round6(posterior.uncertainty)}` : "No personal evidence yet",
     intent === "map-local-failure" ? "The objective is to locate the failure boundary, not to suppress negative evidence" : intent === "resolve-local-contradiction" ? "Conflicting local outcomes require contextual separation" : "The request seeks information before any policy use",
   ] : [];
-  const blockedReason = eligible ? undefined : hypothesis.causalConclusion ? nonNeutral === 0 ? "Reviewed causal mechanism has no unresolved personal directional result" : "Personal replication threshold has already been reached" : "Public observational gate has not approved causal scheduling";
+  const blockedReason = eligible ? undefined : !personalOpportunity ? "Manager has no personal candidate-frontier opportunity for this question" : hypothesis.causalConclusion ? nonNeutral === 0 ? "Reviewed causal mechanism has no unresolved personal directional result" : "Personal replication threshold has already been reached" : "Public observational gate has not approved causal scheduling";
   return {mechanismId: hypothesis.id, title: hypothesis.title, intent, score, eligible, components: {novelty: round6(novelty), epistemicValue: round6(epistemicValue), replicationNeed: round6(replicationNeed), localSignal: round6(localSignal), publicPersonalTension: round6(publicPersonalTension), deterministicExploration: round6(deterministicExploration)}, reasons, ...(blockedReason ? {blockedReason} : {})};
 }
 

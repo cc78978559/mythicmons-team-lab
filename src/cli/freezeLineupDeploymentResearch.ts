@@ -1,0 +1,35 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import zlib from "node:zlib";
+import {validateLineupHypothesisRegistry, type LineupAuditHypothesis, type LineupHypothesisRegistry} from "../ai/whiteBox/lineupHypothesisWorkbench";
+import {validateManagerResearchAgenda, type ManagerResearchAgenda} from "../ai/managerResearchAgenda";
+
+const args = process.argv.slice(2), root = process.cwd(), postmortemFile = path.resolve(required("--postmortem")), optionsFile = path.resolve(required("--options")), parentRegistryFile = path.resolve(required("--parent-registry")), parentId = required("--parent"), dispositionFile = path.resolve(required("--disposition")), agendaFile = path.resolve(required("--agendas")), out = path.resolve(required("--out"));
+const postmortem = read<any>(postmortemFile), optionsArtifact = read<any>(optionsFile), disposition = read<any>(dispositionFile), registry = validateLineupHypothesisRegistry(read<LineupHypothesisRegistry>(parentRegistryFile)), agendas = readGzip<ManagerResearchAgenda>(agendaFile);
+if (postmortem.activationStatus !== "shadow-only" || postmortem.evidenceStatus !== "post-deployment-exploratory" || postmortem.validity?.causalClaimsAllowed !== false || postmortem.validity?.activationAllowed !== false) throw new Error("Invalid deployment postmortem authority");
+if (optionsArtifact.activationStatus !== "shadow-only" || optionsArtifact.evidenceStatus !== "post-deployment-exploratory" || !Array.isArray(optionsArtifact.hypotheses)) throw new Error("Invalid deployment research options");
+if (disposition.approvalSha256 !== postmortem.approvalSha256 || disposition.disposition !== "retire" || disposition.conclusion === "deployment-supported") throw new Error("Deployment disposition does not permit failure-boundary research");
+for (const agenda of agendas) validateManagerResearchAgenda(agenda);
+const parent = registry.hypotheses.find(value => value.id === parentId); if (!parent) throw new Error(`Missing deployment parent hypothesis: ${parentId}`);
+const discoveryFinalSeason = Math.max(...postmortem.seasons.map(Number)); if (disposition.effectiveAfterSeason !== discoveryFinalSeason) throw new Error("Disposition and postmortem season boundary mismatch");
+const auditSha256 = hash(postmortemFile), children: LineupAuditHypothesis[] = optionsArtifact.hypotheses.map((option: any) => {
+  if (!/^[a-z0-9-]+-v\d+$/.test(String(option.id)) || option.researchEligible !== true || option.evidenceStatus !== "post-deployment-exploratory") throw new Error(`Invalid deployment research option: ${String(option.id)}`);
+  const match = String(option.boundary?.signal ?? "").match(/^(incumbent|delta)\.(lineup\.[A-Za-z0-9]+)$/); if (!match) throw new Error(`Non-executable deployment boundary: ${String(option.id)}`);
+  const applicability = [...(parent.applicability ?? []).map(value => ({...value})), {source: match[1] as "incumbent" | "delta", feature: match[2], ...(option.boundary.operator === "at-most" ? {maximum: Number(option.boundary.threshold)} : {minimum: Number(option.boundary.threshold)})}];
+  return {id: String(option.id), title: String(option.title), rationale: `A retired deployment canary exposed this possible failure boundary. Managers may accumulate future causal tests without changing lineup policy.`, stage: "scoped-causal-candidate", minimumRepresentationVersion: parent.minimumRepresentationVersion, combine: parent.combine, factors: parent.factors.map(value => ({...value})), scope: ["manager-selected-post-deployment-boundary"], guardrails: parent.guardrails.map(value => ({...value})), applicability, discoveryEvidence: {kind: "post-deployment-causal-heterogeneity", auditSha256, parentHypothesisId: parentId, discoveryFinalSeason}};
+});
+const nextRegistry = validateLineupHypothesisRegistry({schemaVersion: 1, activationStatus: "shadow-only", hypotheses: [...registry.hypotheses, ...children]});
+const requestCounts = Object.fromEntries(children.map(child => [child.id, agendas.filter(agenda => agenda.selected?.mechanismId === child.id).length])), ready = Object.values(requestCounts).filter(value => value >= 6).length;
+const findings = children.map(child => ({id: child.id, title: child.title, registeredStage: child.stage, auditStage: child.stage, observationalCandidate: false, researchEligible: true, evidenceStatus: "post-deployment-scope-frozen-for-future-causal-validation", parentHypothesisId: parentId, discoveryFinalSeason, firstChoiceManagers: requestCounts[child.id], nextAction: "Accumulate only manager-selected future-season interventions; do not fill quotas with non-requesting managers."}));
+fs.mkdirSync(out, {recursive: true}); write(path.join(out, "research-registry.json"), nextRegistry); write(path.join(out, "research-audit.json"), {schemaVersion: 1, activationStatus: "shadow-only", conclusion: "manager-selected-accumulation", findings});
+const freeze = {schemaVersion: 1, activationStatus: "shadow-only", parentHypothesisId: parentId, discoveryFinalSeason, minimumFutureSeason: discoveryFinalSeason + 1, candidates: children.length, requestCounts, candidatesReadyForSparseAccumulation: Object.values(requestCounts).filter(value => value > 0).length, candidatesReadyForSixCaseStudy: ready, accumulationPolicy: {managerChoiceRequired: true, maximumResearchPreferenceRank: 0, crossSeasonAccumulation: true, forcedQuotaFill: false, formalConclusionRequiresIndependentThreshold: true}, inputs: {postmortem: fingerprint(postmortemFile), options: fingerprint(optionsFile), disposition: fingerprint(dispositionFile), agendas: fingerprint(agendaFile), parentRegistry: fingerprint(parentRegistryFile)}};
+write(path.join(out, "research-freeze.json"), freeze); write(path.join(out, "token-budget.json"), {schemaVersion: 1, summaryBytes: Buffer.byteLength(JSON.stringify(freeze)), estimatedSummaryTokens: Math.ceil(Buffer.byteLength(JSON.stringify(freeze)) / 4), battleLogsRead: 0});
+console.log(JSON.stringify({status: "frozen", candidates: children.length, requestCounts, candidatesReadyForSixCaseStudy: ready, minimumFutureSeason: discoveryFinalSeason + 1, out}, null, 2));
+
+function read<T>(file: string): T { return JSON.parse(fs.readFileSync(file, "utf8")) as T; }
+function readGzip<T>(file: string): T[] { const value = JSON.parse(zlib.gunzipSync(fs.readFileSync(file)).toString("utf8")); if (!Array.isArray(value)) throw new Error(`Invalid gzip array: ${file}`); return value; }
+function required(name: string): string { const index = args.indexOf(name), value = index >= 0 ? args[index + 1] : ""; if (!value) throw new Error(`Missing ${name}`); return value; }
+function hash(file: string): string { return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex"); }
+function fingerprint(file: string): {file: string; sha256: string; bytes: number} { return {file: path.relative(root, file).replaceAll("\\", "/"), sha256: hash(file), bytes: fs.statSync(file).size}; }
+function write(file: string, value: unknown): void { const temporary = `${file}.${process.pid}.tmp`; fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, "utf8"); fs.renameSync(temporary, file); }

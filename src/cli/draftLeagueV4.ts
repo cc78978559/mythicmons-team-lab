@@ -306,19 +306,21 @@ function restoreCheckpoint(): number {
   if (!state.fingerprint || typeof state.fingerprint !== "object") throw new Error("Saved dynasty has no runtime fingerprint");
   const legacyRegistryMigration = stateVersion >= 12 && !state.registry && adoptRegistry;
   const codeUpgrade = allowCodeUpgrade && state.fingerprint.codeHash !== runtimeFingerprint.codeHash;
+  const dependencyUpgrade = allowDependencyUpgrade && state.fingerprint.dependencyHash !== runtimeFingerprint.dependencyHash;
   if (stateVersion >= 12 && !state.registry && !adoptRegistry) throw new Error("Saved V12 dynasty predates registry snapshots; resume once with V12_ADOPT_REGISTRY=true to migrate it safely");
   if (legacyRegistryMigration && state.fingerprint.dataHash !== computeLegacyDataHash()) throw new Error("Legacy dynasty dataHash does not match the current registry and benchmarks; automatic snapshot migration is unsafe");
   for (const key of Object.keys(runtimeFingerprint) as Array<keyof RuntimeFingerprint>) {
     const registryChange = adoptRegistry && (key === "registryHash" || key === "dataHash");
     const migrationChange = legacyRegistryMigration && ["codeHash", "dataHash", "registryHash", "benchmarkHash"].includes(key);
-    const explicitCodeChange = codeUpgrade && key === "codeHash";
-    if (state.fingerprint[key] !== runtimeFingerprint[key] && !registryChange && !migrationChange && !explicitCodeChange) throw new Error(`Saved dynasty ${key} does not match the current runtime`);
+    const explicitRuntimeChange = (codeUpgrade && key === "codeHash") || (dependencyUpgrade && key === "dependencyHash");
+    if (state.fingerprint[key] !== runtimeFingerprint[key] && !registryChange && !migrationChange && !explicitRuntimeChange) throw new Error(`Saved dynasty ${key} does not match the current runtime`);
   }
   managers = state.managers;
   market = new Map(Object.entries(state.market));
   assets = new Map(Object.entries(state.assets ?? {}));
   ledger = new DecisionLedger(state.decisionRecords);
   if (codeUpgrade) ledger.add({stage: "calibration", actor: "system", decision: "显式采用联盟代码升级", selected: runtimeFingerprint.codeHash, context: {before: state.fingerprint.codeHash, after: runtimeFingerprint.codeHash, registryHash: runtimeFingerprint.registryHash, benchmarkHash: runtimeFingerprint.benchmarkHash, dependencyHash: runtimeFingerprint.dependencyHash}, alternatives: [{option: "继续使用原代码版本"}], rationale: ["仅放宽代码哈希，配置、基准、依赖和Showdown版本仍需通过兼容性校验", "迁移记录进入联盟永久决策账本"]});
+  if (dependencyUpgrade) ledger.add({stage: "calibration", actor: "system", decision: "explicitly adopt league dependency lock upgrade", selected: runtimeFingerprint.dependencyHash, context: {before: state.fingerprint.dependencyHash, after: runtimeFingerprint.dependencyHash, pokemonShowdownVersion: runtimeFingerprint.pokemonShowdownVersion, codeHash: runtimeFingerprint.codeHash}, alternatives: [{option: "continue with the prior dependency lock"}], rationale: ["the dependency-lock transition was explicitly approved", "data, registry, benchmark, and Pokemon Showdown compatibility remain independently enforced"]});
   evolutionArchive = state.evolutionArchive ?? [];
   mechanismLedgers = state.mechanismLedgers ?? managers.map(manager => createManagerMechanismLedger(manager.id, state.completedSeason));
   punctuatedEvolution = state.punctuatedEvolution ?? {};
@@ -732,6 +734,7 @@ function runV3Season(season: number, seasonDir: string, profilePath: string, kee
       V3_COMPACT_OUTPUT: String(evidenceRetention === "compact"),
       V3_TACTICAL_MEMORY_CONFIDENCE_FLOOR: String(tacticalMemoryConfidenceFloor),
       V3_TACTICAL_MEMORY_BEHAVIOR_POLICY: tacticalMemoryBehaviorPolicy,
+      V3_LINEUP_ASSIST_APPROVAL: process.env.V4_LINEUP_ASSIST_APPROVAL || "",
       V4_DUAL_LAYER: String(dualLayer),
       V3_UNLOCK_GENERATION: String(Math.min(9, season)),
       V4_CURRENT_SEASON: String(season),
@@ -743,7 +746,7 @@ function runV3Season(season: number, seasonDir: string, profilePath: string, kee
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
   });
-  if (child.status !== 0) throw new Error(`Season ${season} failed:\n${child.stderr || child.stdout}`);
+  if (child.status !== 0) throw new Error(`Season ${season} failed:\nstatus=${child.status ?? "null"} signal=${child.signal ?? "none"} spawnError=${child.error ? `${child.error.name}: ${child.error.message}` : "none"}\n${child.stderr || child.stdout || "<empty child output>"}`);
   process.stdout.write(`V4 season ${season}/${seasonCount} complete\n`);
 }
 
