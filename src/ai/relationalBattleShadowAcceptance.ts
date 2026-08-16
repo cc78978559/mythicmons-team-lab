@@ -21,6 +21,7 @@ export interface RelationalBattleShadowAcceptanceSummary {
 
 export function auditRelationalBattleShadowRecords(records: readonly UnifiedDecisionRecord[]): RelationalBattleShadowAcceptanceSummary {
   const counts = new Map<string, number>(), candidates = {move: 0, switch: 0}, informationModes = {openSheet: 0, closedSheet: 0}, recommendations = {diagnostic: 0, legacyFallback: 0};
+  if (!records.length) counts.set("shadow-no-records", 1);
   let accepted = 0;
   for (const record of records) {
     try {
