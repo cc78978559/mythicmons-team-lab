@@ -10,6 +10,7 @@ export interface JointBattleDecisionObservationV1 {
   familyId: string;
   familyClusterId: string;
   environment: string;
+  informationMode: "open-sheet" | "closed-sheet";
   split: JointBattleCorpusSplit;
   candidate: JointBattleCandidateV1;
   shortUtility: number;
@@ -56,17 +57,20 @@ export function assertJointBattleDecisionCorpus(corpus: JointBattleDecisionCorpu
 
 function validateRows(rows: readonly JointBattleDecisionObservationV1[], corpusAuthority: JointBattleDecisionCorpusV1["sourceAuthority"]): void {
   if (!rows.length || new Set(rows.map(row => `${row.decisionId}\0${row.candidateId}`)).size !== rows.length) throw new Error("Joint battle rows are empty or duplicated");
-  const splitByFamily = new Map<string, JointBattleCorpusSplit>(), splitByCluster = new Map<string, JointBattleCorpusSplit>(), clusterByDecision = new Map<string, string>();
+  const splitByFamily = new Map<string, JointBattleCorpusSplit>(), splitByCluster = new Map<string, JointBattleCorpusSplit>(), clusterByDecision = new Map<string, string>(), modeByFamily = new Map<string, JointBattleDecisionObservationV1["informationMode"]>(), modeByCluster = new Map<string, JointBattleDecisionObservationV1["informationMode"]>();
   for (const row of rows) {
     assertJointBattleCandidate(row.candidate);
-    if (!row.decisionId || row.candidate.id !== row.candidateId || !row.familyId || !row.familyClusterId || !row.environment || !["train", "validation", "test"].includes(row.split) || !Number.isFinite(row.shortUtility) || row.shortUtility < -1 || row.shortUtility > 1 || ![0, .5, 1].includes(row.terminalUtility) || !between(row.uncertainty) || !between(row.terminalRisk) || !hex(row.sourceFingerprint) || !hex(row.branchFingerprint)) throw new Error(`Invalid joint battle row: ${row.decisionId}/${row.candidateId}`);
+    if (!row.decisionId || row.candidate.id !== row.candidateId || !row.familyId || !row.familyClusterId || !row.environment || !["open-sheet", "closed-sheet"].includes(row.informationMode) || !["train", "validation", "test"].includes(row.split) || !Number.isFinite(row.shortUtility) || row.shortUtility < -1 || row.shortUtility > 1 || ![0, .5, 1].includes(row.terminalUtility) || !between(row.uncertainty) || !between(row.terminalRisk) || !hex(row.sourceFingerprint) || !hex(row.branchFingerprint)) throw new Error(`Invalid joint battle row: ${row.decisionId}/${row.candidateId}`);
     if (corpusAuthority === "signed-research-family-corpus" && row.sourceAuthority !== "signed-research-family") throw new Error("Joint battle source authority mismatch");
     if (corpusAuthority === "synthetic-test" && row.sourceAuthority !== "synthetic-test") throw new Error("Joint battle synthetic authority mismatch");
     const familySplit = splitByFamily.get(row.familyId), clusterSplit = splitByCluster.get(row.familyClusterId), decisionCluster = clusterByDecision.get(row.decisionId);
     if (familySplit && familySplit !== row.split) throw new Error(`Joint battle family split leakage: ${row.familyId}`);
     if (clusterSplit && clusterSplit !== row.split) throw new Error(`Joint battle family-cluster split leakage: ${row.familyClusterId}`);
     if (decisionCluster && decisionCluster !== row.familyClusterId) throw new Error(`Joint battle decision crossed family clusters: ${row.decisionId}`);
+    if (modeByFamily.has(row.familyId) && modeByFamily.get(row.familyId) !== row.informationMode) throw new Error(`Joint battle family crossed information modes: ${row.familyId}`);
+    if (modeByCluster.has(row.familyClusterId) && modeByCluster.get(row.familyClusterId) !== row.informationMode) throw new Error(`Joint battle family-cluster crossed information modes: ${row.familyClusterId}`);
     splitByFamily.set(row.familyId, row.split); splitByCluster.set(row.familyClusterId, row.split); clusterByDecision.set(row.decisionId, row.familyClusterId);
+    modeByFamily.set(row.familyId, row.informationMode); modeByCluster.set(row.familyClusterId, row.informationMode);
     if (row.legacySwitchAuxiliary && (row.split !== "train" || row.candidate.actionKind !== "switch" || row.legacySwitchAuxiliary.authority !== "switch-v3-auxiliary-training-only" || row.legacySwitchAuxiliary.encoderVersion !== "relational-switch-encoder-v1" || row.legacySwitchAuxiliary.validationEvidenceAllowed !== false || !hex(row.legacySwitchAuxiliary.sourceFingerprint))) throw new Error("Switch-only V3 evidence is auxiliary training data only");
   }
   if (!rows.some(row => row.candidate.actionKind === "move") || !rows.some(row => row.candidate.actionKind === "switch")) throw new Error("Joint battle corpus must contain move and switch candidates");
