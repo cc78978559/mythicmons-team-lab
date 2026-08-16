@@ -18,7 +18,7 @@ try {
   else if (command === "build") print(build());
   else throw new Error("Usage: jointBattleShadowCorpus <status|doctor|propose|inspect|build> --out ABSOLUTE_DIR | --input ABSOLUTE_FILE [--manifest ABSOLUTE_FILE --approved-manifest-sha256 SHA --approval-reference-sha256 SHA --authority VALUE --signing-authority ID --execute-token TOKEN]");
 } catch (error) {
-  console.error(JSON.stringify({status: "rejected", error: error instanceof Error ? error.message : String(error)}, null, 2));
+  console.error(JSON.stringify(command === "inspect" ? {status: "rejected", healthy: false, sourceAuthority: null, verificationScope: "not-verified", approvedSourceRecomputed: false, error: error instanceof Error ? error.message : String(error)} : {status: "rejected", error: error instanceof Error ? error.message : String(error)}, null, 2));
   process.exitCode = 2;
 }
 
@@ -41,10 +41,10 @@ function propose(): ProductionShadowSourceAuthorityManifestV1 {
 }
 
 function inspect(): Record<string, unknown> {
-  if (typeof args.manifest === "string") { const manifestFile = explicitRegularFile("manifest", 1024 * 1024), manifest = readManifest(manifestFile); return {status: manifest.status, healthy: manifest.status === "approved", manifest: manifestFile, sourceAuthority: manifest.sourceAuthority, signingAuthority: manifest.signingAuthority.id, recordSchemaSha256: manifest.recordContract.schemaSha256, inputArchiveSha256: manifest.input.archiveSha256, outputRoot: manifest.output.root, sha256: manifest.sha256, trainingAllowed: false, routingAllowed: false, formalActivationAllowed: false}; }
+  if (typeof args.manifest === "string") { const manifestFile = explicitRegularFile("manifest", 1024 * 1024), manifest = readManifest(manifestFile); return {status: manifest.status, healthy: manifest.status === "approved", manifest: manifestFile, sourceAuthority: manifest.sourceAuthority, signingAuthority: manifest.signingAuthority.id, recordSchemaSha256: manifest.recordContract.schemaSha256, inputArchiveSha256: manifest.input.archiveSha256, outputRoot: manifest.output.root, sha256: manifest.sha256, verificationScope: "manifest-self-check-only", approvedSourceRecomputed: false, trainingAllowed: false, routingAllowed: false, formalActivationAllowed: false}; }
   const input = explicitInput();
   const source = readSourceSnapshot(input).source;
-  return {status: "valid", healthy: true, input, sourceAuthority: source.sourceAuthority, records: source.entries.length, candidates: source.entries.reduce((sum, entry) => sum + entry.labels.length, 0), informationModes: countModes(source), sha256: source.sha256, activationStatus: "shadow-only", formalActivationAllowed: false, routingAllowed: false};
+  return {status: "valid", healthy: true, input, sourceAuthority: source.sourceAuthority, records: source.entries.length, candidates: source.entries.reduce((sum, entry) => sum + entry.labels.length, 0), informationModes: countModes(source), sha256: source.sha256, verificationScope: "source-self-check-only", approvedSourceRecomputed: false, activationStatus: "shadow-only", formalActivationAllowed: false, routingAllowed: false};
 }
 
 function build(): Record<string, unknown> {
