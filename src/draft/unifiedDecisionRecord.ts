@@ -103,7 +103,7 @@ export function buildBattleDecisionRecords(traces: readonly AiDecisionTrace[], i
       metrics: {expected: candidate.expected, downside: candidate.downside, worst: candidate.worst, baseScore: candidate.baseScore, personalityAdjustment: candidate.personalityAdjustment},
     })),
     selected: trace.selected,
-    provenance: {kind: "battle-ai-trace", battleId: input.battleId, legacyDecisionOrdinal: trace.decisionOrdinal ?? index + 1, ...(input.replayInputSha256 ? {replayInputSha256: input.replayInputSha256} : {})},
+    provenance: {kind: "battle-ai-trace", battleId: input.battleId, legacyDecisionOrdinal: trace.decisionOrdinal ?? index + 1, jointRelationalSnapshot: trace.jointRelationalSnapshot ?? null, jointBattleShadow: trace.jointBattleShadow ?? null, ...(input.replayInputSha256 ? {replayInputSha256: input.replayInputSha256} : {})},
     postDecision: input.outcome,
   }));
 }

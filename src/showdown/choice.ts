@@ -6,6 +6,8 @@ import {compareWhiteBoxShadow, evaluateWhiteBoxDecision, type WhiteBoxDecisionTr
 import {BATTLE_SHADOW_PARAMETERS} from "../ai/whiteBox/parameters";
 import {LEAGUE_MECHANICS} from "./mechanics";
 import {buildRelationalDecisionSnapshot, relationalKnownMask, RELATIONAL_SWITCH_FEATURES, type RelationalDecisionCandidateV1, type RelationalDecisionEdgeV1, type RelationalDecisionNodeV1, type RelationalDecisionSnapshotV1, type RelationalSwitchFeature} from "../ai/relationalDecision";
+import {buildJointBattleShadowAdapter} from "../ai/relationalBattleShadowAdapter";
+import type {JointBattleDecisionSnapshotV1, JointBattleShadowRecommendation} from "../ai/relationalBattlePolicy";
 
 export type AiStrategy = "first" | "damage" | "basic" | "tactical" | "search";
 export type PlayerId = "p1" | "p2";
@@ -162,6 +164,8 @@ export interface AiDecisionTrace {
   };
   positionSnapshot?: PositionSnapshot;
   relationalSnapshot?: RelationalDecisionSnapshotV1;
+  jointRelationalSnapshot?: JointBattleDecisionSnapshotV1;
+  jointBattleShadow?: JointBattleShadowRecommendation;
   actionTargets?: Record<string,string>;
   policyIncumbentSelected?: string;
   assistPolicy?: {scopeId:string;approved:boolean;gateRecommended:boolean;applied:boolean;reasons:string[]};
@@ -654,6 +658,7 @@ function chooseSearch(request: ChoiceRequest, playerId: PlayerId, context: Battl
   ranked.sort((left, right) => right.score - left.score || left.action.choice.localeCompare(right.action.choice));
   const selected = ranked[0].action.choice;
   const relationalSnapshot = buildSearchRelationalSnapshot(ranked, responses, request, playerId, context);
+  const jointBattleShadow = buildJointBattleShadowAdapter({informationMode: context.openTeamSheets ? "open-sheet" : "closed-sheet", turn: context.turn, playerId, legacySelected: selected, modeLabel: context.tacticalProfile.id, legacySnapshot: relationalSnapshot, candidates: ranked.map(entry => ({id: entry.action.choice, actionKind: entry.action.kind, target: entry.action.kind === "switch" ? switchTargetSpecies(entry.action.candidate) : entry.action.move.id || entry.action.move.move, expected: entry.expected, worst: entry.worst, baseScore: entry.baseScore, outcomeValues: entry.outcomes.map(outcome => outcome.value)}))});
   const whiteBoxTrace = context.traceDetail === "full" ? evaluateWhiteBoxDecision({
     decisionId: `battle:${context.turn}:${playerId}`,
     reasonableBand: BATTLE_SHADOW_VALUES["battle.reasonableband"],
@@ -678,6 +683,8 @@ function chooseSearch(request: ChoiceRequest, playerId: PlayerId, context: Battl
     battleContext: {ownSpecies: context.active[playerId]?.species ?? null, opponentSpecies: context.active[opponentOf(playerId)]?.species ?? null},
     positionSnapshot: buildPositionSnapshot(request, playerId, context),
     relationalSnapshot,
+    jointRelationalSnapshot: jointBattleShadow.snapshot,
+    jointBattleShadow: jointBattleShadow.recommendation,
     actionTargets:Object.fromEntries(ranked.map(entry=>[entry.action.choice,entry.action.kind==="switch"?switchTargetSpecies(entry.action.candidate):entry.action.move.id||entry.action.move.move])),
     personalityId: context.tacticalProfile.id,
     opponentModel: opponentModelTrace(context, playerId),
