@@ -20,6 +20,23 @@ try {
   assert.equal(compositeSource.selectedTests, 2); assert.equal(compositeSource.planned, 3);
   const compositeSecondTest = run(["--dry-run", "--files", "src/tests/aiPipelineCliSmoke.ts", "--cache", cache]);
   assert.equal(compositeSecondTest.selectedTests, 2); assert.equal(compositeSecondTest.planned, 3);
+  const contractCache = path.join(cache, "contract-plans"), contractMappings = [
+    ["src/ai/positionValue.ts", "smoke:position-value-contract"],
+    ["src/ai/relationalCounterfactual.ts", "smoke:relational-counterfactual-contract"],
+    ["src/ai/relationalValidation.ts", "smoke:relational-validation-contract"],
+    ["src/ai/formalSemanticDiagnostics.ts", "smoke:formal-semantic-diagnostics"],
+    ["src/ai/semanticHypothesisRevision.ts", "smoke:semantic-hypothesis-revision"],
+    ["src/ai/postHocSemanticDescendants.ts", "smoke:post-hoc-semantic-descendants"],
+    ["src/ai/tieredResearchEvidence.ts", "smoke:tiered-research-evidence"],
+  ] as const;
+  for (const [source, expectedTest] of contractMappings) {
+    const plan = run(["--dry-run", "--files", source, "--cache", contractCache]), names = plan.checks.map((check: {name: string}) => check.name);
+    assert.ok(names.includes(expectedTest), `${source} did not select ${expectedTest}`);
+    assert.equal(plan.planned, plan.checks.length, `${source} executed a check during dry-run`);
+    assert.equal(plan.checks.every((check: {status: string}) => check.status === "planned"), true);
+    assert.equal(names.some((name: string) => ["smoke:relational-v3", "smoke:relational-v3-e2e"].includes(name)), false);
+  }
+  assert.equal(fs.readdirSync(contractCache).some(file => file.endsWith(".log")), false, "dry-run wrote an execution log");
   const first = run(["--files", "docs/non-code-change.md", "--cache", cache]);
   assert.equal(first.selectedTests, 0); assert.equal(first.passed, 1); assert.equal(first.cached, 0);
   const repeated = run(["--files", "docs/non-code-change.md", "--cache", cache]);
