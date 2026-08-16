@@ -46,6 +46,7 @@ export interface JointBattleShadowCorpusArchiveV1 {
   formalActivationAllowed: false;
   routingAllowed: false;
   sourceSha256: string;
+  authorityManifestSha256: string;
   acceptance: RelationalBattleShadowAcceptanceSummary;
   informationModes: {openSheet: number; closedSheet: number};
   corpus: JointBattleDecisionCorpusV1;
@@ -70,20 +71,21 @@ export function assertJointBattleShadowSource(source: JointBattleShadowSourceV1)
   validateAuthority(source);
 }
 
-export function extractJointBattleShadowCorpus(source: JointBattleShadowSourceV1): JointBattleShadowCorpusArchiveV1 {
+export function extractJointBattleShadowCorpus(source: JointBattleShadowSourceV1, authorityManifestSha256: string): JointBattleShadowCorpusArchiveV1 {
   assertJointBattleShadowSource(source);
+  if (!hex(authorityManifestSha256)) throw new Error("Joint battle shadow corpus requires a signed authority manifest");
   const acceptance = auditRelationalBattleShadowRecords(source.entries.map(entry => entry.record));
   if (!acceptance.healthy) throw new Error(`Joint battle shadow record acceptance failed: ${acceptance.issues.map(issue => issue.code).join(",")}`);
   const rows = source.entries.flatMap(entry => rowsFromEntry(entry, source.sourceAuthority)), corpus = buildJointBattleDecisionCorpus(rows, source.sourceAuthority);
   const informationModes = {openSheet: source.entries.filter(entry => informationMode(entry) === "open-sheet").length, closedSheet: source.entries.filter(entry => informationMode(entry) === "closed-sheet").length};
-  const core = {schemaVersion: 1 as const, version: JOINT_BATTLE_SHADOW_ARCHIVE_VERSION, authority: "joint-shadow-corpus-extraction" as const, activationStatus: "shadow-only" as const, formalActivationAllowed: false as const, routingAllowed: false as const, sourceSha256: source.sha256, acceptance, informationModes, corpus};
+  const core = {schemaVersion: 1 as const, version: JOINT_BATTLE_SHADOW_ARCHIVE_VERSION, authority: "joint-shadow-corpus-extraction" as const, activationStatus: "shadow-only" as const, formalActivationAllowed: false as const, routingAllowed: false as const, sourceSha256: source.sha256, authorityManifestSha256, acceptance, informationModes, corpus};
   const archive = {...core, sha256: digest(core)};
   assertJointBattleShadowCorpusArchive(archive);
   return archive;
 }
 
 export function assertJointBattleShadowCorpusArchive(archive: JointBattleShadowCorpusArchiveV1): void {
-  if (archive.schemaVersion !== 1 || archive.version !== JOINT_BATTLE_SHADOW_ARCHIVE_VERSION || archive.authority !== "joint-shadow-corpus-extraction" || archive.activationStatus !== "shadow-only" || archive.formalActivationAllowed !== false || archive.routingAllowed !== false || !hex(archive.sourceSha256)) throw new Error("Unsupported joint battle shadow corpus archive");
+  if (archive.schemaVersion !== 1 || archive.version !== JOINT_BATTLE_SHADOW_ARCHIVE_VERSION || archive.authority !== "joint-shadow-corpus-extraction" || archive.activationStatus !== "shadow-only" || archive.formalActivationAllowed !== false || archive.routingAllowed !== false || !hex(archive.sourceSha256) || !hex(archive.authorityManifestSha256)) throw new Error("Unsupported joint battle shadow corpus archive");
   const {sha256, ...core} = archive;
   if (!hex(sha256) || digest(core) !== sha256) throw new Error("Joint battle shadow corpus archive signature mismatch");
   assertJointBattleDecisionCorpus(archive.corpus);
