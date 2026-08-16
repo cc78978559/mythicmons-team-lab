@@ -5,6 +5,7 @@ import type {PokemonSet} from "pokemon-showdown/dist/sim/teams";
 import {compareWhiteBoxShadow, evaluateWhiteBoxDecision, type WhiteBoxDecisionTrace} from "../ai/whiteBox/decision";
 import {BATTLE_SHADOW_PARAMETERS} from "../ai/whiteBox/parameters";
 import {LEAGUE_MECHANICS} from "./mechanics";
+import {buildRelationalDecisionSnapshot, relationalKnownMask, RELATIONAL_SWITCH_FEATURES, type RelationalDecisionCandidateV1, type RelationalDecisionEdgeV1, type RelationalDecisionNodeV1, type RelationalDecisionSnapshotV1, type RelationalSwitchFeature} from "../ai/relationalDecision";
 
 export type AiStrategy = "first" | "damage" | "basic" | "tactical" | "search";
 export type PlayerId = "p1" | "p2";
@@ -78,6 +79,7 @@ export interface BattleAiContext {
   lastDecision: Record<PlayerId, AiDecisionTrace | null>;
   tacticalProfile: AiTacticalProfile;
   opponentModel: AiOpponentModel;
+  traceDetail: "full" | "training";
 }
 
 export interface BattleAiOptions {
@@ -85,6 +87,7 @@ export interface BattleAiOptions {
   teams?: Partial<Record<PlayerId, PokemonSet[]>>;
   tacticalProfile?: Partial<AiTacticalProfile>;
   opponentModel?: Partial<AiOpponentModel>;
+  traceDetail?: "full" | "training";
 }
 
 export interface AiOpponentModel {
@@ -158,9 +161,11 @@ export interface AiDecisionTrace {
     opponentSpecies: string | null;
   };
   positionSnapshot?: PositionSnapshot;
+  relationalSnapshot?: RelationalDecisionSnapshotV1;
   actionTargets?: Record<string,string>;
   policyIncumbentSelected?: string;
   assistPolicy?: {scopeId:string;approved:boolean;gateRecommended:boolean;applied:boolean;reasons:string[]};
+  v3ProgramPolicy?: {programHash: string; scopeOrdinal: number; applicable: boolean; accepted: boolean; incumbent: string; proposed: string | null; reasons: string[]};
   personalityId: string;
   opponentModel: {
     confidence: number;
@@ -254,6 +259,7 @@ export function createBattleAiContext(format: string, options: BattleAiOptions =
     lastDecision: {p1: null, p2: null},
     tacticalProfile: normalizeTacticalProfile(options.tacticalProfile),
     opponentModel: normalizeOpponentModel(options.opponentModel),
+    traceDetail: options.traceDetail ?? "full",
   };
 }
 
@@ -647,7 +653,8 @@ function chooseSearch(request: ChoiceRequest, playerId: PlayerId, context: Battl
   });
   ranked.sort((left, right) => right.score - left.score || left.action.choice.localeCompare(right.action.choice));
   const selected = ranked[0].action.choice;
-  const whiteBoxTrace = evaluateWhiteBoxDecision({
+  const relationalSnapshot = buildSearchRelationalSnapshot(ranked, responses, request, playerId, context);
+  const whiteBoxTrace = context.traceDetail === "full" ? evaluateWhiteBoxDecision({
     decisionId: `battle:${context.turn}:${playerId}`,
     reasonableBand: BATTLE_SHADOW_VALUES["battle.reasonableband"],
     styleContributionLimit: BATTLE_SHADOW_VALUES["battle.stylelimit"],
@@ -662,7 +669,7 @@ function chooseSearch(request: ChoiceRequest, playerId: PlayerId, context: Battl
         {id: "battle.personality", group: "personality", source: "personality", value: entry.personalityAdjustment, reason: `Tactical profile ${context.tacticalProfile.id}`},
       ],
     })),
-  });
+  }) : null;
   context.lastDecision[playerId] = {
     turn: context.turn,
     playerId,
@@ -670,10 +677,11 @@ function chooseSearch(request: ChoiceRequest, playerId: PlayerId, context: Battl
     selected,
     battleContext: {ownSpecies: context.active[playerId]?.species ?? null, opponentSpecies: context.active[opponentOf(playerId)]?.species ?? null},
     positionSnapshot: buildPositionSnapshot(request, playerId, context),
+    relationalSnapshot,
     actionTargets:Object.fromEntries(ranked.map(entry=>[entry.action.choice,entry.action.kind==="switch"?switchTargetSpecies(entry.action.candidate):entry.action.move.id||entry.action.move.move])),
     personalityId: context.tacticalProfile.id,
     opponentModel: opponentModelTrace(context, playerId),
-    whiteBoxShadow: {comparison: compareWhiteBoxShadow(whiteBoxTrace, selected), trace: whiteBoxTrace},
+    ...(whiteBoxTrace ? {whiteBoxShadow: {comparison: compareWhiteBoxShadow(whiteBoxTrace, selected), trace: whiteBoxTrace}} : {}),
     candidates: ranked.map(entry => ({
       choice: entry.action.choice,
       score: roundDecisionValue(entry.score),
@@ -682,7 +690,7 @@ function chooseSearch(request: ChoiceRequest, playerId: PlayerId, context: Battl
       worst: roundDecisionValue(entry.worst),
       baseScore: roundDecisionValue(entry.baseScore),
       personalityAdjustment: roundDecisionValue(entry.personalityAdjustment),
-      responses: entry.outcomes.map(outcome => ({
+      responses: context.traceDetail === "training" ? [] : entry.outcomes.map(outcome => ({
         response: outcome.response ? searchResponseLabel(outcome.response) : "unknown",
         policyShare: roundDecisionValue(outcome.response?.policyShare ?? 1),
         value: roundDecisionValue(outcome.value),
@@ -691,6 +699,120 @@ function chooseSearch(request: ChoiceRequest, playerId: PlayerId, context: Battl
   };
   return selected;
 }
+
+function buildSearchRelationalSnapshot(
+  ranked: readonly {action: SearchAction; outcomes: readonly {response: SearchResponse | null; value: number}[]}[],
+  responses: readonly SearchResponse[],
+  request: ChoiceRequest,
+  playerId: PlayerId,
+  context: BattleAiContext,
+): RelationalDecisionSnapshotV1 {
+  const opponentId = opponentOf(playerId), own = context.active[playerId], opponent = context.active[opponentId];
+  const nodes: RelationalDecisionNodeV1[] = [
+    {id: "own-active", kind: "own-active", publicLabel: own?.species ?? "unknown"},
+    {id: "opponent-active", kind: "opponent-active", publicLabel: opponent?.species ?? "unknown"},
+  ];
+  const edges: RelationalDecisionEdgeV1[] = [];
+  const responseIds = responses.map((response, index) => `response:${index}:${searchResponseLabel(response)}`);
+  responses.forEach((response, index) => nodes.push({id: responseIds[index], kind: "opponent-response", publicLabel: searchResponseLabel(response)}));
+  const candidates = ranked.map(entry => {
+    const target = entry.action.kind === "switch" ? switchTargetSpecies(entry.action.candidate) : entry.action.move.id || entry.action.move.move;
+    nodes.push({id: `candidate:${entry.action.choice}`, kind: "candidate", publicLabel: target});
+    if (entry.action.kind === "move") return emptyRelationalCandidate(entry.action.choice, "move", target);
+    return switchRelationalCandidate(entry.action, responses, responseIds, request, playerId, context, nodes, edges);
+  });
+  return buildRelationalDecisionSnapshot({informationMode: context.openTeamSheets ? "open-sheet" : "closed-sheet", turn: context.turn, playerId, nodes, edges, candidates});
+}
+
+function emptyRelationalCandidate(id: string, actionKind: "move" | "switch", target: string): RelationalDecisionCandidateV1 {
+  return {id, actionKind, target, values: Object.fromEntries(RELATIONAL_SWITCH_FEATURES.map(feature => [feature, 0])) as Record<RelationalSwitchFeature, number>, knownMask: relationalKnownMask([])};
+}
+
+function switchRelationalCandidate(
+  action: Extract<SearchAction, {kind: "switch"}>,
+  responses: readonly SearchResponse[],
+  responseIds: readonly string[],
+  request: ChoiceRequest,
+  playerId: PlayerId,
+  context: BattleAiContext,
+  nodes: RelationalDecisionNodeV1[],
+  edges: RelationalDecisionEdgeV1[],
+): RelationalDecisionCandidateV1 {
+  const candidate = action.candidate, candidateId = `candidate:${action.choice}`, opponent = context.active[opponentOf(playerId)];
+  const speciesName = switchTargetSpecies(candidate), species = context.dex.species.get(speciesName), types = species.types;
+  const abilities = sourceAbilityIds(context.dex, candidate.ability), items = sourceItemIds(context.dex, candidate.item), moves = (candidate.moves ?? []).map(id => context.dex.moves.get(id)).filter(move => move.exists);
+  const hp = clamp((hpPercentFromCondition(candidate.condition) ?? 0) / 100, 0, 1), entryDamage = clamp(entryHazardPenalty(context, playerId, speciesName, abilities, items) / 100, 0, 1);
+  const moveResponses = responses.map((response, index) => ({response, index})).filter((entry): entry is {response: Extract<SearchResponse, {kind: "move"}>; index: number} => entry.response.kind === "move");
+  const incoming = moveResponses.map(({response}) => incomingDamageForSwitchCandidate(response.moveId, candidate, request, playerId, context));
+  const incomingKnown = incoming.filter((value): value is number => value !== null).map(value => clamp(value / 100, 0, 1));
+  const priorityIncoming = moveResponses.map(({response}) => ({damage: incomingDamageForSwitchCandidate(response.moveId, candidate, request, playerId, context), move: context.dex.moves.get(response.moveId)})).filter(entry => entry.move.exists && entry.move.priority > 0 && entry.damage !== null);
+  const offense = opponent ? candidateOffensivePressure(candidate, opponent, context.dex) : 0, bestOutput = clamp(offense / 220, 0, 1), opponentHp = clamp((opponent?.hpPercent ?? 100) / 100, .01, 1);
+  const candidateSpeed = candidate.stats?.spe ?? species.baseStats.spe * 2 + 99, opponentSpeed = opponent?.stats.spe ?? (opponent ? context.dex.species.get(opponent.species).baseStats.spe * 2 + 99 : candidateSpeed);
+  const revealedMoveTypes = moveResponses.map(({response}) => context.dex.moves.get(response.moveId)).filter(move => move.exists && move.category !== "Status").map(move => move.type);
+  const stabTypes = opponent ? context.dex.species.get(opponent.species).types : [];
+  const resistance = (attackTypes: readonly string[]) => attackTypes.length ? mean(attackTypes.map(type => typeRelationScore(type, types, abilities, context.dex))) : 0;
+  const statusMoves = moveResponses.map(({response}) => context.dex.moves.get(response.moveId)).filter(move => move.exists && move.category === "Status");
+  const statusRisk = statusMoves.length ? mean(statusMoves.map(move => statusMoveBlockedForTarget(move.id, knownFromRequestPokemon(candidate, context.dex), context.dex) ? 0 : 1)) : 0;
+  const moveIds = new Set(moves.map(move => move.id)), recovery = moves.some(move => Boolean(move.flags.heal)), priority = moves.some(move => move.priority > 0), pivot = moves.some(move => Boolean(move.selfSwitch)), removal = [...moveIds].some(id => ["defog", "rapidspin", "mortalspin", "tidyup"].includes(id)), setup = moves.some(move => Boolean(move.boosts || move.self?.boosts || setupBoosts(move.id)));
+  const role = relationalRoleVector(candidate, context.dex), others = switchCandidates(request).filter(member => member.index !== candidate.index).map(member => relationalRoleVector(member, context.dex));
+  const redundancy = role.length ? mean(role.map((present, index) => present && others.some(other => other[index]) ? 1 : 0)) : 0;
+  const activeResistance = ownActive(request) && opponent ? resistanceAgainstKnownMoves(ownActive(request)!, revealedMoveTypes, context) : 0, candidateResistance = resistance(revealedMoveTypes);
+  const answerCoverageDelta = clamp(candidateResistance - activeResistance, -1, 1), blindSpotDelta = clamp(answerCoverageDelta + (recovery ? .15 : 0) + (removal ? .15 : 0) - entryDamage, -1, 1);
+  const incomingWorst = incomingKnown.length ? Math.max(...incomingKnown) : 0, incomingMean = incomingKnown.length ? mean(incomingKnown) : 0;
+  const safe = incomingKnown.length ? incomingKnown.filter(value => value + entryDamage < hp).length / incomingKnown.length : 0;
+  const knownFeatures = new Set<RelationalSwitchFeature>(RELATIONAL_SWITCH_FEATURES);
+  if (!moveResponses.length) for (const feature of ["incomingMean", "incomingWorst", "priorityKoRisk", "coverageResistance", "statusRisk", "safeFollowupBreadth"] as const) knownFeatures.delete(feature);
+  if (!opponent) for (const feature of ["bestOutput", "koProbability", "speedWinProbability", "stabResistance", "switchPressure", "answerCoverageDelta", "blindSpotDelta"] as const) knownFeatures.delete(feature);
+  const values: Record<RelationalSwitchFeature, number> = {
+    candidateHp: hp, entryDamage, entryKoRisk: entryDamage >= hp ? 1 : 0,
+    incomingMean: incomingKnown.length ? incomingMean : 0, incomingWorst: incomingKnown.length ? incomingWorst : 0,
+    priorityKoRisk: priorityIncoming.length ? Math.max(...priorityIncoming.map(entry => (entry.damage! / 100) + entryDamage >= hp ? 1 : 0)) : 0,
+    bestOutput: opponent ? bestOutput : 0, koProbability: opponent ? clamp(bestOutput / opponentHp, 0, 1) : 0,
+    speedWinProbability: opponent ? (candidateSpeed > opponentSpeed ? 1 : candidateSpeed === opponentSpeed ? .5 : 0) : 0,
+    stabResistance: opponent ? resistance(stabTypes) : 0, coverageResistance: revealedMoveTypes.length ? resistance(revealedMoveTypes) : 0,
+    statusRisk: statusMoves.length ? statusRisk : 0, recoveryAccess: recovery ? 1 : 0, priorityAccess: priority ? 1 : 0, pivotAccess: pivot ? 1 : 0,
+    hazardRemovalAccess: removal ? 1 : 0, setupAccess: setup ? 1 : 0, switchPressure: opponent ? bestOutput : 0,
+    boostSacrificeCost: clamp(positiveBoostTotal(context.active[playerId]?.boosts ?? createZeroBoosts()) / 12, 0, 1), roleRedundancy: redundancy,
+    blindSpotDelta: opponent ? blindSpotDelta : 0, answerCoverageDelta: opponent ? answerCoverageDelta : 0,
+    safeFollowupBreadth: incomingKnown.length ? safe : 0,
+    informationConfidence: context.openTeamSheets ? 1 : clamp((moveResponses.length + (opponent?.abilities.size ?? 0) + (opponent?.items.size ?? 0)) / 6, 0, 1),
+  };
+  edges.push({source: candidateId, target: "opponent-active", kind: "threatens", value: values.switchPressure, known: knownFeatures.has("switchPressure")});
+  edges.push({source: candidateId, target: "opponent-active", kind: "speed-relation", value: values.speedWinProbability * 2 - 1, known: knownFeatures.has("speedWinProbability")});
+  edges.push({source: candidateId, target: "opponent-active", kind: "type-relation", value: values.answerCoverageDelta, known: knownFeatures.has("answerCoverageDelta")});
+  edges.push({source: candidateId, target: "own-active", kind: "enters-field", value: 1 - values.entryDamage, known: true});
+  moveResponses.forEach(({index}, responseIndex) => edges.push({source: candidateId, target: responseIds[index], kind: "takes-response", value: incoming[responseIndex] === null ? 0 : clamp(incoming[responseIndex]! / 100, 0, 1), known: incoming[responseIndex] !== null}));
+  role.forEach((present, index) => { if (!present) return; const id = `role:${index}`; if (!nodes.some(node => node.id === id)) nodes.push({id, kind: "team-role", publicLabel: `role-${index}`}); edges.push({source: candidateId, target: id, kind: "role-coverage", value: 1, known: true}); });
+  for (const feature of RELATIONAL_SWITCH_FEATURES) if (!knownFeatures.has(feature)) values[feature] = 0;
+  return {id: action.choice, actionKind: "switch", target: speciesName, values, knownMask: relationalKnownMask(knownFeatures)};
+}
+
+function incomingDamageForSwitchCandidate(moveId: string, candidate: RequestPokemon, request: ChoiceRequest, playerId: PlayerId, context: BattleAiContext): number | null {
+  const prior = context.active[playerId];
+  const pokemon = (request.side?.pokemon ?? []).map(member => ({...member, active: member.ident === candidate.ident}));
+  const temporaryRequest: ChoiceRequest = {...request, side: {...request.side, pokemon}};
+  context.active[playerId] = knownFromRequestPokemon(candidate, context.dex);
+  try { return estimateIncomingMoveDamagePercent(moveId, temporaryRequest, playerId, context); }
+  finally { context.active[playerId] = prior; }
+}
+
+function typeRelationScore(type: string, targetTypes: readonly string[], abilities: Set<string>, dex: ModdedDex): number {
+  if (!dex.getImmunity(type, [...targetTypes]) || abilityGrantsTypeImmunity(abilities, type)) return 1;
+  return clamp(-dex.getEffectiveness(type, [...targetTypes]) / 2, -1, 1);
+}
+
+function resistanceAgainstKnownMoves(candidate: RequestPokemon, moveTypes: readonly string[], context: BattleAiContext): number {
+  const species = context.dex.species.get(switchTargetSpecies(candidate));
+  const abilities = sourceAbilityIds(context.dex, candidate.ability);
+  return moveTypes.length ? mean(moveTypes.map(type => typeRelationScore(type, species.types, abilities, context.dex))) : 0;
+}
+
+function relationalRoleVector(candidate: RequestPokemon, dex: ModdedDex): boolean[] {
+  const moves = (candidate.moves ?? []).map(id => dex.moves.get(id)).filter(move => move.exists), ids = new Set(moves.map(move => move.id));
+  return [moves.some(move => move.category !== "Status"), moves.some(move => Boolean(move.flags.heal)), moves.some(move => Boolean(move.selfSwitch)), [...ids].some(id => ["defog", "rapidspin", "mortalspin", "tidyup"].includes(id)), [...ids].some(id => ["stealthrock", "spikes", "toxicspikes", "stickyweb"].includes(id)), moves.some(move => Boolean(move.boosts || move.self?.boosts || setupBoosts(move.id))), moves.some(move => move.priority > 0), moves.some(move => move.category === "Status")];
+}
+
+function mean(values: readonly number[]): number { return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0; }
 
 export function buildPositionSnapshot(request: ChoiceRequest, playerId: PlayerId, context: BattleAiContext): PositionSnapshot {
   const opponentId = opponentOf(playerId), ownPokemon = request.side?.pokemon ?? [], ownActive = context.active[playerId], opponentActive = context.active[opponentId];
