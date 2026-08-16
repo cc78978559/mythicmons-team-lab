@@ -42,8 +42,18 @@ try {
   catch (error) { const code = (error as NodeJS.ErrnoException).code; if (!["EACCES", "EPERM", "ENOTSUP"].includes(code ?? "")) throw error; console.warn(`SKIP joint shadow physical-alias fixture: ${code}`); }
   if (fs.existsSync(aliasOut)) { const beforeAlias = tree(aliasTarget); assert.equal(invoke("propose", "--input", aliasSourceFile, "--out", aliasOut, "--authority", "synthetic-test", "--signing-authority", signingAuthority, "--approval-reference-sha256", approved.signingAuthority.approvalReferenceSha256, "--source-system", "synthetic-fixture", "--source-generation", "fixture-v1").status, 2, "physical output alias wrapped the source"); assert.deepEqual(tree(aliasTarget), beforeAlias, "physical-alias rejection changed target files"); assert.equal(fs.existsSync(path.join(aliasTarget, "joint-battle-shadow-corpus.json")), false); }
 
+  const malformedFile = path.join(root, "malformed.json"); fs.writeFileSync(malformedFile, "{not-json");
   const beforeReadOnly = tree(root);
   const proposedByCli = invoke("propose", "--input", sourceFile, "--out", out, "--authority", "synthetic-test", "--signing-authority", signingAuthority, "--approval-reference-sha256", approved.signingAuthority.approvalReferenceSha256, "--source-system", "synthetic-fixture", "--source-generation", "fixture-v1"); assert.equal(proposedByCli.status, 0); assert.equal(proposedByCli.json.status, "proposed"); assert.equal(proposedByCli.json.input.archiveSha256, fileHash(sourceFile)); assert.equal(proposedByCli.json.prohibitions.trainingAllowed, false);
+  const readOnlyPreflightFailures = [
+    invoke("status"),
+    invoke("status", "--out", "relative-output"),
+    invoke("doctor", "--out", missingOut, "--manifest", path.join(root, "absent-manifest.json")),
+    invoke("inspect"),
+    invoke("inspect", "--input", sourceFile, "--manifest", manifestFile),
+    invoke("inspect", "--input", malformedFile),
+  ];
+  for (const result of readOnlyPreflightFailures) { assert.equal(result.status, 2); assert.equal(result.json.verificationScope, "not-verified"); assert.equal(result.json.approvedSourceRecomputed, false); assert.equal(result.json.sourceAuthority, null); }
   const missingStatus = invoke("status", "--out", missingOut); assert.equal(missingStatus.status, 0); assert.equal(missingStatus.json.available, false); assert.equal(missingStatus.json.verificationScope, "not-verified"); assert.equal(missingStatus.json.approvedSourceRecomputed, false); assert.equal(fs.existsSync(missingOut), false);
   const missingDoctor = invoke("doctor", "--out", missingOut, "--manifest", manifestFile, ...pins(approved)); assert.equal(missingDoctor.status, 2); assert.equal(missingDoctor.json.verificationScope, "not-verified"); assert.equal(missingDoctor.json.approvedSourceRecomputed, false); assert.equal(fs.existsSync(missingOut), false);
   const inspected = invoke("inspect", "--input", sourceFile); assert.equal(inspected.status, 0); assert.equal(inspected.json.records, 2); assert.equal(inspected.json.sourceAuthority, "synthetic-test"); assert.equal(inspected.json.verificationScope, "source-self-check-only"); assert.equal(inspected.json.approvedSourceRecomputed, false); assert.deepEqual(inspected.json.informationModes, {openSheet: 1, closedSheet: 1});
@@ -52,7 +62,7 @@ try {
   for (const result of [missingInputInspect, missingManifestInspect, tamperedManifestInspect]) { assert.equal(result.status, 2); assert.equal(result.json.verificationScope, "not-verified"); assert.equal(result.json.approvedSourceRecomputed, false); assert.equal(result.json.sourceAuthority, null); }
   assert.deepEqual(tree(root), beforeReadOnly, "read-only commands changed the fixture tree");
 
-  const noToken = invoke("build", "--input", sourceFile, "--out", out, "--authority", "synthetic-test"); assert.equal(noToken.status, 2); assert.equal(fs.existsSync(out), false);
+  const noToken = invoke("build", "--input", sourceFile, "--out", out, "--authority", "synthetic-test"); assert.equal(noToken.status, 2); assert.equal(noToken.json.verificationScope, undefined); assert.equal(fs.existsSync(out), false);
   const relative = invoke("build", "--input", "relative.json", "--manifest", manifestFile, "--out", out, "--authority", "synthetic-test", "--signing-authority", signingAuthority, "--execute-token", token, ...pins(approved)); assert.equal(relative.status, 2); assert.equal(fs.existsSync(out), false);
   const wrongAuthority = invoke("build", "--input", sourceFile, "--manifest", manifestFile, "--out", out, "--authority", "signed-research-family-corpus", "--signing-authority", signingAuthority, "--execute-token", token, ...pins(approved)); assert.equal(wrongAuthority.status, 2); assert.equal(fs.existsSync(out), false);
   const missingManifest = invoke("build", "--input", sourceFile, "--manifest", path.join(root, "absent.json"), "--out", out, "--authority", "synthetic-test", "--signing-authority", signingAuthority, "--execute-token", token, ...pins(approved)); assert.equal(missingManifest.status, 2); assert.equal(fs.existsSync(out), false);
