@@ -15,7 +15,7 @@ try {
   else if (command === "doctor") { const result = doctor(explicitAbsolute("out"), explicitRegularFile("manifest", 1024 * 1024)); print(result); if (!result.healthy) process.exitCode = 2; }
   else if (command === "inspect") print(inspect());
   else if (command === "build") print(build());
-  else throw new Error("Usage: jointBattleShadowCorpus <status|doctor|inspect|build> --out ABSOLUTE_DIR | --input ABSOLUTE_FILE [--manifest ABSOLUTE_FILE --authority VALUE --signing-authority ID --execute-token TOKEN]");
+  else throw new Error("Usage: jointBattleShadowCorpus <status|doctor|inspect|build> --out ABSOLUTE_DIR | --input ABSOLUTE_FILE [--manifest ABSOLUTE_FILE --approved-manifest-sha256 SHA --approval-reference-sha256 SHA --authority VALUE --signing-authority ID --execute-token TOKEN]");
 } catch (error) {
   console.error(JSON.stringify({status: "rejected", error: error instanceof Error ? error.message : String(error)}, null, 2));
   process.exitCode = 2;
@@ -29,7 +29,7 @@ function status(out: string): Record<string, unknown> {
   catch (error) { return {status: "invalid", available: true, healthy: false, out, error: error instanceof Error ? error.message : String(error), activationStatus: "shadow-only", formalActivationAllowed: false, routingAllowed: false}; }
 }
 
-function doctor(out: string, manifestFile: string): Record<string, unknown> { try { const manifest = readManifest(manifestFile), current = status(out); if (current.healthy !== true) return {...current, manifestStatus: manifest.status, manifestSha256: manifest.sha256}; const archive = readArchive(path.join(out, archiveName)); if (archive.authorityManifestSha256 !== manifest.sha256 || path.normalize(manifest.output.root) !== path.normalize(out) || manifest.status !== "approved") throw new Error("Joint shadow corpus archive is not bound to an approved authority manifest"); return {...current, manifestStatus: manifest.status, manifestSha256: manifest.sha256}; } catch (error) { return {status: "invalid", available: fs.existsSync(path.join(out, archiveName)), healthy: false, out, error: error instanceof Error ? error.message : String(error), activationStatus: "shadow-only", formalActivationAllowed: false, routingAllowed: false}; } }
+function doctor(out: string, manifestFile: string): Record<string, unknown> { try { const manifest = readManifest(manifestFile); assertApprovalPins(manifest); const current = status(out); if (current.healthy !== true) return {...current, manifestStatus: manifest.status, manifestSha256: manifest.sha256}; const archive = readArchive(path.join(out, archiveName)); if (archive.authorityManifestSha256 !== manifest.sha256 || path.normalize(manifest.output.root) !== path.normalize(out) || manifest.status !== "approved") throw new Error("Joint shadow corpus archive is not bound to an approved authority manifest"); return {...current, manifestStatus: manifest.status, manifestSha256: manifest.sha256}; } catch (error) { return {status: "invalid", available: fs.existsSync(path.join(out, archiveName)), healthy: false, out, error: error instanceof Error ? error.message : String(error), activationStatus: "shadow-only", formalActivationAllowed: false, routingAllowed: false}; } }
 
 function inspect(): Record<string, unknown> {
   if (typeof args.manifest === "string") { const manifestFile = explicitRegularFile("manifest", 1024 * 1024), manifest = readManifest(manifestFile); return {status: manifest.status, healthy: manifest.status === "approved", manifest: manifestFile, sourceAuthority: manifest.sourceAuthority, signingAuthority: manifest.signingAuthority.id, recordSchemaSha256: manifest.recordContract.schemaSha256, inputArchiveSha256: manifest.input.archiveSha256, outputRoot: manifest.output.root, sha256: manifest.sha256, trainingAllowed: false, routingAllowed: false, formalActivationAllowed: false}; }
@@ -45,6 +45,7 @@ function build(): Record<string, unknown> {
   const source = readSource(input);
   if (source.sourceAuthority !== authority) throw new Error("Joint shadow corpus authority does not match the signed source");
   const manifest = readManifest(manifestFile);
+  assertApprovalPins(manifest);
   assertApprovedProductionShadowSourceAuthority(manifest, {inputArchive: input, inputArchiveSha256: fileSha256(input), logicalSourceSha256: source.sha256, outputRoot: out, sourceAuthority: authority, signingAuthority});
   const archive = extractJointBattleShadowCorpus(source, manifest.sha256);
   if (fs.existsSync(out)) { const stat = fs.lstatSync(out); if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Joint shadow corpus output root must be a real directory"); }
@@ -70,6 +71,7 @@ function explicitInput(): string {
 function explicitRegularFile(name: string, maximumBytes: number): string { const file = explicitAbsolute(name), stat = fs.lstatSync(file); if (!stat.isFile() || stat.isSymbolicLink() || stat.size > maximumBytes) throw new Error(`--${name} must be a bounded regular file`); return file; }
 function explicitAbsolute(name: string): string { const raw = stringArg(args, name); if (!path.isAbsolute(raw)) throw new Error(`--${name} must be an explicit absolute path`); return path.normalize(raw); }
 function authorityArg(): JointBattleShadowSourceAuthority { const value = stringArg(args, "authority"); if (!(["signed-research-family-corpus", "synthetic-test"] as string[]).includes(value)) throw new Error("Invalid joint shadow corpus authority"); return value as JointBattleShadowSourceAuthority; }
+function assertApprovalPins(manifest: ProductionShadowSourceAuthorityManifestV1): void { const manifestSha256 = stringArg(args, "approved-manifest-sha256"), approvalReferenceSha256 = stringArg(args, "approval-reference-sha256"); if (!/^[a-f0-9]{64}$/.test(manifestSha256) || !/^[a-f0-9]{64}$/.test(approvalReferenceSha256) || manifest.sha256 !== manifestSha256 || manifest.signingAuthority.approvalReferenceSha256 !== approvalReferenceSha256) throw new Error("Production shadow authority approval pins do not match"); }
 function readSource(file: string): JointBattleShadowSourceV1 { const value = JSON.parse(fs.readFileSync(file, "utf8")) as JointBattleShadowSourceV1; assertJointBattleShadowSource(value); return value; }
 function readManifest(file: string): ProductionShadowSourceAuthorityManifestV1 { const value = JSON.parse(fs.readFileSync(file, "utf8")) as ProductionShadowSourceAuthorityManifestV1; assertProductionShadowSourceAuthorityManifest(value); return value; }
 function readArchive(file: string): JointBattleShadowCorpusArchiveV1 { const value = JSON.parse(fs.readFileSync(file, "utf8")) as JointBattleShadowCorpusArchiveV1; assertJointBattleShadowCorpusArchive(value); return value; }
