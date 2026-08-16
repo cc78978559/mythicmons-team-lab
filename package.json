@@ -255,7 +255,7 @@
     "smoke:relational-doctor-contract": "tsx src/tests/relationalDoctorContractSmoke.ts",
     "smoke:tooling-doctor-status-contract": "tsx src/tests/toolingDoctorStatusContractSmoke.ts",
     "smoke:upgrade-corpus-evidence-index": "tsx src/tests/upgradeCorpusEvidenceIndexSmoke.ts",
-    "test:contracts:shadow": "npm run smoke:benchmark-families && npm run smoke:draft-league-v4-configure-domain && npm run smoke:evidence-vault && npm run smoke:hidden-information && npm run smoke:manager-program-v2-readonly && npm run smoke:relational-ai-contract && npm run smoke:relational-doctor-contract && npm run smoke:tooling-doctor-status-contract && npm run smoke:upgrade-corpus-evidence-index"
+    "test:contracts:shadow": "npm run smoke:benchmark-families && npm run smoke:draft-league-v4-configure-domain && npm run smoke:evidence-vault && npm run smoke:hidden-information && npm run smoke:manager-program-v2-readonly && npm run smoke:relational-ai-contract && npm run smoke:relational-doctor-contract && npm run smoke:tooling-doctor-status-contract && npm run smoke:upgrade-corpus-evidence-index && tsx src/tests/relationalBattlePolicyContractSmoke.ts && tsx src/tests/jointBattleDecisionCorpusContractSmoke.ts && tsx src/tests/relationalBattleShadowAdapterSmoke.ts && tsx src/tests/relationalBattleShadowAcceptanceSmoke.ts"
   },
   "keywords": [],
   "author": "",
