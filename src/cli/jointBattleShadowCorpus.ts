@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import {assertJointBattleShadowCorpusArchive, assertJointBattleShadowSource, extractJointBattleShadowCorpus, type JointBattleShadowCorpusArchiveV1, type JointBattleShadowSourceAuthority, type JointBattleShadowSourceV1} from "../ai/jointBattleShadowCorpus";
-import {assertApprovedProductionShadowSourceAuthority, assertProductionShadowSourceAuthorityManifest, type ProductionShadowSourceAuthorityManifestV1} from "../ai/productionShadowSourceAuthority";
+import {assertApprovedProductionShadowSourceAuthority, assertProductionShadowSourceAuthorityManifest, buildProductionShadowSourceAuthorityManifest, productionShadowRecordSchemaSha256, type ProductionShadowSourceAuthorityManifestV1} from "../ai/productionShadowSourceAuthority";
 import {acquireNamedRunLock} from "../draft/runLock";
 import {parseArgs, stringArg} from "../showdown/args";
 
@@ -13,9 +13,10 @@ const argv = process.argv.slice(2), command = argv[0] && !argv[0].startsWith("--
 try {
   if (command === "status") print(status(explicitAbsolute("out")));
   else if (command === "doctor") { const result = doctor(explicitAbsolute("out"), explicitRegularFile("manifest", 1024 * 1024)); print(result); if (!result.healthy) process.exitCode = 2; }
+  else if (command === "propose") print(propose());
   else if (command === "inspect") print(inspect());
   else if (command === "build") print(build());
-  else throw new Error("Usage: jointBattleShadowCorpus <status|doctor|inspect|build> --out ABSOLUTE_DIR | --input ABSOLUTE_FILE [--manifest ABSOLUTE_FILE --approved-manifest-sha256 SHA --approval-reference-sha256 SHA --authority VALUE --signing-authority ID --execute-token TOKEN]");
+  else throw new Error("Usage: jointBattleShadowCorpus <status|doctor|propose|inspect|build> --out ABSOLUTE_DIR | --input ABSOLUTE_FILE [--manifest ABSOLUTE_FILE --approved-manifest-sha256 SHA --approval-reference-sha256 SHA --authority VALUE --signing-authority ID --execute-token TOKEN]");
 } catch (error) {
   console.error(JSON.stringify({status: "rejected", error: error instanceof Error ? error.message : String(error)}, null, 2));
   process.exitCode = 2;
@@ -30,6 +31,13 @@ function status(out: string): Record<string, unknown> {
 }
 
 function doctor(out: string, manifestFile: string): Record<string, unknown> { try { const manifest = readManifest(manifestFile); assertApprovalPins(manifest); const current = status(out); if (current.healthy !== true) return {...current, manifestStatus: manifest.status, manifestSha256: manifest.sha256}; const archive = readArchive(path.join(out, archiveName)); if (archive.authorityManifestSha256 !== manifest.sha256 || path.normalize(manifest.output.root) !== path.normalize(out) || manifest.status !== "approved") throw new Error("Joint shadow corpus archive is not bound to an approved authority manifest"); return {...current, manifestStatus: manifest.status, manifestSha256: manifest.sha256}; } catch (error) { return {status: "invalid", available: fs.existsSync(path.join(out, archiveName)), healthy: false, out, error: error instanceof Error ? error.message : String(error), activationStatus: "shadow-only", formalActivationAllowed: false, routingAllowed: false}; } }
+
+function propose(): ProductionShadowSourceAuthorityManifestV1 {
+  const input = explicitInput(), out = explicitAbsolute("out"), source = readSource(input), authority = authorityArg(), signingAuthority = stringArg(args, "signing-authority"), approvalReferenceSha256 = stringArg(args, "approval-reference-sha256");
+  if (inside(input, out) || source.sourceAuthority !== authority) throw new Error("Proposed production shadow source authority binding is invalid");
+  const parentManifestSha256 = typeof args["parent-manifest-sha256"] === "string" ? args["parent-manifest-sha256"] as string : null;
+  return buildProductionShadowSourceAuthorityManifest({status: "proposed", sourceAuthority: authority, lineage: {sourceSystem: stringArg(args, "source-system"), sourceGeneration: stringArg(args, "source-generation"), purpose: "joint-shadow-corpus-extraction-only", parentManifestSha256}, recordContract: {version: "unified-decision-record-v1", encoderVersion: "relational-battle-encoder-v1", schemaSha256: productionShadowRecordSchemaSha256()}, isolation: {informationModes: ["closed-sheet", "open-sheet"], familyClusterModeIsolation: true, familySplitIsolation: true}, input: {archive: input, archiveSha256: fileSha256(input), logicalSourceSha256: source.sha256}, output: {root: out, retention: "retain-until-manual-safe-gc", recovery: "stale-lock-and-orphan-temp-only", overwrite: "reject-different-signed-archive"}, signingAuthority: {id: signingAuthority, scheme: "sha256-content-envelope", approvalReferenceSha256}});
+}
 
 function inspect(): Record<string, unknown> {
   if (typeof args.manifest === "string") { const manifestFile = explicitRegularFile("manifest", 1024 * 1024), manifest = readManifest(manifestFile); return {status: manifest.status, healthy: manifest.status === "approved", manifest: manifestFile, sourceAuthority: manifest.sourceAuthority, signingAuthority: manifest.signingAuthority.id, recordSchemaSha256: manifest.recordContract.schemaSha256, inputArchiveSha256: manifest.input.archiveSha256, outputRoot: manifest.output.root, sha256: manifest.sha256, trainingAllowed: false, routingAllowed: false, formalActivationAllowed: false}; }

@@ -20,6 +20,7 @@ try {
   assert.throws(() => buildJointBattleShadowSource([closed, {...open, familyId: closed.familyId}], "synthetic-test"), /family crossed information modes/);
 
   const beforeReadOnly = tree(root);
+  const proposedByCli = invoke("propose", "--input", sourceFile, "--out", out, "--authority", "synthetic-test", "--signing-authority", signingAuthority, "--approval-reference-sha256", approved.signingAuthority.approvalReferenceSha256, "--source-system", "synthetic-fixture", "--source-generation", "fixture-v1"); assert.equal(proposedByCli.status, 0); assert.equal(proposedByCli.json.status, "proposed"); assert.equal(proposedByCli.json.input.archiveSha256, fileHash(sourceFile)); assert.equal(proposedByCli.json.prohibitions.trainingAllowed, false);
   const missingStatus = invoke("status", "--out", missingOut); assert.equal(missingStatus.status, 0); assert.equal(missingStatus.json.available, false); assert.equal(fs.existsSync(missingOut), false);
   const missingDoctor = invoke("doctor", "--out", missingOut, "--manifest", manifestFile, ...pins(approved)); assert.equal(missingDoctor.status, 2); assert.equal(fs.existsSync(missingOut), false);
   const inspected = invoke("inspect", "--input", sourceFile); assert.equal(inspected.status, 0); assert.equal(inspected.json.records, 2); assert.deepEqual(inspected.json.informationModes, {openSheet: 1, closedSheet: 1});
