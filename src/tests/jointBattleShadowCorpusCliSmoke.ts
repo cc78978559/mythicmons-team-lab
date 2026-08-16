@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
-import {buildJointBattleShadowSource, type JointBattleShadowSourceCandidateLabel, type JointBattleShadowSourceEntry} from "../ai/jointBattleShadowCorpus";
+import {buildJointBattleShadowSource, extractJointBattleShadowCorpus, type JointBattleShadowSourceCandidateLabel, type JointBattleShadowSourceEntry} from "../ai/jointBattleShadowCorpus";
 import {buildProductionShadowSourceAuthorityManifest, productionShadowRecordSchemaSha256} from "../ai/productionShadowSourceAuthority";
 import {buildJointBattleDecisionSnapshot, JOINT_BATTLE_FEATURES, jointBattleKnownMask, recommendJointBattleShadow, type JointBattleCandidateV1, type JointBattleDecisionSnapshotV1} from "../ai/relationalBattlePolicy";
 import {buildUnifiedDecisionRecord, type UnifiedDecisionRecord} from "../draft/unifiedDecisionRecord";
@@ -47,7 +47,21 @@ try {
 
   const beforeChecks = tree(root), status = invoke("status", "--out", out), doctor = invoke("doctor", "--out", out, "--manifest", manifestFile, ...pins(approved)), inspectAgain = invoke("inspect", "--input", sourceFile);
   assert.equal(status.status, 0); assert.equal(doctor.status, 0); assert.equal(inspectAgain.status, 0); assert.deepEqual(tree(root), beforeChecks, "status/doctor/inspect wrote after corpus creation");
-  const archiveFile = path.join(out, "joint-battle-shadow-corpus.json"), archive = JSON.parse(fs.readFileSync(archiveFile, "utf8")); archive.routingAllowed = true; fs.writeFileSync(archiveFile, JSON.stringify(archive));
+  const archiveFile = path.join(out, "joint-battle-shadow-corpus.json"), originalArchive = fs.readFileSync(archiveFile), originalSource = fs.readFileSync(sourceFile);
+  const alternativeSource = buildJointBattleShadowSource([entry("alternative-closed", "closed-sheet", "train"), entry("alternative-open", "open-sheet", "validation")], "synthetic-test"), alternativeArchive = extractJointBattleShadowCorpus(alternativeSource, approved.sha256);
+  fs.writeFileSync(archiveFile, `${JSON.stringify(alternativeArchive, null, 2)}\n`);
+  const beforeAlternativeArchiveDoctor = tree(root);
+  assert.equal(invoke("doctor", "--out", out, "--manifest", manifestFile, ...pins(approved)).status, 2, "structurally valid archive from another source passed doctor");
+  assert.deepEqual(tree(root), beforeAlternativeArchiveDoctor, "doctor wrote while rejecting an archive from another source");
+  fs.writeFileSync(archiveFile, originalArchive);
+
+  fs.writeFileSync(sourceFile, `${JSON.stringify(alternativeSource, null, 2)}\n`);
+  const beforeChangedInputDoctor = tree(root);
+  assert.equal(invoke("doctor", "--out", out, "--manifest", manifestFile, ...pins(approved)).status, 2, "changed approved input passed doctor");
+  assert.deepEqual(tree(root), beforeChangedInputDoctor, "doctor wrote while rejecting changed approved input");
+  fs.writeFileSync(sourceFile, originalSource);
+
+  const archive = JSON.parse(originalArchive.toString("utf8")); archive.routingAllowed = true; fs.writeFileSync(archiveFile, JSON.stringify(archive));
   assert.equal(invoke("doctor", "--out", out, "--manifest", manifestFile, ...pins(approved)).status, 2, "tampered archive passed doctor");
 
   const tamperedSource = JSON.parse(fs.readFileSync(sourceFile, "utf8")); tamperedSource.entries[0].environment = "changed"; fs.writeFileSync(sourceFile, JSON.stringify(tamperedSource));
