@@ -9,13 +9,13 @@ const started = Date.now(), rssBefore = process.memoryUsage().rss;
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "tooling-doctor-status-contract-")), cli = path.resolve("src/cli/toolingDoctor.ts");
 try {
   const missing = scenario("missing"), missingRun = invokeReadOnly(missing, ["status", ...paths(missing)]);
-  assert.equal(missingRun.status, 2); assert.equal(missingRun.stderr, ""); assertStatusContract(missingRun.value); assert.equal(missingRun.value.available, false); assert.equal(missingRun.value.healthy, false); assert.equal(fs.existsSync(missing.root), false); assert.equal(fs.existsSync(missing.out), false); assert.equal(fs.existsSync(missing.pipeline), false);
+  assert.equal(missingRun.status, 2); assert.equal(missingRun.stderr, ""); assertStatusContract(missingRun.value); assert.equal(missingRun.value.available, false); assert.equal(missingRun.value.healthy, false); assert.equal(missingRun.value.evidenceVault, null); assert.equal(fs.existsSync(missing.root), false); assert.equal(fs.existsSync(missing.out), false); assert.equal(fs.existsSync(missing.pipeline), false);
 
   const available = scenario("available"), generatedAt = new Date(0).toISOString();
   write(path.join(available.out, "summary.json"), {healthy: true, generatedAt, storage: {files: 2, bytes: 10}, sourceCaches: {entries: 1, remainingBytes: 0, budgetBytes: 100}, formal: {evidenceEpochReady: true}, aiPipeline: {canaryActivationReady: false}, evidenceVault: {available: false}, issues: []});
   write(path.join(available.pipeline, "status.json"), {evaluation: {operationalHealthy: true, pipelineCycleComplete: true, researchMaturity: "fixture", formalActivationReady: false, nextMilestones: ["none"]}});
   const availableRun = invokeReadOnly(available, ["status", ...paths(available)]);
-  assert.equal(availableRun.status, 0); assert.equal(availableRun.stderr, ""); assertStatusContract(availableRun.value); assert.equal(availableRun.value.available, true); assert.equal(availableRun.value.healthy, true); assert.equal(availableRun.value.generatedAt, generatedAt); assert.equal(availableRun.value.pipeline.researchMaturity, "fixture");
+  assert.equal(availableRun.status, 0); assert.equal(availableRun.stderr, ""); assertStatusContract(availableRun.value); assert.equal(availableRun.value.available, true); assert.equal(availableRun.value.healthy, true); assert.equal(availableRun.value.generatedAt, generatedAt); assert.deepEqual(availableRun.value.evidenceVault, {available: false}); assert.equal(availableRun.value.pipeline.researchMaturity, "fixture");
 
   const invalid = scenario("invalid"), invalidRun = invokeReadOnly(invalid, ["unknown", ...paths(invalid)]);
   assert.notEqual(invalidRun.status, 0); assert.match(invalidRun.stderr, /Usage: npm run tooling/); assert.equal(invalidRun.stdout, ""); assert.equal(fs.existsSync(invalid.root), false); assert.equal(fs.existsSync(invalid.out), false); assert.equal(fs.existsSync(invalid.pipeline), false);
