@@ -7,8 +7,8 @@ import {spawnSync} from "node:child_process";
 const root = process.cwd(), cache = fs.mkdtempSync(path.join(os.tmpdir(), "mythic-affected-check-"));
 try {
   const selection = run(["--dry-run", "--files", "src/cli/runOfficialSeasonCycle.ts", "--cache", cache]);
-  assert.equal(selection.changedFiles, 1); assert.equal(selection.selectedTests, 5); assert.equal(selection.planned, 6);
-  assert.deepEqual(selection.checks.map((check: {name: string}) => check.name), ["typecheck", "smoke:ai-pipeline", "smoke:check-affected", "smoke:league-control", "smoke:official-season-cycle", "smoke:pipeline-doctor-plan"]);
+  assert.equal(selection.changedFiles, 1); assert.equal(selection.selectedTests, 7); assert.equal(selection.planned, 8);
+  assert.deepEqual(selection.checks.map((check: {name: string}) => check.name), ["typecheck", "smoke:ai-pipeline", "smoke:check-affected", "smoke:league-control", "smoke:official-season-cycle", "smoke:pipeline-doctor-plan", "smoke:tooling-doctor-status-contract", "test:contracts:shadow"]);
   const dataSelection = run(["--dry-run", "--files", "data/shadow-evidence-registry.json", "--cache", cache]);
   assert.equal(dataSelection.selectedTests, 1); assert.equal(dataSelection.planned, 2);
   const registrySelection = run(["--dry-run", "--files", "data/draft/g1-six-team.json", "--cache", cache]); assert.equal(registrySelection.selectedTests, 3); assert.equal(registrySelection.planned, 4);
@@ -17,7 +17,7 @@ try {
   const exampleSelection = run(["--dry-run", "--files", "examples/teamA.txt", "--cache", cache]); assert.equal(exampleSelection.selectedTests, 3); assert.equal(exampleSelection.planned, 4);
   const wrapperSelection = run(["--dry-run", "--files", ["src", "cli", "simulate.ts"].join("/"), "--cache", cache]); assert.equal(wrapperSelection.selectedTests, 1); assert.equal(wrapperSelection.planned, 2);
   const compositeSource = run(["--dry-run", "--files", "src/cli/aiPipeline.ts", "--cache", cache]);
-  assert.equal(compositeSource.selectedTests, 2); assert.equal(compositeSource.planned, 3);
+  assert.equal(compositeSource.selectedTests, 4); assert.equal(compositeSource.planned, 5);
   const compositeSecondTest = run(["--dry-run", "--files", "src/tests/aiPipelineCliSmoke.ts", "--cache", cache]);
   assert.equal(compositeSecondTest.selectedTests, 2); assert.equal(compositeSecondTest.planned, 3);
   const contractCache = path.join(cache, "contract-plans"), contractMappings = [
