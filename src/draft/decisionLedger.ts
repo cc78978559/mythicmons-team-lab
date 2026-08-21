@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import {buildLeagueDecisionRecords, writeUnifiedDecisionRecords, type UnifiedDecisionDomain} from "./unifiedDecisionRecord";
 
 export type DecisionStage = "calibration" | "auction" | "draft" | "lineup" | "battle" | "waiver" | "playoff" | "review";
 
@@ -15,6 +16,7 @@ export interface DecisionRecord {
   id: string;
   sequence: number;
   stage: DecisionStage;
+  domain?: UnifiedDecisionDomain;
   actor: string;
   decision: string;
   selected: string | string[] | null;
@@ -55,6 +57,7 @@ export class DecisionLedger {
   write(outputDir: string): void {
     fs.mkdirSync(outputDir, {recursive: true});
     atomicWrite(path.join(outputDir, "decision-ledger.json"), `${JSON.stringify({version: 1, records: this.records}, null, 2)}\n`);
+    writeUnifiedDecisionRecords(path.join(outputDir, "unified-decisions.json.gz"), buildLeagueDecisionRecords(this.records, "decision-ledger-v1"));
     atomicWrite(path.join(outputDir, "decision-ledger.md"), this.toMarkdown());
   }
 

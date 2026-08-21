@@ -1,4 +1,4 @@
-export const FORMAL_VALIDATION_VERSION = "formal-validation-v1.6-clustered-independent-environments";
+export const FORMAL_VALIDATION_VERSION = "formal-validation-v1.7-family-holdout-semantic-bins";
 
 export type ValidationDirection = "better" | "neutral" | "worse";
 
@@ -72,12 +72,12 @@ export function formalMechanismSemanticKey(input: {
   effect: number;
   predicates: readonly {feature: string; operator: "gte" | "lt"; threshold: number}[];
 }): string {
-  const family = formalMechanismKey(input), effect = normalizedNumber(input.effect);
+  const family = formalMechanismKey(input), effect = bucketedNumber(input.effect, .05);
   const boundary = [...input.predicates]
-    .map(predicate => `${predicate.feature}-${predicate.operator}-${normalizedNumber(predicate.threshold)}`)
+    .map(predicate => `${predicate.feature}-${predicate.operator}-${bucketedNumber(predicate.threshold, .1)}`)
     .sort()
     .join("+");
-  return `${family}__semantic-v1__${boundary}__effect-${effect}`;
+  return `${family}__semantic-v2-binned__${boundary}__effect-${effect}`;
 }
 
 export function formalDomainSemanticKey(rules: readonly {managerId: string; rule: {target: string; effect: number; predicates: readonly {feature: string; operator: "gte" | "lt"; threshold: number}[]}}[]): string {
@@ -191,4 +191,4 @@ function validateGate(gate: FormalValidationGate): void {
 }
 
 function round(value: number): number { return Math.round((value + Number.EPSILON) * 1e6) / 1e6; }
-function normalizedNumber(value: number): string { if (!Number.isFinite(value)) throw new Error("Formal mechanism values must be finite"); return String(round(value)); }
+function bucketedNumber(value: number, width: number): string { if (!Number.isFinite(value)) throw new Error("Formal mechanism values must be finite"); return String(round(Math.round(value / width) * width)); }

@@ -39,7 +39,7 @@ export interface FormalValidationPortfolio {
 }
 
 export function loadFormalValidationPortfolio(root: string): FormalValidationPortfolio {
-  const directories = generationDirectories(path.resolve(root)), generations: FormalValidationGenerationSummary[] = [];
+  const directories = generationDirectories(path.resolve(root)), generations: FormalValidationGenerationSummary[] = [], screening = new Map<string, Array<{reasons: string[]; evidence: {supports: number; contradictions: number; neutral: number; cases: number}}>>();
   for (const entry of directories) {
     const directory = entry.directory;
     const freeze = optionalJson<any>(path.join(directory, "freeze.json")), summary = optionalJson<any>(path.join(directory, "summary.json"));
@@ -52,6 +52,10 @@ export function loadFormalValidationPortfolio(root: string): FormalValidationPor
       return [{domainId: String(domain.id), mechanismKey: String(domain.mechanismKey), semanticKey: String(domain.semanticKey ?? domain.mechanismKey), disposition: result.disposition, cases: integer(result.cases), supports: integer(result.supports), contradictions: integer(result.contradictions), neutral: integer(result.neutral), reasons: Array.isArray(result.reasons) ? result.reasons.map(String) : [], discoveryFingerprints: Array.isArray(domain.researchEvidence?.discoveryFingerprints) ? domain.researchEvidence.discoveryFingerprints.map(String).sort() : []}];
     });
     if (domains.length !== freeze.domains.length) throw new Error(`Incomplete formal-validation domain projection: ${directory}`);
+    for (const row of summary.formalValidationCompleted === true && summary.audit?.healthy === true && Array.isArray(freeze.selection?.rejected) ? freeze.selection.rejected : []) {
+      const evidence = row?.evidence; if (!row?.mechanismKey || !evidence || !Array.isArray(row.reasons)) continue;
+      screening.set(String(row.mechanismKey), [...(screening.get(String(row.mechanismKey)) ?? []), {reasons: row.reasons.map(String), evidence: {supports: integer(evidence.supports), contradictions: integer(evidence.contradictions), neutral: integer(evidence.neutral), cases: integer(evidence.cases)}}]);
+    }
     generations.push({generation: entry.current ? "current" : path.basename(directory), directory, archivedAt: entry.archivedAt, freezeSha256: freeze.sha256, summarySha256: summary.sha256, sourceBattles: integer(summary.sources?.battles), experiments: integer(summary.experiments?.completed), formallyCompleted: summary.formalValidationCompleted === true && summary.audit?.healthy === true, domains});
   }
   const grouped = new Map<string, FormalValidationGenerationSummary["domains"]>();
@@ -61,6 +65,9 @@ export function loadFormalValidationPortfolio(root: string): FormalValidationPor
     const decisive = rows.filter(row => row.disposition === "limited-canary-eligible" || row.disposition === "rejected");
     const disposition = decisive.at(-1)?.disposition ?? (rows.some(row => row.disposition === "blocked") ? "blocked" : "inconclusive");
     feedback[mechanismKey] = {mechanismKey, disposition, generations: rows.length, cases: sum(rows, "cases"), supports: sum(rows, "supports"), contradictions: sum(rows, "contradictions"), neutral: sum(rows, "neutral"), reasons: [...new Set(rows.flatMap(row => row.reasons))].sort()};
+  }
+  for (const [mechanismKey, rows] of [...screening.entries()].sort(([a], [b]) => a.localeCompare(b))) if (!feedback[mechanismKey]) {
+    const latest = rows.at(-1)!, worthReplicating = latest.evidence.supports > 0 && latest.evidence.contradictions === 0 && !latest.reasons.includes("mixed-expected-directions"); feedback[mechanismKey] = {mechanismKey, disposition: worthReplicating ? "inconclusive" : "screened-out", generations: 0, cases: latest.evidence.cases, supports: latest.evidence.supports, contradictions: latest.evidence.contradictions, neutral: latest.evidence.neutral, reasons: [...new Set(latest.reasons)].sort()};
   }
   const variantGroups = new Map<string, FormalValidationGenerationSummary["domains"]>();
   for (const generation of generations.filter(value => value.formallyCompleted)) for (const domain of generation.domains) variantGroups.set(domain.semanticKey, [...(variantGroups.get(domain.semanticKey) ?? []), domain]);

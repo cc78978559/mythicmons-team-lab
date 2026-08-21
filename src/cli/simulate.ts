@@ -4,6 +4,7 @@ import {parseArgs, stringArg, numberArg, booleanArg} from "../showdown/args";
 import {runBattle, type BattleResult} from "../showdown/battle";
 import {AI_VERSION, type AiStrategy} from "../showdown/choice";
 import {loadTeam, validateTeam, writeTeam} from "../showdown/team";
+import {recommendedBattleWorkers, runBattleWorkerPool} from "../draft/battleWorkerPool";
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -12,6 +13,8 @@ async function main() {
   const format = stringArg(args, "format", "gen9ou");
   const seed = stringArg(args, "seed", "1");
   const games = numberArg(args, "games", 1, {integer: true, min: 1});
+  const workers = numberArg(args, "workers", recommendedBattleWorkers(games), {integer: true, min: 1});
+  if (workers > 64) throw new Error("--workers must be at most 64");
   const maxTurns = numberArg(args, "maxTurns", 500, {integer: true, min: 1});
   const idleTimeoutMs = numberArg(args, "idleTimeoutMs", 5000, {integer: true, min: 1});
   const wallClockTimeoutMs = numberArg(args, "wallClockTimeoutMs", 30000, {integer: true, min: 1});
@@ -20,6 +23,7 @@ async function main() {
   const ai = parseAi(stringArg(args, "ai", "basic"));
   const openTeamSheets = booleanArg(args, "open-team-sheets", ai === "search");
   const traceAiDecisions = booleanArg(args, "ai-trace", ai === "search");
+  const artifactMode = parseArtifactMode(stringArg(args, "artifacts", workers > 1 ? "training" : "full"));
 
   const teamA = loadTeam(teamAPath);
   const teamB = loadTeam(teamBPath);
@@ -37,9 +41,7 @@ async function main() {
   writeTeam(teamB.sets, path.join(outDir, "teamB.json"), "json");
   writeTeam(teamB.sets, path.join(outDir, "teamB.packed.txt"), "packed");
 
-  const results: BattleResult[] = [];
-  for (let gameIndex = 0; gameIndex < games; gameIndex += 1) {
-    results.push(await runBattle({
+  const started = Date.now(), inputs = Array.from({length: games}, (_, gameIndex) => ({
       format,
       teamA: teamA.packed,
       teamB: teamB.packed,
@@ -52,10 +54,12 @@ async function main() {
       ai,
       openTeamSheets,
       traceAiDecisions,
+      artifactMode,
     }));
-  }
+  const results: BattleResult[] = workers === 1 ? await runSequential(inputs) : await runBattleWorkerPool(inputs, workers);
+  const elapsedMs = Date.now() - started;
 
-  const summary = summarize(format, seed, ai, openTeamSheets, traceAiDecisions, results);
+  const summary = summarize(format, seed, ai, openTeamSheets, traceAiDecisions, results, workers, elapsedMs);
   const summaryPath = path.join(outDir, "summary.json");
   fs.writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
 
@@ -63,7 +67,10 @@ async function main() {
   console.log(`AI: ${ai}`);
   console.log(`Open team sheets: ${openTeamSheets}`);
   console.log(`AI decision trace: ${traceAiDecisions}`);
+  console.log(`Artifacts: ${artifactMode}`);
   console.log(`Games: ${games}`);
+  console.log(`Workers: ${workers}`);
+  console.log(`Throughput: ${summary.gamesPerSecond.toFixed(3)} games/s`);
   console.log(`Team A wins: ${summary.teamAWins}`);
   console.log(`Team B wins: ${summary.teamBWins}`);
   console.log(`Draw/unknown: ${summary.draws}`);
@@ -90,6 +97,8 @@ function summarize(
   openTeamSheets: boolean,
   traceAiDecisions: boolean,
   results: BattleResult[],
+  workers: number,
+  elapsedMs: number,
 ) {
   const teamAWins = results.filter(result => result.winner === "Team A").length;
   const teamBWins = results.filter(result => result.winner === "Team B").length;
@@ -106,6 +115,9 @@ function summarize(
     openTeamSheets,
     traceAiDecisions,
     games: results.length,
+    workers,
+    elapsedMs,
+    gamesPerSecond: results.length * 1000 / Math.max(1, elapsedMs),
     teamAWins,
     teamBWins,
     draws,
@@ -116,6 +128,17 @@ function summarize(
     averageTurns,
     results,
   };
+}
+
+function parseArtifactMode(value: string): "full" | "compact" | "training" {
+  if (value === "full" || value === "compact" || value === "training") return value;
+  throw new Error("--artifacts must be full, compact, or training");
+}
+
+async function runSequential(inputs: Parameters<typeof runBattle>[0][]): Promise<BattleResult[]> {
+  const results: BattleResult[] = [];
+  for (const input of inputs) results.push(await runBattle(input));
+  return results;
 }
 
 main().catch(error => {

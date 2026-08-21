@@ -16,6 +16,20 @@ export interface ManagerProgramRuleV2 {
   uncertainty: number;
   authority: ManagerProgramEvidenceAuthority;
   evidenceIds: string[];
+  lineage?: {
+    kind: "semantic-revision";
+    parentRuleId: string;
+    parentMechanismKey: string;
+    operation: "tighten-boundary" | "add-context" | "replace-context";
+    evidenceSha256: string;
+    hypothesisSeed?: {
+      authority: "post-hoc-hypothesis-generation-only";
+      diagnosticSha256: string;
+      domainId: string;
+      shapeSha256: string;
+      excludedSourceSetSha256: string;
+    };
+  };
 }
 
 export interface ManagerProgramRevisionV2 {
@@ -85,6 +99,14 @@ interface CandidateRule {
   evidenceIds: string[];
 }
 
+interface CandidateDiscoveryCache {
+  samples: readonly ManagerProgramSampleV2[];
+  byTarget: Map<string, ManagerProgramSampleV2[]>;
+  targets: string[];
+  predicates: ManagerProgramPredicate[];
+  predicateMasks: Map<string, Uint32Array>;
+}
+
 export function noviceManagerProgramV2(managerId: string, evidence: ManagerProgramV2["evidence"]): ManagerProgramV2 {
   if (!managerId || !evidence.decisionDossierPolicy || !/^[a-f0-9]{64}$/i.test(evidence.positionModelSha256) || !/^[a-f0-9]{64}$/i.test(evidence.corpusSignature)) throw new Error("Invalid manager-program V2 novice envelope");
   const program: ManagerProgramV2 = {schemaVersion: 2, language: MANAGER_PROGRAM_V2_LANGUAGE, activationStatus: "shadow-only", managerId, revision: 0, rules: [], history: [], limits: {maxRules: 12, maxPredicates: 2, maxEvaluatedRules: 32}, evidence: {...evidence}};
@@ -112,9 +134,10 @@ export function evolveManagerProgramV2(input: {
   validateSamples(input.validation);
   const revisions = integer(input.revisions ?? 6, 1, program.limits.maxRules * 2, "revisions");
   const discoveryBefore = mse(program, input.discovery), validationBefore = mse(program, input.validation);
+  const discoveryCache = createCandidateDiscoveryCache(input.discovery);
   let accepted = 0;
   for (let attempt = 0; attempt < revisions && program.rules.length < program.limits.maxRules; attempt += 1) {
-    const candidates = discoverCandidates(program, input.discovery);
+    const candidates = discoverCandidates(program, input.discovery, discoveryCache);
     if (!candidates.length) {
       program.history.push({revision: program.revision + 1, hypothesisId: `none:${attempt}`, target: "none", predicates: [], discoveryGain: 0, validationGain: 0, accepted: false, reason: "no-candidate", evidenceAuthority: "local-value-observational"});
       program.revision += 1;
@@ -144,6 +167,7 @@ export function validateManagerProgramV2(program: ManagerProgramV2): void {
   for (const rule of program.rules) {
     if (!rule.id || !rule.target || !isManagerProgramDomain(rule.domain) || !rule.predicates.length || rule.predicates.length > program.limits.maxPredicates || !Number.isFinite(rule.effect) || Math.abs(rule.effect) > 1 || !Number.isInteger(rule.support) || rule.support < 1 || !Number.isFinite(rule.uncertainty) || rule.uncertainty < 0 || rule.uncertainty > 1 || rule.authority !== "local-value-observational" || rule.evidenceIds.length > 32) throw new Error(`Invalid manager-program V2 rule: ${rule.id}`);
     for (const predicate of rule.predicates) if (!predicate.feature || (predicate.operator !== "gte" && predicate.operator !== "lt") || !Number.isFinite(predicate.threshold)) throw new Error(`Invalid manager-program V2 predicate: ${rule.id}`);
+    if (rule.lineage && (rule.lineage.kind !== "semantic-revision" || !rule.lineage.parentRuleId || !rule.lineage.parentMechanismKey || !["tighten-boundary", "add-context", "replace-context"].includes(rule.lineage.operation) || !/^[a-f0-9]{64}$/i.test(rule.lineage.evidenceSha256) || rule.lineage.hypothesisSeed && (rule.lineage.hypothesisSeed.authority !== "post-hoc-hypothesis-generation-only" || !rule.lineage.hypothesisSeed.domainId || !/^[a-f0-9]{64}$/i.test(rule.lineage.hypothesisSeed.diagnosticSha256) || !/^[a-f0-9]{64}$/i.test(rule.lineage.hypothesisSeed.shapeSha256) || !/^[a-f0-9]{64}$/i.test(rule.lineage.hypothesisSeed.excludedSourceSetSha256)))) throw new Error(`Invalid manager-program V2 lineage: ${rule.id}`);
   }
   if (program.history.length !== program.revision || program.history.some((entry, index) => entry.revision !== index + 1 || !entry.hypothesisId || !Number.isFinite(entry.discoveryGain) || !Number.isFinite(entry.validationGain))) throw new Error(`Invalid manager-program V2 revision history: ${program.managerId}`);
   if (!program.evidence.decisionDossierPolicy || !/^[a-f0-9]{64}$/i.test(program.evidence.positionModelSha256) || !/^[a-f0-9]{64}$/i.test(program.evidence.corpusSignature)) throw new Error(`Invalid manager-program V2 evidence binding: ${program.managerId}`);
@@ -155,31 +179,43 @@ export function managerProgramV2Behavior(program: ManagerProgramV2): {rules: num
   return {rules: program.rules.length, domains, targets, scopedTargets, conditionalPairs: program.rules.filter(rule => rule.predicates.length > 1).length, hash: digest(program.rules.map(rule => [rule.domain, rule.target, rule.predicates, rule.effect]))};
 }
 
-function discoverCandidates(program: ManagerProgramV2, samples: readonly ManagerProgramSampleV2[]): CandidateRule[] {
-  if (samples.length < 18) return [];
-  const current = new Map(samples.map(sample => [sample.id, programValue(program, sample.domain, sample.action, sample.features).value]));
-  const featureNames = [...new Set(samples.flatMap(sample => Object.keys(sample.features)))].sort();
-  const byTarget = new Map<string, ManagerProgramSampleV2[]>();
+function createCandidateDiscoveryCache(samples: readonly ManagerProgramSampleV2[]): CandidateDiscoveryCache {
+  const featureNames = [...new Set(samples.flatMap(sample => Object.keys(sample.features)))].sort(), byTarget = new Map<string, ManagerProgramSampleV2[]>();
   for (const sample of samples) { const key = `${sample.domain}\0${sample.action}`, values = byTarget.get(key) ?? []; values.push(sample); byTarget.set(key, values); }
-  const targets = [...byTarget.keys()].sort();
   const predicates = featureNames.flatMap(feature => quantiles(samples.map(sample => sample.features[feature]).filter(Number.isFinite)).flatMap(threshold => ([{feature, operator: "gte" as const, threshold}, {feature, operator: "lt" as const, threshold}])));
-  const singles = targets.flatMap(key => { const [domain, target] = key.split("\0") as [ManagerProgramDomain, string]; return predicates.map(predicate => fitCandidate(byTarget.get(key)!, samples.length, current, domain, target, [predicate])).filter((value): value is CandidateRule => Boolean(value)); }).sort(compareCandidate);
+  return {samples, byTarget, targets: [...byTarget.keys()].sort(), predicates, predicateMasks: new Map()};
+}
+
+function discoverCandidates(program: ManagerProgramV2, samples: readonly ManagerProgramSampleV2[], cache = createCandidateDiscoveryCache(samples)): CandidateRule[] {
+  if (samples.length < 18) return [];
+  if (cache.samples !== samples) throw new Error("Manager-program candidate cache/sample mismatch");
+  const current = new Map(samples.map(sample => [sample.id, programValue(program, sample.domain, sample.action, sample.features).value]));
+  const singles = cache.targets.flatMap(key => { const [domain, target] = key.split("\0") as [ManagerProgramDomain, string]; return cache.predicates.map(predicate => fitCandidate(cache.byTarget.get(key)!, samples.length, current, domain, target, [predicate], cache)).filter((value): value is CandidateRule => Boolean(value)); }).sort(compareCandidate);
   const compoundSeeds = singles.slice(0, Math.min(12, singles.length));
-  const compounds = compoundSeeds.flatMap(seed => predicates.filter(predicate => predicate.feature !== seed.predicates[0].feature).map(predicate => fitCandidate(byTarget.get(`${seed.domain}\0${seed.target}`)!, samples.length, current, seed.domain, seed.target, [seed.predicates[0], predicate])).filter((value): value is CandidateRule => Boolean(value))).sort(compareCandidate).slice(0, 32);
+  const compounds = compoundSeeds.flatMap(seed => cache.predicates.filter(predicate => predicate.feature !== seed.predicates[0].feature).map(predicate => fitCandidate(cache.byTarget.get(`${seed.domain}\0${seed.target}`)!, samples.length, current, seed.domain, seed.target, [seed.predicates[0], predicate], cache)).filter((value): value is CandidateRule => Boolean(value))).sort(compareCandidate).slice(0, 32);
   const existing = new Set([...program.rules.map(rule => rule.id), ...program.history.map(entry => entry.hypothesisId)]);
   return [...singles, ...compounds].filter(candidate => !existing.has(materializeRule(candidate).id)).sort(compareCandidate);
 }
 
-function fitCandidate(targetSamples: readonly ManagerProgramSampleV2[], totalSamples: number, current: Map<string, number>, domain: ManagerProgramDomain, target: string, predicates: ManagerProgramPredicate[]): CandidateRule | null {
-  const matching = targetSamples.filter(sample => predicates.every(predicate => matches(predicate, sample.features)));
-  if (matching.length < 18) return null;
-  const residuals = matching.map(sample => sample.localValueDelta - (current.get(sample.id) ?? 0)), rawEffect = mean(residuals), effect = clamp(rawEffect * matching.length / (matching.length + 20), -.35, .35);
+function fitCandidate(targetSamples: readonly ManagerProgramSampleV2[], totalSamples: number, current: Map<string, number>, domain: ManagerProgramDomain, target: string, predicates: ManagerProgramPredicate[], cache: CandidateDiscoveryCache): CandidateRule | null {
+  const masks = predicates.map(predicate => predicateMask(cache, targetSamples, domain, target, predicate)); let support = 0, residualSum = 0, residualSquareSum = 0, before = 0; const evidenceIds: string[] = [];
+  visitMaskIntersection(masks, targetSamples.length, index => { const sample = targetSamples[index], residual = sample.localValueDelta - (current.get(sample.id) ?? 0); support += 1; residualSum += residual; residualSquareSum += residual ** 2; before += residual ** 2; if (evidenceIds.length < 32) evidenceIds.push(sample.id); });
+  if (support < 18) return null;
+  const rawEffect = residualSum / support, effect = clamp(rawEffect * support / (support + 20), -.35, .35);
   if (Math.abs(effect) < 1e-5) return null;
-  const before = matching.reduce((sum, sample) => sum + (sample.localValueDelta - (current.get(sample.id) ?? 0)) ** 2, 0), after = matching.reduce((sum, sample) => sum + (sample.localValueDelta - bounded((current.get(sample.id) ?? 0) + effect)) ** 2, 0);
+  let after = 0; visitMaskIntersection(masks, targetSamples.length, index => { const sample = targetSamples[index]; after += (sample.localValueDelta - bounded((current.get(sample.id) ?? 0) + effect)) ** 2; });
   const discoveryGain = (before - after) / totalSamples;
   if (discoveryGain <= 0) return null;
-  const variance = mean(residuals.map(value => (value - rawEffect) ** 2)), uncertainty = clamp(Math.sqrt(variance / matching.length), 0, 1);
-  return {domain, target, predicates, effect: round(effect), support: matching.length, uncertainty: round(uncertainty), discoveryGain, evidenceIds: matching.slice(0, 32).map(sample => sample.id)};
+  const variance = Math.max(0, residualSquareSum / support - rawEffect ** 2), uncertainty = clamp(Math.sqrt(variance / support), 0, 1);
+  return {domain, target, predicates, effect: round(effect), support, uncertainty: round(uncertainty), discoveryGain, evidenceIds};
+}
+
+function predicateMask(cache: CandidateDiscoveryCache, samples: readonly ManagerProgramSampleV2[], domain: ManagerProgramDomain, target: string, predicate: ManagerProgramPredicate): Uint32Array {
+  const key = `${domain}\0${target}\0${predicate.feature}\0${predicate.operator}\0${predicate.threshold}`, prior = cache.predicateMasks.get(key); if (prior) return prior;
+  const mask = new Uint32Array(Math.ceil(samples.length / 32)); for (let index = 0; index < samples.length; index += 1) if (matches(predicate, samples[index].features)) mask[index >>> 5] |= 1 << (index & 31); cache.predicateMasks.set(key, mask); return mask;
+}
+function visitMaskIntersection(masks: readonly Uint32Array[], length: number, visit: (index: number) => void): void {
+  if (!masks.length) return; for (let wordIndex = 0; wordIndex < masks[0].length; wordIndex += 1) { let word = masks[0][wordIndex]; for (let index = 1; index < masks.length && word; index += 1) word &= masks[index][wordIndex]; while (word) { const bit = 31 - Math.clz32(word & -word), sampleIndex = (wordIndex << 5) + bit; if (sampleIndex < length) visit(sampleIndex); word &= word - 1; } }
 }
 
 function materializeRule(candidate: CandidateRule): ManagerProgramRuleV2 {

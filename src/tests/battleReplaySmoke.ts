@@ -6,6 +6,7 @@ import {spawnSync} from "node:child_process";
 import {loadTeam} from "../showdown/team";
 import {applyApprovedBattleAssist,createBattleReplayCapsule,loadBattleReplayCapsule, runBattle} from "../showdown/battle";
 import {buildBattleAssistScope} from "../ai/whiteBox/battleScope";
+import {readUnifiedDecisionRecords} from "../draft/unifiedDecisionRecord";
 
 async function main(): Promise<void> {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "mythicmons-replay-"));
@@ -59,6 +60,10 @@ async function main(): Promise<void> {
   });
   assert.equal(deterministicPublicLog(replay.publicLogPath), deterministicPublicLog(first.publicLogPath));
   assert.equal(fs.readFileSync(replay.decisionLogPath, "utf8"), fs.readFileSync(first.decisionLogPath, "utf8"));
+  const firstUnified = readUnifiedDecisionRecords(first.unifiedDecisionLogPath), replayUnified = readUnifiedDecisionRecords(replay.unifiedDecisionLogPath);
+  assert.deepEqual(replayUnified, firstUnified);
+  assert.equal(firstUnified.length > 0, true);
+  assert.equal(firstUnified.every(record => record.information.timing === "contemporaneous" && record.information.activationEligible), true);
   assert.equal(replay.winner, first.winner);
   assert.equal(replay.turns, first.turns);
   assert.equal(loadBattleReplayCapsule(replay.replayInputPath).input.evidenceEpoch?.epochSha256, capsule.input.evidenceEpoch?.epochSha256);

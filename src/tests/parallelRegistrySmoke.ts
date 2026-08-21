@@ -41,6 +41,7 @@ try {
   assert.throws(() => acquireNamedRunLock(league, ".workflow-smoke.lock"), /already locked/);
   assert.doesNotThrow(() => { const independent = acquireRunLock(league); independent.release(); });
   workflow.release();
+  fs.writeFileSync(path.join(league, ".stale-smoke.lock"), `${JSON.stringify({schemaVersion: 1, pid: 2147483647, startedAt: "2000-01-01T00:00:00.000Z"})}\n`); const recovered = acquireNamedRunLock(league, ".stale-smoke.lock"); recovered.release();
   assert.throws(() => acquireNamedRunLock(league, "../unsafe.lock"), /Invalid run-lock name/);
 
   const duplicateSource = path.join(temporary, "duplicate");

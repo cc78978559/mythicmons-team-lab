@@ -511,7 +511,7 @@ function learnConfigurationPreferences(career: ManagerCareer, roster: DynastyRos
     }
   }
   career.currentProfile.configurationMemory = memory;
-  ledger.add({stage: "review", actor: career.id, decision: `第${season}季配置证据更新`, selected: `${updates.length}项后验`, context: {season, programHash: strategyProgramHash(career.currentProfile.strategyProgram!), updates}, alternatives: [], rationale: updates.length ? ["仅使用实际出招或道具触发事件", "每项记录更新前后后验与有效样本"] : ["本季没有可归因的配置事件，后验保持不变"]});
+  ledger.add({stage: "review", domain: "configure", actor: career.id, decision: `第${season}季配置证据更新`, selected: `${updates.length}项后验`, context: {season, programHash: strategyProgramHash(career.currentProfile.strategyProgram!), updates}, alternatives: [], rationale: updates.length ? ["仅使用实际出招或道具触发事件", "每项记录更新前后后验与有效样本"] : ["本季没有可归因的配置事件，后验保持不变"]});
 }
 
 function normalizeConfigurationId(value: string): string { return value.toLowerCase().replace(/[^a-z0-9]+/g, ""); }
